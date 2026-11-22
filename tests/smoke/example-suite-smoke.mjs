@@ -15,7 +15,7 @@ const topics = JSON.parse(await readFile('examples/shared/featureTopics.json', '
 const parent = resolve('artifacts/example-suite'); await mkdir(parent, {recursive: true});
 const run = await mkdtemp(resolve(parent, 'run-'));
 await writeFile(resolve(parent, 'verification.json'), JSON.stringify({ok: false, status: 'running', run}));
-const prefix = '/nested/engine-demo/', types = {'.html':'text/html', '.css':'text/css', '.js':'application/javascript', '.mjs':'application/javascript', '.json':'application/json', '.png':'image/png', '.woff2':'font/woff2', '.wasm':'application/wasm', '.wav':'audio/wav'};
+const prefix = '/nested/engine-demo/', types = {'.html':'text/html', '.css':'text/css', '.js':'application/javascript', '.mjs':'application/javascript', '.json':'application/json', '.jpg':'image/jpeg', '.png':'image/png', '.woff2':'font/woff2', '.wasm':'application/wasm', '.wav':'audio/wav'};
 const server = createServer((req, res) => void (async () => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/favicon.ico') { res.writeHead(204).end(); return; }
@@ -52,9 +52,31 @@ try {
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-webgpu', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--use-vulkan=swiftshader']});
   const page = await browser.newPage({viewport:{width:1440,height:1100}}); activePage = page; page.setDefaultTimeout(20000);
   observe(page);
+  // The site entry is the example gallery rendered from the shared catalogs.
   await page.goto(base);
-  await page.waitForURL(base+'starter-runtime/'); await ready(page);
-  assert.equal(await page.locator('[data-example-hub], [data-feature-card], [data-example-home]').count(),0);
+  const gallery = page.locator('[data-example-gallery]'); await gallery.waitFor();
+  const galleryCards = publicExamples.filter(item => item.kind === 'game' || item.kind === 'tool').length + features.length + physicsTopics.length + 1;
+  assert.equal(await gallery.locator('[data-gallery-card]').count(), galleryCards);
+  await page.waitForFunction(() => [...document.images].every(image => image.complete));
+  assert(await page.evaluate(() => [...document.images].every(image => image.naturalWidth > 0)), 'gallery thumbnails must load');
+  for (const feature of features) assert.equal(await gallery.locator(`a[href="./starter-runtime/?feature=${feature.id}"]`).count(), 1, feature.id);
+  for (const item of physicsTopics) assert.equal(await gallery.locator(`a[href="./physics-sandbox/?demo=${item.id}"] .badge.issue`).count(), item.knownIssue ? 1 : 0, item.id);
+  await gallery.locator('[data-gallery-filter="topic:physics"]').click();
+  assert.equal(await gallery.locator('[data-gallery-card]:visible').count(), features.filter(item => item.topic === 'physics').length);
+  assert.match(page.url(), /group=topic%3Aphysics/);
+  await gallery.locator('[data-gallery-filter="all"]').click();
+  await page.keyboard.press('/'); await page.keyboard.type('충돌');
+  const searched = await gallery.locator('[data-gallery-card]:visible').count();
+  assert(searched > 0 && searched < galleryCards, `search must narrow the gallery: ${searched}`);
+  await page.locator('[data-gallery-search] input').fill('');
+  for (const width of [1440, 390, 320]) { await page.setViewportSize({width, height: 1000}); assert.equal(await overflow(page), false, `gallery overflow ${width}`); }
+  await page.setViewportSize({width:1440,height:1100});
+  await page.screenshot({path:resolve(run,'gallery.png')});
+  // Cards are relative links that stay under the deployment prefix.
+  await gallery.locator(`a[href="./starter-runtime/?feature=${features[0].id}"]`).click();
+  await page.waitForURL(base+`starter-runtime/?feature=${features[0].id}`); await ready(page);
+  assert.equal(await page.locator('.example-header [data-example-home]').getAttribute('href'), base);
+  await page.goto(base+'starter-runtime/'); await ready(page);
   for (const topic of topics) {
     await page.locator(`.feature-categories button[data-topic="${topic.id}"]`).click();
     assert.equal(await page.locator('.feature-topic-links a:visible').count(),features.filter(item=>item.topic===topic.id).length+(topic.id==='physics'?physicsTopics.length:0));
@@ -76,9 +98,11 @@ try {
   await page.setViewportSize({width:1440,height:1100});
   await page.locator(`.feature-categories button[data-topic="${features[0].topic}"]`).click();
   await page.screenshot({path:resolve(run,'entry.png')});
-  // The relative entry redirect also works without JavaScript under a deployment prefix.
+  // Without JavaScript every gallery card and link is present; only search stays hidden.
   const noJs = await browser.newPage({javaScriptEnabled:false}); observe(noJs); await noJs.goto(base);
-  await noJs.waitForURL(base+'starter-runtime/'); await noJs.close();
+  assert.equal(await noJs.locator('[data-gallery-card]').count(), galleryCards);
+  assert.equal(await noJs.locator('[data-gallery-search]').isHidden(), true);
+  await noJs.close();
 
   for (const entry of publicExamples.filter(item => item.kind !== 'tool')) {
     console.log(`Example suite: ${entry.id}`);
@@ -90,7 +114,7 @@ try {
     assert.equal(await select.locator('option').count(), publicExamples.length);
     assert.equal(await select.locator('option:checked').textContent(), entry.title);
     assert.equal(await select.locator('option[value*="mode="]').count(), 0);
-    assert.equal(await header.locator('[data-example-home]').count(),0);
+    assert.equal(await header.locator('[data-example-home]').getAttribute('href'), base);
     if (entry.parent) {
       // An app that extends a lab topic links back to that topic in the lab.
       const parentTitle = catalog.find(item => item.id === entry.parent.id).title;
@@ -172,9 +196,9 @@ try {
   console.log('Example suite: initialization/teardown and scenario requests');
   const lifecycles = await checkExampleLifecycles(browser, base);
   const scenarioRequests = await checkPhysicsScenarioRequests(browser, base);
-  const report = {ok:true,run,navigation:{features:features.length,topics:topics.length,physics:physicsTopics.length,publicApps:publicExamples.length,entryRedirect:true,noJavaScriptRedirect:true,duplicateHomeRemoved:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
+  const report = {ok:true,run,navigation:{features:features.length,topics:topics.length,physics:physicsTopics.length,publicApps:publicExamples.length,galleryCards,galleryFilter:true,gallerySearch:true,noJavaScriptGallery:true,headerHome:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
   await writeFile(resolve(run,'verification.json'),JSON.stringify(report,null,2)+'\n');
-  await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n'); console.log(`Example suite passed: ${results.length} apps, direct entry/menu navigation, reference routes, standalone and nested paths. ${run}`);
+  await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n'); console.log(`Example suite passed: ${results.length} apps, gallery entry and menu navigation, reference routes, standalone and nested paths. ${run}`);
 } catch (error) {
   await activePage?.screenshot({path:resolve(run,'failure.png'),fullPage:true}).catch(()=>{});
   const report = {ok:false,run,results,errors,error:String(error.stack??error)};

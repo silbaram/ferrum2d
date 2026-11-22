@@ -24,6 +24,8 @@
 .example-header { max-width: 1240px; margin: 0 auto 16px; color: var(--example-text); font: 13px/1.6 var(--example-font); }
 .example-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--example-border); }
 .example-brand { color: var(--example-text); font-weight: 700; font-size: 14px; }
+a.example-brand { text-decoration: none; }
+a.example-brand:hover { color: var(--example-text); text-decoration: underline; text-underline-offset: 2px; }
 .example-breadcrumb { color: var(--example-accent); border-left: 1px solid var(--example-border); padding-left: 16px; }
 .example-breadcrumb a { color: var(--example-muted); text-decoration: none; }
 .example-breadcrumb a:is(:hover, :focus-visible) { color: var(--example-text); text-decoration: underline; }

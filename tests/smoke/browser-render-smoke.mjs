@@ -118,9 +118,10 @@ const PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER =
   "/tmp/ferrum-studio-desktop-assets-smoke/shared-assets-alternate";
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const MAX_PLACEMENT_SAVE_BYTES = 2 * 1024 * 1024;
-// The unified backend cannot yet certify rotating box contacts in these scenarios; the lab
-// shows the error. Tracked in docs/planning/unified-3d-physics-plan.md. Remove on fix.
-const PHYSICS_SANDBOX_KNOWN_STEP_ERRORS = new Set(["rigid-materials", "collider-gallery", "contacts-sensors", "joints-lab"]);
+// Scenarios with a catalog `knownIssue` may stop their world; the lab must then show the error.
+// The same field shows the gallery badge (examples/shared/physicsExamples.json).
+const PHYSICS_SANDBOX_KNOWN_STEP_ERRORS = new Set(JSON.parse(await readFile("examples/shared/physicsExamples.json", "utf8"))
+  .filter(item => item.knownIssue).map(item => item.id));
 const PHYSICS_SANDBOX_SUSTAINED_FRAMES = 300;
 
 const PHYSICS_DEMO_SUITE = [

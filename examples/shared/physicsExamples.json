@@ -2,22 +2,26 @@
   {
     "id": "rigid-materials",
     "title": "질량·마찰·반발",
-    "summary": "같은 힘에서 재질과 질량에 따른 움직임을 비교합니다."
+    "summary": "같은 힘에서 재질과 질량에 따른 움직임을 비교합니다.",
+    "knownIssue": "약 2초 뒤 멈춤 · 회전 상자 접촉의 운동 증명 한계"
   },
   {
     "id": "collider-gallery",
     "title": "충돌체 모양",
-    "summary": "원·상자·캡슐·다각형·복합 충돌체를 관찰합니다."
+    "summary": "원·상자·캡슐·다각형·복합 충돌체를 관찰합니다.",
+    "knownIssue": "약 2초 뒤 멈춤 · 회전 상자 접촉의 운동 증명 한계"
   },
   {
     "id": "contacts-sensors",
     "title": "접촉과 센서",
-    "summary": "접촉점·법선·충격과 센서 신호를 확인합니다."
+    "summary": "접촉점·법선·충격과 센서 신호를 확인합니다.",
+    "knownIssue": "약 2초 뒤 멈춤 · 회전 상자 접촉의 운동 증명 한계"
   },
   {
     "id": "joints-lab",
     "title": "관절과 제약",
-    "summary": "거리·로프·스프링·회전 등 관절을 비교합니다."
+    "summary": "거리·로프·스프링·회전 등 관절을 비교합니다.",
+    "knownIssue": "약 2초 뒤 멈춤 · 회전 상자 접촉의 운동 증명 한계"
   },
   {
     "id": "ccd-tunnel-test",

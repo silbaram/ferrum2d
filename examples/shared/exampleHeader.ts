@@ -27,7 +27,9 @@ export function createExampleHeader(id: string): HTMLElement {
   root.className = "example-header";
   root.dataset.exampleId = entry.id;
   const nav = document.createElement("nav"); nav.className = "example-navigation"; nav.setAttribute("aria-label", "예제 탐색");
-  const brand = document.createElement("span"); brand.className = "example-brand"; brand.textContent = "Ferrum2D 예제";
+  // Inside the published suite the brand returns to the example gallery at the site root.
+  const brand = document.createElement(site ? "a" : "span"); brand.className = "example-brand"; brand.textContent = "Ferrum2D 예제";
+  if (site) { (brand as HTMLAnchorElement).href = site.href; brand.dataset.exampleHome = "true"; }
   nav.append(brand);
   if (entry.kind === "reference") {
     const group = document.createElement("span"); group.className = "example-breadcrumb"; group.textContent = groups[entry.kind];

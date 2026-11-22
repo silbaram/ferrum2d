@@ -105,6 +105,7 @@
     "validate:consumer-smoke-report": "node scripts/validate/validate-consumer-smoke-report.mjs",
     "validate:rust-test-harness": "node --test tests/smoke/rust-test-harness-guard.test.mjs && node scripts/validate/check-rust-test-harness.mjs",
     "report:example-demo-harness": "node scripts/validate/example-demo-harness-report.mjs",
+    "thumbnails:examples": "node scripts/assets/capture-example-thumbnails.mjs",
     "validate:example-catalog": "node scripts/validate/check-example-catalog.mjs",
     "test:example-catalog-build": "node --test tests/smoke/example-catalog-build.test.mjs",
     "smoke:example-suite": "pnpm validate:example-catalog && pnpm test:example-catalog-build && pnpm build:pages && node tests/smoke/example-suite-smoke.mjs",

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import {existsSync, readFileSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {EXAMPLE_THUMBNAIL_DIR, exampleThumbnailEntries} from '../../examples/shared/gallery/thumbnailNames.mjs';
 
 export function loadExampleCatalog(root = process.cwd()) {
   const read = path => JSON.parse(readFileSync(resolve(root, path), 'utf8'));
@@ -17,6 +18,8 @@ export function loadExampleCatalog(root = process.cwd()) {
   assert.equal(new Set(physics.map(item => item.id)).size, physics.length, 'Duplicate physics link');
   assert.equal(physics.length, scenarioIds.size, 'Every physics scenario needs a topic entry');
   for (const item of physics) assert(scenarioIds.has(item.id) && item.title?.trim() && item.summary?.trim(), `Invalid physics entry ${item.id}`);
+  // A known issue is shown as a gallery badge and is the physics lab smoke's single exception list.
+  for (const item of physics) if ('knownIssue' in item) assert(typeof item.knownIssue === 'string' && item.knownIssue.trim() && item.knownIssue.length <= 60, `Invalid physics known issue ${item.id}`);
   const commands = read('package.json').scripts;
   assert(Array.isArray(catalog) && catalog.length > 0, 'Example catalog must not be empty');
   assert(Array.isArray(features) && features.length > 0, 'Feature catalog must not be empty');
@@ -69,6 +72,12 @@ export function loadExampleCatalog(root = process.cwd()) {
     }
   }
   assert(catalog.some(item => item.id === 'starter-runtime' && item.kind === 'lab'), 'The feature lab must remain a public entry');
+  // Every gallery card shows a captured thumbnail; regenerate with pnpm thumbnails:examples.
+  const thumbnails = exampleThumbnailEntries({catalog, features, physics}).map(entry => entry.name);
+  const thumbnailDir = resolve(root, EXAMPLE_THUMBNAIL_DIR);
+  for (const name of thumbnails) assert(existsSync(resolve(thumbnailDir, name)), `Missing gallery thumbnail ${name}; run pnpm thumbnails:examples`);
+  const extra = existsSync(thumbnailDir) ? readdirSync(thumbnailDir).filter(name => name.endsWith('.jpg') && !thumbnails.includes(name)) : [];
+  assert.deepEqual(extra, [], 'Unused gallery thumbnails');
   return catalog;
 }
 
