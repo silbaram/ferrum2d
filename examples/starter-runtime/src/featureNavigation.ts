@@ -122,8 +122,10 @@ export function createFeatureNavigation(selected: string): FeatureNavigation {
   return { element, pager, destroy: () => lifetime.abort() };
 }
 
-/** Place the topic list beside the stage and the pager under it. */
-export function mountFeatureNavigation(root: HTMLElement, stage: HTMLElement, navigation: FeatureNavigation): void {
-  root.querySelector(".demo-stage-layout")!.prepend(navigation.element);
-  stage.append(navigation.pager);
+/** Place the topic list beside the stage and the pager below the whole layout. The pager and
+ * the code view sit outside the stage, so the sticky preview scrolls away before them. */
+export function mountFeatureNavigation(root: HTMLElement, navigation: FeatureNavigation): void {
+  const layout = root.querySelector(".demo-stage-layout")!;
+  layout.prepend(navigation.element);
+  layout.after(navigation.pager);
 }

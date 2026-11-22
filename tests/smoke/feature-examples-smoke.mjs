@@ -107,6 +107,20 @@ try {
       assert(initial.entities <= 100 && initial.commands <= 400 && initial.drawCalls <= 64, `${id} initial scene/render budget exceeded`);
       assert.equal(await page.locator('.feature-topics a').count(), catalog.length);
       assert.equal(await page.locator('.feature-topics a[aria-current=page]').count(), 1);
+      // The code view shows the scene this experiment loads, its public API and the lab sources.
+      const code = page.locator('.feature-code');
+      assert.deepEqual(await code.locator('[role=tab]').allTextContents(), ['씬 JSON', 'API', '코드 위치']);
+      await page.waitForFunction(() => document.querySelector('.feature-code')?.dataset.sceneLines);
+      assert.deepEqual(JSON.parse(await code.locator('.feature-code-json').textContent()), scene, `${id} code view must show the loaded scene`);
+      const feature = catalog.find(item => item.id === id);
+      assert.equal(await code.locator('.feature-code-api code').count(), feature.api.split('·').filter(text => text.trim()).length);
+      assert(await code.locator('.feature-code-files a').count() >= 2);
+      if (id === 'animation') {
+        await code.locator('[role=tab]').first().focus(); await page.keyboard.press('ArrowRight');
+        assert.equal(await code.locator('[role=tab][aria-selected=true]').textContent(), 'API');
+        assert(await code.locator('#feature-code-api').isVisible() && !(await code.locator('#feature-code-scene').isVisible()));
+        await page.keyboard.press('Home');
+      }
       assert.equal(await page.locator('.playground-progress').count(), 0);
       const pixels = await page.evaluate(pixelHash);
       // The original panel PNG deliberately has only five colors plus the canvas background.

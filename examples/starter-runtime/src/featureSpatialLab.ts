@@ -6,6 +6,7 @@ import { applyDataSceneAuthoringDocument, type SceneAuthoringDocumentSpec } from
 import catalog from "../../shared/featureCatalog.json";
 import { cleanupRuntimeDemoResources, createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
 import { createFeatureNavigation, mountFeatureNavigation } from "./featureNavigation";
+import { createFeatureCode, featureDocsUrl } from "./featureCode";
 import { spatialControls, spatialFeatureScene } from "./featureSpatialScenes";
 import "./featureLab.css";
 import { environmentEffects, spatialEnvironmentCamera, spatialEnvironmentSettings } from "./featureSpatialEnvironment";
@@ -39,21 +40,22 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   panel.innerHTML = `<h2>설정</h2><form class="feature-controls">${spatialControls[id]}</form>
     ${shadowComparison?'<output class="feature-control-error" data-value="control-error" role="alert" hidden></output>':""}
     <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
-    <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code><a data-control="download" download="${id}.json">이 실험의 설정 JSON</a>
-    <p>src/featureSpatialLab.ts · featureSpatialScenes.ts</p></details>`;
+    <p class="feature-export"><a data-control="download" download="${id}.json">지금 설정을 JSON으로 내려받기</a></p>`;
   root.querySelector(".demo-metrics")!.replaceWith(panel);
   const help = document.createElement("p"); help.className = "feature-canvas-help";
   help.textContent = shadowComparison ? "그림자 원본을 바꾸고 카메라만 돌려 같은 지면의 그림자를 비교하세요." : id === "hd2d-environment" ? "광원과 그림자·안개 설정을 바꿔 같은 장면을 비교하세요." : id === "attachments" ? "부모 위치·회전을 바꾼 뒤 연결을 해제하고 다시 비교하세요." : "WASD / 방향키 · 아래 조이스틱으로 이동";
   const statistics = document.createElement("p"); statistics.className = "feature-statistics";
   statistics.textContent = "오브젝트 — · 공간 그리기 —";
   stage.append(help, statistics);
-  mountFeatureNavigation(root, stage, navigation);
+  mountFeatureNavigation(root, navigation);
+  const code = createFeatureCode({ id, api: feature.api, sources: ["src/featureSpatialLab.ts", "src/featureSpatialScenes.ts"], docsUrl: featureDocsUrl() });
+  navigation.pager.before(code.element);
   for (const button of root.querySelectorAll("button")) button.type = "button";
   const control = <T extends HTMLElement>(name: string) => root.querySelector<T>(`[data-control="${name}"]`)!;
   const output = (name: string, value: string) => { root.querySelector(`[data-value="${name}"]`)!.textContent = value; };
   const lifetime = new AbortController(), { signal } = lifetime;
   const lesson = createFeatureLesson(root, canvas, id, feature.lesson, feature.observe);
-  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => lesson.destroy()];
+  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => code.destroy(), () => lesson.destroy()];
   let destroyed = false, ready = false, failed: string | undefined, downloadUrl: string | undefined;
   let playbackUrl: string | undefined;
   let engine: FerrumEngine | undefined;

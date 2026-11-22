@@ -11,6 +11,7 @@ import { createFeatureExtra, extraControls, extraHelp, shooterFeatures, type Fea
 import { createGameplayFeature, gameplayControls, gameplayHelp } from "./featureGameplay";
 import { createContentFeature, contentControls, contentHelp } from "./featureContent";
 import { createFeatureNavigation, mountFeatureNavigation } from "./featureNavigation";
+import { createFeatureCode, featureDocsUrl } from "./featureCode";
 import { createProjectileFeature, projectileControls } from "./featureProjectiles";
 import { createSystemFeature, systemControls } from "./featureSystems";
 import { createTerrainFeature, terrainControls } from "./featureTerrain";
@@ -79,10 +80,7 @@ export async function startFeatureLab(): Promise<void> {
   panel.className = "feature-panel";
   panel.setAttribute("aria-label", "실험 설명과 설정");
   panel.innerHTML = `<h2>설정</h2><form class="feature-controls">${controls[id]}</form>
-    <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
-    <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code>
-    <a href="./features/${id}.json" download>이 실험의 씬 JSON</a>
-    <p>설정 적용 코드는 ${id === "camera" ? "src/featureCamera.ts" : id in displayControls ? "src/featureDisplay.ts" : id === "physics-queries" ? "src/featureQueries.ts" : id === "postprocess" ? "src/featureDisplay.ts" : id === "nine-slice" ? "src/featureNineSlice.ts" : "src/featureLab.ts · featureExtras.ts · featureGameplay.ts · featureContent.ts · featureSystems.ts · featureProjectiles.ts"}에 있습니다.</p></details>`;
+    <output class="feature-observation" data-value="observation">엔진 준비 중…</output>`;
   root.querySelector(".demo-metrics")!.replaceWith(panel);
   // Buttons in the settings form must never submit/reload the page.
   for (const button of root.querySelectorAll<HTMLButtonElement>("button")) button.type = "button";
@@ -97,7 +95,9 @@ export async function startFeatureLab(): Promise<void> {
   // Reserve the diagnostics row before controls mount; delayed text must not shift touch targets.
   stats.textContent = "오브젝트 — · 그리기 명령 — · 드로우 콜 —";
   stage.append(stats);
-  mountFeatureNavigation(root, stage, navigation);
+  mountFeatureNavigation(root, navigation);
+  const code = createFeatureCode({ id, api: feature.api, sources: featureSources(id), docsUrl: featureDocsUrl() });
+  navigation.pager.before(code.element);
   const control = <T extends HTMLElement>(key: string) => root.querySelector<T>(`[data-control="${key}"]`)!;
   const choice = (key: string) => control<HTMLSelectElement>(key).value;
   const input = (key: string) => control<HTMLInputElement>(key);
@@ -121,7 +121,7 @@ export async function startFeatureLab(): Promise<void> {
   let physicsPresentation: { sample: number; displayX: number; displayY: number; nativeX: number; nativeY: number; alpha: number } | undefined;
   let physicsObservation: { speed: number; launches: number; contacts: number } | undefined;
   let resources: (() => ReturnType<NonNullable<FerrumRuntime["renderer"]["resourceStats"]>>) | undefined;
-  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => lesson.destroy()];
+  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => code.destroy(), () => lesson.destroy()];
   // Async initialization may finish after navigation. Adopt late resources by disposing immediately.
   const own = (dispose: () => void) => { if (destroyed) dispose(); else cleanups.push(dispose); };
   const cleanup = () => {
@@ -422,4 +422,13 @@ export async function startFeatureLab(): Promise<void> {
     ready = true;
     runtime.start();
   } catch (error) { const cancelled = signal.aborted; cleanup(); if (!cancelled) throw error; }
+}
+
+/** Lab sources that apply each experiment's controls, shown in the code view. */
+function featureSources(id: string): string[] {
+  if (id === "camera") return ["src/featureCamera.ts"];
+  if (id in displayControls || id === "postprocess") return ["src/featureDisplay.ts"];
+  if (id === "physics-queries") return ["src/featureQueries.ts"];
+  if (id === "nine-slice") return ["src/featureNineSlice.ts"];
+  return ["src/featureLab.ts", "src/featureExtras.ts", "src/featureGameplay.ts", "src/featureContent.ts", "src/featureSystems.ts", "src/featureProjectiles.ts"];
 }

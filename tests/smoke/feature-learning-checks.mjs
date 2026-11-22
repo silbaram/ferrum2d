@@ -9,14 +9,16 @@ async function assertSettingsKeepPreview(page,id) {
     });
     const before=await page.evaluate(()=>({y:scrollY}));
     // Keyboard focus must reach the bottom of the inspector without losing the scene.
-    await page.locator('.feature-panel a').last().focus();
+    // Focus must move to the control; refocusing an already focused control does not scroll.
+    await page.evaluate(()=>document.activeElement?.blur());
+    await page.locator('.feature-panel').locator('a[href]:visible, button:not([disabled]):visible, input:visible, select:visible, summary:visible').last().focus();
     const result=await page.evaluate(()=>{
       const canvas=document.querySelector('canvas').getBoundingClientRect(),preview=document.querySelector('.feature-preview').getBoundingClientRect(),panel=document.querySelector('.feature-panel'),r=panel.getBoundingClientRect(),target=document.activeElement.getBoundingClientRect();
-      return {y:scrollY,canvas:canvas.toJSON(),preview:preview.toJSON(),target:target.toJSON(),panel:r.toJSON(),height:innerHeight};
+      return {y:scrollY,canvas:canvas.toJSON(),preview:preview.toJSON(),target:target.toJSON(),panel:r.toJSON(),height:innerHeight,active:document.activeElement.outerHTML.slice(0,120)};
     });
     assert(result.preview.top>=-1&&result.preview.bottom<=result.height+1&&result.canvas.top<result.preview.bottom&&result.canvas.bottom>result.preview.top,`${id}: settings focus hid the preview: ${JSON.stringify(result)}`);
     assert(Math.abs(result.y-before.y)<=1,`${id}: settings focus scrolled the page instead of the inspector`);
-    assert(result.target.top>=result.panel.top&&result.target.bottom<=result.panel.bottom,`${id}: lower settings must be reachable by keyboard`);
+    assert(result.target.top>=result.panel.top&&result.target.bottom<=result.panel.bottom,`${id}: lower settings must be reachable by keyboard: ${JSON.stringify({active:result.active,target:result.target,panel:result.panel})}`);
     assert(result.panel.left>=result.preview.right-1||result.panel.top>=result.preview.bottom-1,`${id}: pinned preview covered the settings`);
     // Scrolling past the end must not chain into a page scroll.
     await page.locator('.feature-panel').evaluate(panel=>{panel.scrollTop=panel.scrollHeight;});

@@ -115,6 +115,10 @@ try {
   assert.equal(await page.locator('.feature-pager a[rel=prev]').getAttribute('href'), new URL(`starter-runtime/?feature=${order[position - 1].id}`, base).href);
   assert.equal(await page.locator('.feature-pager a[rel=next]').getAttribute('href'), new URL(`starter-runtime/?feature=${order[position + 1].id}`, base).href);
   await page.locator(`.feature-topics button[data-topic="${features[0].topic}"]`).click();
+  // Inside the suite the code view links the public API reference on this site.
+  const apiDocs = await page.locator('#feature-code-api a').getAttribute('href');
+  assert.equal(apiDocs, new URL('docs/engine/public-api.html', base).href);
+  assert.equal(await page.evaluate(async url => (await fetch(url)).status, apiDocs), 200);
   await page.screenshot({path:resolve(run,'entry.png')});
   // Without JavaScript every gallery card and link is present; only search stays hidden.
   const noJs = await browser.newPage({javaScriptEnabled:false}); observe(noJs); await noJs.goto(base);
