@@ -53,6 +53,8 @@ struct WorldState {
     planar_angles: BTreeMap<BodyId, super::planar_angle::PlanarAngle>,
     #[serde(skip)]
     joint_kinematics: Vec<(rp::RigidBodyHandle, rp::Pose, rp::Pose)>,
+    #[serde(skip)]
+    staged_tick_inputs: Vec<(BodyId, super::tick_inputs::TickInput)>,
 }
 
 #[derive(serde::Serialize)]

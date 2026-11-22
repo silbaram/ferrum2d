@@ -63,16 +63,16 @@ impl Engine {
         frame_telemetry: bool,
         physics_debug_lines: bool,
     ) -> Result<(), String> {
-        self.reset_native_motion_attempt();
+        self.begin_checked_native_frame();
         self.update_frame(delta, render_commands, frame_telemetry, physics_debug_lines);
-        self.checked_actual_native_motion()
+        self.checked_native_frame()
     }
 
     /// Checked manual entry, retaining the original raw void ABI.
     pub fn step_rigid_bodies_checked(&mut self, delta_seconds: f32) -> Result<(), String> {
-        self.reset_native_motion_attempt();
+        self.begin_checked_native_frame();
         self.step_rigid_bodies(delta_seconds);
-        self.checked_actual_native_motion()
+        self.checked_native_frame()
     }
 
     /// Checked one-shot manual configuration, with the original argument order.
@@ -92,7 +92,7 @@ impl Engine {
         contact_split_impulse: bool,
         continuous: bool,
     ) -> Result<(), String> {
-        self.reset_native_motion_attempt();
+        self.begin_checked_native_frame();
         self.step_rigid_bodies_with_config(
             delta_seconds,
             gravity_x,
@@ -107,7 +107,7 @@ impl Engine {
             contact_split_impulse,
             continuous,
         );
-        self.checked_actual_native_motion()
+        self.checked_native_frame()
     }
 
     pub fn update_frame(
@@ -302,28 +302,24 @@ impl Engine {
                     engine.reset_native_motion_attempt();
                     engine.elapsed_seconds += f64::from(plan.interval);
                     let input = engine.fixed_step_input(step_index == 0);
-                    let presses = if step_index == 0 {
-                        engine
-                            .fixed_timestep_input_latch
-                            .apply_to(InputState::default())
-                    } else {
-                        InputState::default()
-                    };
-                    engine.tweens.update(&mut engine.world, plan.interval);
-                    engine.update_scene(plan.interval, input, presses);
+                    let (resumed, presses) =
+                        engine.begin_native_gameplay_tick(plan.interval, step_index, input);
                     engine.step_auto_rigid_bodies(plan.interval);
                     if let Some(error) = engine.actual_native_motion_failure() {
                         partial = engine
                             .actual_native_committed_seconds()
                             .clamp(0., plan.interval);
                         motion_error = Some(error);
-                        if step_index == 0 && partial > 0. {
+                        if step_index == 0 && partial > 0. && resumed != Some(false) {
                             engine.fixed_timestep_input_latch.clear();
+                        }
+                        if partial == 0. {
+                            engine.suspend_native_gameplay_tick(resumed, step_index);
                         }
                         engine.elapsed_seconds = elapsed_before;
                         return Err(error);
                     }
-                    if step_index == 0 {
+                    if step_index == 0 && resumed != Some(false) {
                         engine.fixed_timestep_input_latch.clear();
                     }
                     engine.record_collision_lifecycle_events();

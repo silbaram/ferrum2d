@@ -12,6 +12,7 @@ mod pending_removals;
 mod shape_domain;
 mod shape_edits;
 mod stored_references;
+mod tick_inputs;
 
 fn body(w: &mut PhysicsWorld3d, kind: BodyKind, p: [f32; 3], shape: Shape) -> BodyId {
     w.create_body(
