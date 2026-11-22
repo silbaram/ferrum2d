@@ -38,6 +38,10 @@ import { createExampleHeader } from "../../shared/exampleHeader";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
 import sharedScenarios from "../../shared/physicsExamples.json";
 
+// Gallery thumbnails, so the scenario list matches the example gallery and the feature lab.
+const scenarioThumbnails = import.meta.glob<string>("../../shared/thumbnails/physics-*.jpg", { eager: true, query: "?url", import: "default" });
+const knownIssues = new Map<string, string>(sharedScenarios.flatMap((item): [string, string][] => "knownIssue" in item ? [[item.id, String(item.knownIssue)]] : []));
+
 interface PhysicsShowcaseCatalog {
   version: 1;
   scenarios: readonly PhysicsScenarioEntry[];
@@ -356,7 +360,7 @@ function createShell(
   const pauseButton = createRuntimeDemoButton("일시정지", onPause);
   const stepButton = createRuntimeDemoButton("한 프레임", onStep);
   const resetButton = createRuntimeDemoButton("리셋", onReset);
-  const categoryNav = document.createElement("nav");
+  const scenarioList = document.createElement("nav");
   const debugControls = document.createElement("div");
   const stage = document.createElement("section");
   const canvasPanel = document.createElement("section");
@@ -408,7 +412,6 @@ function createShell(
   const debugOptions: PhysicsDebugOptions = { ...initialDebugOptions };
   const debugControlInputs = new Map<DebugControlKey, HTMLInputElement>();
   const debugControlLabels = new Map<DebugControlKey, HTMLLabelElement>();
-  const categories = uniqueStrings(scenarios.map((scenario) => scenario.category));
 
   shell.className = "app-shell";
   shell.append(createExampleHeader("physics-sandbox"));
@@ -419,7 +422,8 @@ function createShell(
   summary.className = "scenario-summary";
   toolbar.className = "toolbar";
   scenarioSelect.className = "scenario-select";
-  categoryNav.className = "category-nav";
+  scenarioList.className = "scenario-list";
+  scenarioList.setAttribute("aria-label", "시나리오");
   debugControls.className = "debug-controls";
   stage.className = "stage";
   canvasPanel.className = "canvas-panel";
@@ -468,14 +472,37 @@ function createShell(
   }
   scenarioSelect.addEventListener("change", () => onScenarioChange(scenarioSelect.value));
 
-  for (const category of categories) {
-    const button = createRuntimeDemoButton(categoryLabel(category, scenarios), () => {
-      const firstScenario = scenarios.find((scenario) => scenario.category === category);
-      if (firstScenario) onScenarioChange(firstScenario.id);
+  // Wide screens list every scenario beside the canvas, like the feature lab's topic list.
+  // Links keep a real ?demo= URL; a plain click switches the scenario in place.
+  const listLabel = document.createElement("p");
+  listLabel.className = "scenario-list-label";
+  listLabel.textContent = `시나리오 ${scenarios.length}`;
+  scenarioList.append(listLabel);
+  for (const scenario of scenarios) {
+    const link = document.createElement("a");
+    link.className = "scenario-link";
+    link.href = `?demo=${encodeURIComponent(scenario.id)}`;
+    link.dataset.scenario = scenario.id;
+    const image = document.createElement("img");
+    image.alt = "";
+    image.decoding = "async";
+    const thumbnail = scenarioThumbnails[`../../shared/thumbnails/physics-${scenario.id}.jpg`];
+    if (thumbnail) image.src = thumbnail;
+    const name = document.createElement("span");
+    name.className = "scenario-link-title";
+    name.textContent = scenarioTitle(scenario);
+    const caption = document.createElement("span");
+    caption.className = "scenario-link-caption";
+    const issue = knownIssues.get(scenario.id);
+    caption.textContent = issue ? `${categoryLabel(scenario.category, scenarios)} · 알려진 문제` : categoryLabel(scenario.category, scenarios);
+    if (issue) { caption.dataset.issue = "true"; link.title = issue; }
+    link.append(image, name, caption);
+    link.addEventListener("click", (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      onScenarioChange(scenario.id);
     });
-    button.className = "category-button";
-    button.dataset.category = category;
-    categoryNav.append(button);
+    scenarioList.append(link);
   }
 
   for (const { key, label } of DEBUG_CATEGORIES) {
@@ -529,8 +556,8 @@ function createShell(
   selectedPanel.append(selectedTitle, selectedBody);
   eventPanel.append(eventTitle, eventList);
   sidePanel.append(debugRoot, metrics, specPanel, focusPanel, eventPanel, warningList);
-  stage.append(canvasPanel, sidePanel);
-  shell.append(header, categoryNav, stage, errorBox);
+  stage.append(scenarioList, canvasPanel, sidePanel);
+  shell.append(header, stage, errorBox);
   app.replaceChildren(shell);
   shell.inert = true;
 
@@ -568,8 +595,9 @@ function createShell(
       bodyValue.textContent = formatCount(world.bodyCount);
       jointValue.textContent = formatCount(world.jointCount);
       focusList.replaceChildren(...scenarioFocus(scenario).map(createFocusChip));
-      for (const button of categoryNav.querySelectorAll<HTMLButtonElement>(".category-button")) {
-        button.classList.toggle("is-active", button.dataset.category === scenario.category);
+      for (const link of scenarioList.querySelectorAll<HTMLAnchorElement>(".scenario-link")) {
+        if (link.dataset.scenario === scenario.id) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
       }
       applyDebugControlAvailability(scenario, spec, debugOptions, debugControlInputs, debugControlLabels);
     },
@@ -935,6 +963,10 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
   const shell = createShell(
     catalog.scenarios,
     (id) => {
+      // Keep the address shareable: ?demo= follows the chosen scenario.
+      const url = new URL(location.href);
+      url.searchParams.set("demo", id);
+      history.replaceState(history.state, "", url);
       void loadScenario(id).catch(() => {}); // loadScenario presents current-request errors.
     },
     () => {
@@ -1602,9 +1634,6 @@ function cameraForScenario(scenario: PhysicsScenarioEntry): PhysicsScenarioCamer
   return scenario.camera ?? DEFAULT_CAMERA;
 }
 
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values)];
-}
 
 // Display names come from the catalog shared with the feature lab's physics topic,
 // so a scenario has one name everywhere. The local catalog keeps specs and details.

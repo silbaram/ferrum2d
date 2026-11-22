@@ -60,8 +60,7 @@ button:disabled {
   background: #141916;
 }
 
-button.is-active,
-.category-button.is-active {
+button.is-active {
   border-color: rgba(245, 167, 66, 0.78);
   background: #3b2b18;
   color: #ffffff;
@@ -160,7 +159,6 @@ ol {
 }
 
 .toolbar,
-.category-nav,
 .debug-controls,
 .action-buttons {
   display: flex;
@@ -175,19 +173,6 @@ ol {
 .scenario-select {
   width: 360px;
   padding: 0 10px;
-}
-
-.category-nav {
-  max-width: 1320px;
-  margin: 0 auto 12px;
-}
-
-.category-button {
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  color: #dfeae3;
-  font-size: 13px;
 }
 
 .stage {
@@ -566,7 +551,6 @@ ol {
   }
 
   .toolbar,
-  .category-nav,
   .debug-controls {
     width: 100%;
   }
@@ -593,3 +577,26 @@ ol {
     max-width: none;
   }
 }
+
+/* Scenario list beside the canvas on wide screens, matching the feature lab's topic list.
+   Narrower screens keep the scenario picker in the toolbar. */
+.scenario-list { display: none; }
+.scenario-list-label { margin: 0; padding: 8px 12px 4px; font-size: 11px; color: var(--example-subtle); }
+.scenario-link { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; column-gap: 8px; min-height: 44px;
+  padding: 4px 12px; border-left: 2px solid transparent; color: var(--example-muted); text-decoration: none; font-size: 12px; }
+.scenario-link:hover { background: var(--example-hover); color: var(--example-text); }
+.scenario-link[aria-current] { background: var(--example-selection); border-left-color: var(--example-accent); color: var(--example-text); }
+.scenario-link:focus-visible { outline: 2px solid var(--example-accent); outline-offset: -2px; }
+.scenario-link img { grid-row: span 2; width: 48px; height: 30px; object-fit: cover; border: 1px solid var(--example-border);
+  border-radius: var(--example-radius); background: var(--example-bg); }
+.scenario-link-title { line-height: 1.35; }
+.scenario-link-caption { font-size: 10px; color: var(--example-subtle); }
+.scenario-link-caption[data-issue] { color: #ff6b6b; }
+@media (min-width: 1280px) {
+  .app-shell { width: min(1552px, 100%); }
+  .app-shell > :is(.example-header, .showcase-header, .stage, .error-box) { max-width: 1520px; }
+  .stage { grid-template-columns: 232px minmax(0, 920px) minmax(300px, 1fr); }
+  .scenario-list { display: block; position: sticky; top: 12px; align-self: start; max-height: calc(100dvh - 24px); overflow-y: auto;
+    padding: 4px 0; border: 1px solid var(--example-border); background: var(--example-panel); }
+}
+

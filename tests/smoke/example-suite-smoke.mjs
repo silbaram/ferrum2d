@@ -153,6 +153,22 @@ try {
     assert.match(theme.font, /Ferrum Example UI/); assert.equal(theme.background, 'rgb(17, 24, 33)'); assert.equal(theme.radius, '2px');
     let controls;
     if (entry.id === 'breakout' || entry.id === 'platformer') controls = await smokeGuidedExample(page, entry.id);
+    if (entry.id === 'physics-sandbox') {
+      // Wide screens list every scenario beside the canvas; a click switches in place and updates ?demo=.
+      const links = page.locator('.scenario-list .scenario-link');
+      assert.equal(await links.count(), physicsTopics.length);
+      assert.equal(await page.locator('.scenario-link-caption[data-issue]').count(), physicsTopics.filter(item => item.knownIssue).length);
+      await page.waitForFunction(() => [...document.querySelectorAll('.scenario-link img')].every(image => image.complete && image.naturalWidth > 0));
+      const initial = await page.evaluate(() => window.ferrumPhysicsSandboxSmokeFrame.demoId), target = physicsTopics.at(-1).id;
+      await page.locator(`.scenario-link[data-scenario="${target}"]`).click();
+      await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, target);
+      assert.equal(new URL(page.url()).searchParams.get('demo'), target);
+      assert.equal(await page.locator('.scenario-link[aria-current]').getAttribute('data-scenario'), target);
+      assert.equal(await page.locator('.scenario-select').inputValue(), target);
+      // Later checks expect the scenario the page opened with.
+      await page.locator(`.scenario-link[data-scenario="${initial}"]`).click();
+      await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, initial);
+    }
     if (entry.id === 'platformer') {
       await page.locator('canvas').focus(); await page.keyboard.down('KeyD');
       assert.equal(await page.evaluate(() => window.ferrumRuntime.input.snapshot().d), true);
