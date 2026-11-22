@@ -10,6 +10,12 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 - Linux Studio `.deb`의 Debian 패키지 이름을 `ferrum2d-studio`로 고정했다. beta.10은 Tauri가 제품명에서 만든
   `ferrum2-d-studio`였으며, 새 패키지가 이 이름을 `Replaces`/`Conflicts`로 대체해 업그레이드 설치 시 함께 정리한다.
+- SDK 게임 루프가 0.1ms보다 짧은 브라우저 프레임 간격을 받으면 native 가변 시계가 거부해 멈추던 문제를 고쳤다.
+  짧은 간격은 다음 프레임까지 누적한다. beta.10에 포함된 회귀다.
+- 통합 물리에서 회전하는 중심 공이 30Hz 같은 긴 고정 스텝으로 벽에 부딪칠 때 `UnresolvedMotion`으로 멈추던 문제를
+  고쳤다.
+- 통합 물리에서 `configureAutoRigidBodyStep({ ... })`가 중력·연속 충돌을 바꿔도 `frame.physics`의 중력·`continuous`
+  표시가 이전 값으로 남던 문제를 고쳤다. native가 수용한 값으로 갱신한다.
 
 ## 0.1.0-beta.10 - 2026-11-22
 
