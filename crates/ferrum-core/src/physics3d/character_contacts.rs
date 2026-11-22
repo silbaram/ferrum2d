@@ -14,6 +14,8 @@ pub(super) mod actual_rows;
 mod angular_suffix;
 #[cfg(test)]
 mod pair_bound_tests;
+#[cfg(test)]
+mod pair_cast_tests;
 mod solver;
 
 #[derive(Default)]
