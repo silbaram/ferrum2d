@@ -9,8 +9,10 @@ const fixedInputs = [
   "build.rs", "Cargo.toml", "Cargo.lock",
   "vendor/rapier3d/Cargo.toml", "vendor/rapier3d/FERRUM-PATCHES.md", "vendor/rapier3d/UPSTREAM.json",
   "vendor/parry3d/Cargo.toml", "vendor/parry3d/FERRUM-PATCHES.md", "vendor/parry3d/UPSTREAM.json",
+  "vendor/libm/Cargo.toml", "vendor/libm/build.rs", "vendor/libm/configure.rs",
+  "vendor/libm/FERRUM-PATCHES.md", "vendor/libm/UPSTREAM.json",
 ];
-const sourceDirectories = ["src", "vendor/rapier3d/src", "vendor/parry3d/src"];
+const sourceDirectories = ["src", "vendor/rapier3d/src", "vendor/parry3d/src", "vendor/libm/src"];
 const targetMetadata = ["wasm32-unknown-unknown", "32", "little"];
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 // Mirrors build.rs: upstream production modules whose names look like tests.

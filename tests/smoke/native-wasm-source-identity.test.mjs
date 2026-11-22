@@ -15,6 +15,8 @@ const fixed = [
   "build.rs", "Cargo.toml", "Cargo.lock",
   "vendor/rapier3d/Cargo.toml", "vendor/rapier3d/FERRUM-PATCHES.md", "vendor/rapier3d/UPSTREAM.json",
   "vendor/parry3d/Cargo.toml", "vendor/parry3d/FERRUM-PATCHES.md", "vendor/parry3d/UPSTREAM.json",
+  "vendor/libm/Cargo.toml", "vendor/libm/build.rs", "vendor/libm/configure.rs",
+  "vendor/libm/FERRUM-PATCHES.md", "vendor/libm/UPSTREAM.json",
 ];
 async function fixture(t, reverse = false) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ferrum-native-identity-"));
@@ -23,6 +25,7 @@ async function fixture(t, reverse = false) {
     ...fixed.map(name => [name, name + "\n"]),
     ["src/engine.rs", "engine\n"], ["src/engine/audio.rs", "audio\n"],
     ["vendor/rapier3d/src/lib.rs", "rapier\n"], ["vendor/parry3d/src/lib.rs", "parry\n"],
+    ["vendor/libm/src/lib.rs", "libm\n"],
   ];
   for (const [name, text] of reverse ? files.reverse() : files) {
     const file = path.join(root, "crates/ferrum-core", name);
@@ -34,12 +37,12 @@ async function fixture(t, reverse = false) {
 test("source fingerprint follows the genuine Rust collector's path order and ignores traversal order", async t => {
   const first = await computeNativeWasmSourceIdentity(await fixture(t));
   const second = await computeNativeWasmSourceIdentity(await fixture(t, true));
-  equal(first.sourceFiles, 13);
+  equal(first.sourceFiles, 19);
   equal(first.fingerprint, second.fingerprint);
   equal(first.sourceInputsSha256, second.sourceInputsSha256);
   // This constant was emitted by compiling/running the actual build.rs on this
   // synthetic tree. Keys use `/` on every host, so Windows builds match.
-  equal(first.fingerprint, "d7fe071a4dfca5d8");
+  equal(first.fingerprint, "1aab7af9ff8b2b43");
 });
 
 test("cfg(test)-only sources are outside the fingerprint, production look-alikes are inside", async t => {
@@ -70,7 +73,7 @@ test("every excluded Core and vendor source is a cfg(test) module", async () => 
       else if (entry.name.endsWith(".rs")) files.push(name);
     }
   }
-  for (const root of ["src", "vendor/rapier3d/src", "vendor/parry3d/src"]) await walk(root);
+  for (const root of ["src", "vendor/rapier3d/src", "vendor/parry3d/src", "vendor/libm/src"]) await walk(root);
   const sources = new Map(await Promise.all(files.map(async name => [name, await readFile(path.join(core, name), "utf8")])));
   const testName = part => { const stem = part.replace(/\.rs$/, ""); return stem === "tests" || stem.endsWith("_tests"); };
   const cfgTest = attributes => /#\[cfg\(\s*(test\b|all\(\s*test\b)/.test(attributes);
@@ -111,7 +114,7 @@ test("Core, both vendors, lock and patch inputs plus added/removed Rust files in
   const root = await fixture(t), core = path.join(root, "crates/ferrum-core");
   const original = await computeNativeWasmSourceIdentity(root);
   for (const name of ["src/engine.rs", "vendor/rapier3d/src/lib.rs", "vendor/parry3d/src/lib.rs",
-    "Cargo.lock", "vendor/parry3d/FERRUM-PATCHES.md"]) {
+    "vendor/libm/src/lib.rs", "Cargo.lock", "vendor/parry3d/FERRUM-PATCHES.md", "vendor/libm/FERRUM-PATCHES.md"]) {
     const file = path.join(core, name), before = await readFile(file);
     await writeFile(file, Buffer.concat([before, Buffer.from("changed\n")]));
     const changed = await computeNativeWasmSourceIdentity(root);

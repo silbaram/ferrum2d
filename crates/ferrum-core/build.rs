@@ -52,6 +52,7 @@ fn main() -> io::Result<()> {
     collect(&root.join("src"), &mut files)?;
     collect(&root.join("vendor/rapier3d/src"), &mut files)?;
     collect(&root.join("vendor/parry3d/src"), &mut files)?;
+    collect(&root.join("vendor/libm/src"), &mut files)?;
     files.retain(|file| {
         !test_only(&portable(
             file.strip_prefix(&root).expect("collected inside crate"),
@@ -67,6 +68,11 @@ fn main() -> io::Result<()> {
         "vendor/parry3d/Cargo.toml",
         "vendor/parry3d/FERRUM-PATCHES.md",
         "vendor/parry3d/UPSTREAM.json",
+        "vendor/libm/Cargo.toml",
+        "vendor/libm/build.rs",
+        "vendor/libm/configure.rs",
+        "vendor/libm/FERRUM-PATCHES.md",
+        "vendor/libm/UPSTREAM.json",
     ] {
         files.push(root.join(name));
     }
@@ -86,6 +92,7 @@ fn main() -> io::Result<()> {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=vendor/rapier3d/src");
     println!("cargo:rerun-if-changed=vendor/parry3d/src");
+    println!("cargo:rerun-if-changed=vendor/libm/src");
     for variable in [
         "TARGET",
         "CARGO_CFG_TARGET_POINTER_WIDTH",
