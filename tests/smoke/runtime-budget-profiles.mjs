@@ -148,14 +148,15 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
   }),
   // 64-agent dense Native crowd. Max bounds tolerate a cold first frame; the
   // warm p95 bounds are a regression guard at ~1.5x the 2026-11-22 local
-  // Chromium measurement after the wasm32 hardware square root (53.2-54.0 ms
-  // per 5-step frame, 10.6-10.8 ms per step). That still misses real time;
-  // these bounds do not certify 60 fps.
+  // Chromium measurement after the wasm32 hardware square root, exact pair
+  // pruning and analytic crowd avoidance (41.8-43.9 ms per 5-step frame,
+  // 8.4-9.0 ms per step). That still misses real time; these bounds do not
+  // certify 60 fps.
   "native-crowd": freezeBudget({
     maxFrameTimeMs: 250,
     maxRustUpdateTimeMs: 125,
-    maxRustUpdateTimeMsP95: 80,
-    maxRustUpdateMsPerNativeStepP95: 16,
+    maxRustUpdateTimeMsP95: 65,
+    maxRustUpdateMsPerNativeStepP95: 13,
     maxRenderTimeMs: 125,
     maxDrawCalls: 32,
     maxRenderCommandCount: 256,

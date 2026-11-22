@@ -168,3 +168,51 @@ pub(super) fn segment_distance(p1: [f64; 3], q1: [f64; 3], p2: [f64; 3], q2: [f6
     let delta = sub(at(p1, d1, s), at(p2, d2, t));
     dot(delta, delta).sqrt()
 }
+
+/// Smallest distance between segment `b0b1` and segment `a0a1` swept along
+/// `sweep` (a parallelogram). `|a0 + s(a1-a0) + τ sweep - b0 - t(b1-b0)|²`
+/// is convex over the unit cube: its minimum is an interior root (distance 0)
+/// or lies on one of six faces, each a segment-segment distance.
+pub(super) fn swept_segment_distance(
+    a0: [f64; 3],
+    a1: [f64; 3],
+    sweep: [f64; 3],
+    b0: [f64; 3],
+    b1: [f64; 3],
+) -> f64 {
+    let add = |a: [f64; 3], b: [f64; 3]| [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let (da, db) = (sub(a1, a0), sub(b1, b0));
+    let neg_db = sub([0.0; 3], db);
+    // Interior: s da + τ sweep - t db = b0 - a0 by Cramer's rule.
+    let det = dot(da, cross(sweep, neg_db));
+    let scale = dot(da, da).sqrt() * dot(sweep, sweep).sqrt() * dot(db, db).sqrt();
+    if det.abs() > scale * 1.0e-9 {
+        let c = sub(b0, a0);
+        let s = dot(c, cross(sweep, neg_db)) / det;
+        let tau = dot(da, cross(c, neg_db)) / det;
+        let t = dot(da, cross(sweep, c)) / det;
+        if [s, tau, t].iter().all(|v| (0.0..=1.0).contains(v)) {
+            return 0.0;
+        }
+    }
+    let swept_end = add(a0, sweep);
+    [
+        segment_distance(a0, swept_end, b0, b1),
+        segment_distance(a1, add(a1, sweep), b0, b1),
+        segment_distance(a0, a1, b0, b1),
+        segment_distance(swept_end, add(a1, sweep), b0, b1),
+        segment_distance(a0, a1, b0, sub(b0, sweep)),
+        segment_distance(a0, a1, b1, sub(b1, sweep)),
+    ]
+    .into_iter()
+    .fold(f64::INFINITY, f64::min)
+}
