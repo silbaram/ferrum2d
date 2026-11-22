@@ -13,9 +13,9 @@
   --muted: var(--example-muted);
   --accent: var(--example-accent);
   --accent-strong: var(--example-accent);
-  --blue: #78a9ff;
-  --amber: #f0b75f;
-  --danger: #ff9b76;
+  --blue: var(--example-render);
+  --amber: var(--example-accent);
+  --danger: var(--example-danger);
   --shadow: none;
 }
 
@@ -50,20 +50,20 @@ button {
 button:hover,
 select:hover {
   border-color: var(--border-strong);
-  background: #202b3a;
+  background: var(--example-pressed);
 }
 
 button:disabled {
-  color: #748379;
+  color: var(--example-subtle);
   cursor: default;
-  border-color: #2a332f;
-  background: #141916;
+  border-color: var(--example-border);
+  background: var(--example-panel);
 }
 
 button.is-active {
   border-color: rgba(245, 167, 66, 0.78);
-  background: #3b2b18;
-  color: #ffffff;
+  background: var(--example-selection);
+  color: var(--example-text);
 }
 
 button:focus-visible,
@@ -110,7 +110,7 @@ ol {
 
 .title-row h1 {
   margin-bottom: 0;
-  color: #ffffff;
+  color: var(--example-text);
   font-size: 22px;
   font-weight: 680;
   line-height: 1.2;
@@ -122,10 +122,10 @@ ol {
   min-width: 72px;
   height: 26px;
   padding: 0 10px;
-  border: 1px solid rgba(114, 220, 157, 0.5);
+  border: 1px solid rgba(110, 231, 183, 0.35);
   border-radius: var(--example-radius);
-  color: #dcffe9;
-  background: rgba(40, 89, 57, 0.58);
+  color: var(--example-runtime);
+  background: rgba(110, 231, 183, 0.15);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -133,21 +133,21 @@ ol {
 
 .status-badge[data-status="loading"],
 .status-badge[data-status="step"] {
-  border-color: rgba(120, 169, 255, 0.58);
-  color: #e4edff;
-  background: rgba(45, 72, 122, 0.58);
+  border-color: rgba(122, 162, 255, 0.35);
+  color: var(--example-render);
+  background: rgba(122, 162, 255, 0.15);
 }
 
 .status-badge[data-status="paused"] {
-  border-color: rgba(240, 183, 95, 0.62);
-  color: #fff2d8;
-  background: rgba(107, 76, 30, 0.58);
+  border-color: rgba(245, 167, 66, 0.35);
+  color: var(--example-accent);
+  background: var(--example-selection);
 }
 
 .status-badge[data-status="error"] {
-  border-color: rgba(255, 155, 118, 0.66);
-  color: #ffe5dc;
-  background: rgba(111, 47, 31, 0.7);
+  border-color: rgba(255, 107, 107, 0.35);
+  color: var(--example-danger);
+  background: rgba(255, 107, 107, 0.15);
 }
 
 .scenario-summary {
@@ -223,9 +223,9 @@ ol {
   max-width: 48%;
   overflow: hidden;
   padding: 5px 8px;
-  border: 1px solid rgba(196, 210, 202, 0.2);
+  border: 1px solid var(--example-border);
   border-radius: var(--example-radius);
-  color: #eef7f0;
+  color: var(--example-text);
   background: rgba(8, 12, 10, 0.74);
   font-size: 12px;
   font-weight: 700;
@@ -238,7 +238,7 @@ ol {
 }
 
 .debug-controls {
-  color: #c4d2ca;
+  color: var(--example-muted);
   font-size: 13px;
 }
 
@@ -303,7 +303,7 @@ ol {
 
 .panel-block h2 {
   margin-bottom: 8px;
-  color: #ffffff;
+  color: var(--example-text);
   font-size: 13px;
   font-weight: 720;
   text-transform: uppercase;
@@ -341,7 +341,7 @@ ol {
 .metric-item dd {
   min-width: 0;
   margin: 0;
-  color: #ffffff;
+  color: var(--example-text);
   overflow-wrap: anywhere;
   font-size: 18px;
   font-weight: 720;
@@ -352,7 +352,7 @@ ol {
 .selected-body .metric-item dd,
 .error-box .metric-item dd,
 .error-shell .metric-item dd {
-  color: #eef7f0;
+  color: var(--example-text);
   font-size: 14px;
   font-weight: 650;
   text-align: right;
@@ -369,9 +369,9 @@ ol {
   align-items: center;
   min-height: 30px;
   padding: 0 10px;
-  border: 1px solid rgba(120, 169, 255, 0.36);
+  border: 1px solid rgba(122, 162, 255, 0.35);
   border-radius: var(--example-radius);
-  color: #e8efff;
+  color: var(--example-text);
   background: rgba(55, 79, 128, 0.38);
   font-size: 13px;
   font-weight: 650;
@@ -413,7 +413,7 @@ ol {
 
 .material-control-header strong {
   min-width: 0;
-  color: #ffffff;
+  color: var(--example-text);
   overflow-wrap: anywhere;
   font-size: 13px;
 }
@@ -430,7 +430,7 @@ ol {
   gap: 8px;
   align-items: center;
   min-width: 0;
-  color: #dbe7df;
+  color: var(--example-muted);
   font-size: 12px;
 }
 
@@ -444,9 +444,9 @@ ol {
   width: 58px;
   min-width: 0;
   padding: 5px 6px;
-  border: 1px solid rgba(196, 210, 202, 0.2);
+  border: 1px solid var(--example-border);
   border-radius: var(--example-radius);
-  color: #ffffff;
+  color: var(--example-text);
   background: rgba(8, 12, 10, 0.62);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -463,7 +463,7 @@ ol {
   gap: 6px;
   margin-bottom: 0;
   padding-left: 18px;
-  color: #dbe7df;
+  color: var(--example-muted);
   font-size: 13px;
   line-height: 1.35;
 }
@@ -475,7 +475,7 @@ ol {
 
 .warning-list p {
   margin: 0;
-  color: #ffe3d8;
+  color: var(--example-danger);
   font-size: 13px;
   line-height: 1.4;
 }
@@ -488,15 +488,15 @@ ol {
   max-width: 1320px;
   margin: 12px auto 0;
   padding: 12px;
-  border: 1px solid rgba(255, 155, 118, 0.58);
+  border: 1px solid rgba(255, 107, 107, 0.35);
   border-radius: 4px;
-  background: #2a1b16;
+  background: rgba(255, 107, 107, 0.15);
 }
 
 .error-box strong {
   display: block;
   margin-bottom: 8px;
-  color: #ffb370;
+  color: var(--example-danger);
 }
 
 .debug-root {
@@ -570,7 +570,7 @@ ol {
   .canvas-hud {
     position: static;
     padding: 8px;
-    background: #101614;
+    background: var(--example-panel);
   }
 
   .canvas-hud-label {
@@ -591,7 +591,7 @@ ol {
   border-radius: var(--example-radius); background: var(--example-bg); }
 .scenario-link-title { line-height: 1.35; }
 .scenario-link-caption { font-size: 10px; color: var(--example-subtle); }
-.scenario-link-caption[data-issue] { color: #ff6b6b; }
+.scenario-link-caption[data-issue] { color: var(--example-danger); }
 @media (min-width: 1280px) {
   .app-shell { width: min(1552px, 100%); }
   .app-shell > :is(.example-header, .showcase-header, .stage, .error-box) { max-width: 1520px; }

@@ -49,6 +49,12 @@ export function createExampleHeader(id: string): HTMLElement {
     }
     nav.append(trail);
   }
+  // Right side of the bar: docs (suite only), this example's source on GitHub, and the switcher.
+  const links = document.createElement("div"); links.className = "example-links";
+  const source = document.createElement("a");
+  source.href = `https://github.com/silbaram/ferrum2d/tree/main/${entry.source.replace(/\/dist$/, "")}`;
+  source.textContent = "소스"; source.target = "_blank"; source.rel = "noreferrer"; source.dataset.exampleSource = "true";
+  source.setAttribute("aria-label", `${entry.title} 소스 (GitHub)`);
   if (site) {
     const docs = document.createElement("a"); docs.href = new URL("docs/", site).href; docs.textContent = "문서"; docs.dataset.exampleDocs = "true";
     const label = document.createElement("label"), select = document.createElement("select");
@@ -63,8 +69,9 @@ export function createExampleHeader(id: string): HTMLElement {
     }
     if (entry.kind === "reference") select.prepend(new Option(entry.title, location.href, true, true));
     select.addEventListener("change", () => location.assign(select.value));
-    label.append(select); nav.append(docs, label);
-  }
+    label.append(select); links.append(docs, source, label);
+  } else links.append(source);
+  nav.append(links);
   const purpose = document.createElement("p"); purpose.className = "example-purpose"; purpose.textContent = entry.summary;
   const details = document.createElement("details"); details.className = "example-learning";
   const summary = document.createElement("summary"); summary.textContent = "예제 안내";

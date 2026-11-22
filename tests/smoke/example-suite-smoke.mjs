@@ -221,7 +221,9 @@ try {
   }
   for (const mount of ['/standalone/', '/breakout/']) {
     await page.goto(origin + mount); await ready(page);
-    assert.equal(await page.locator('.example-header a, .example-header select').count(),0,'standalone must not generate broken cross-app links, including matching folder names');
+    assert.equal(await page.locator('.example-header a:not([data-example-source]), .example-header select').count(),0,'standalone must not generate broken cross-app links, including matching folder names');
+    // The source link is absolute (GitHub), so it stays valid without the suite.
+    assert.match(await page.locator('.example-header [data-example-source]').getAttribute('href'), /^https:\/\/github\.com\/silbaram\/ferrum2d\/tree\/main\/examples\/[a-z-]+$/);
     await page.locator('.example-learning summary').click(); assert.match(await page.locator('.example-standalone').textContent(), /pnpm preview:examples/);
   }
   for (const entry of catalog.filter(item => item.id === 'engine-playground' || item.id === 'starter-profiles')) {
