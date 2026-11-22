@@ -517,6 +517,7 @@ declare module "../pkg/ferrum_core.js" {
     configure_unified_physics_clock(enabled:boolean,step_seconds:number,max_frame_seconds:number,max_steps_per_update:number): boolean;
     configure_auto_rigid_body_step(enabled:boolean,gravity_x:number,gravity_y:number,velocity_iterations:number,position_iterations:number,position_correction_percent:number,position_correction_slop:number,restitution_velocity_threshold:number,contact_baumgarte_bias_factor:number,max_contact_baumgarte_bias_velocity:number,contact_split_impulse:boolean,continuous:boolean): void;
     set_auto_rigid_body_step_enabled(enabled: boolean): void;
+    auto_rigid_body_step_active?(): boolean;
     configure_data_scene_collision_tilemap(metadata: Uint32Array, values: Float32Array, cells: Uint32Array): boolean;
     data_scene_collision_tilemap_version(): number;
     configure_data_scene_collision_tilemap_v2(metadata: Uint32Array, values: Float32Array, cells: Uint32Array, visualMetadata: Uint32Array, visualValues: Float32Array): boolean;

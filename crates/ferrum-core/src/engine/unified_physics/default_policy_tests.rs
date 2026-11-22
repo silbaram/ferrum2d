@@ -549,3 +549,24 @@ fn default_policy_shooter_authored_world_settings_keep_native_solver_manual_owne
 fn initial_solver() -> crate::physics3d::SolverSettings {
     super::default_policy::initial_world_config().solver
 }
+
+/// The native default enables automatic stepping. A manual step in the same
+/// frame is a second solver step; `auto_rigid_body_step_active` reports it.
+#[test]
+fn default_auto_step_reports_that_a_manual_step_would_double_the_frame() {
+    let mut e = Engine::new();
+    e.use_data_scene();
+    assert!(e.auto_rigid_body_step_active());
+    let a = actor(&mut e);
+    e.update(0.01);
+    let x1 = e.world.transform(a).unwrap().x;
+    assert!(x1 > 10.01);
+    e.step_rigid_bodies(0.01);
+    let x2 = e.world.transform(a).unwrap().x;
+    near(x1 - 10., x2 - x1);
+    assert!(e.pause_data_scene());
+    assert!(!e.auto_rigid_body_step_active());
+    e.set_auto_rigid_body_step_enabled(false);
+    assert!(e.resume_data_scene());
+    assert!(!e.auto_rigid_body_step_active());
+}

@@ -239,11 +239,13 @@ impl UnifiedPhysicsRuntime {
                 for j in 0..count {
                     let source = source_at(world, i, j).ok_or(PhysicsError::InvalidCollider)?;
                     if source.enabled() {
+                        // Cached fixtures outlive one variable interval: derive the
+                        // per-step correction gains from the world's nominal clock.
                         let mut collider = fixture(
                             source,
                             rigid.material,
                             contact_config,
-                            self.physics.config().step_seconds,
+                            self.physics.nominal_step_seconds(),
                         )?;
                         if self.shooter_gameplay
                             && world.collider_layer_at(i)

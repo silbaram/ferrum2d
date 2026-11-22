@@ -994,3 +994,33 @@ fn variable_clock_budget_queries_are_readonly_and_survive_identical_spec_and_che
     assert_eq!(e.unified_physics_clock_max_frame_seconds(), 0.08);
     assert_eq!(e.unified_physics_clock_max_steps_per_update(), 3);
 }
+
+#[test]
+fn variable_clock_planar_fixture_correction_uses_nominal_step_not_creation_frame() {
+    use crate::components::RigidBody;
+    let mut e = engine();
+    let spawn = |e: &mut Engine, x: f32| {
+        let a = e.world.spawn_entity();
+        e.world.set_transform(a, Transform2D { x, y: 0. });
+        e.world
+            .set_circle_collider(a, CircleCollider::new(0.5, false, CollisionLayer::Enemy));
+        e.world
+            .set_rigid_body(a, RigidBody::dynamic_circle(1., 0.5));
+        a
+    };
+    let correction = |e: &Engine, a: Entity| {
+        let runtime = e.unified_physics.as_ref().unwrap();
+        let binding = &runtime.bindings[&(a.id, a.generation)];
+        let fixture = binding.legacy.as_ref().unwrap().file_fixtures().1[0];
+        runtime.physics.collider_contact_correction(fixture)
+    };
+    let slow = spawn(&mut e, 0.);
+    e.update(0.05);
+    let fast = spawn(&mut e, 10.);
+    e.update(0.016);
+    assert_eq!(e.unified_physics_error(), None);
+    let (slow, fast) = (correction(&e, slow), correction(&e, fast));
+    assert!(slow.is_some());
+    assert_eq!(slow, fast);
+    nominal(&e);
+}

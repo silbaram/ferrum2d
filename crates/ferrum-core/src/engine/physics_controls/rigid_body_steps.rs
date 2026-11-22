@@ -16,6 +16,13 @@ impl Engine {
         }
     }
 
+    /// True when the next `update` advances rigid bodies by itself: automatic
+    /// stepping is enabled and the active scene is not frozen. A manual
+    /// `step_rigid_bodies` in the same frame then runs a second solver step.
+    pub fn auto_rigid_body_step_active(&self) -> bool {
+        self.auto_rigid_body_step_enabled && !self.active_scene_game_state().freezes_simulation()
+    }
+
     pub fn step_rigid_bodies(&mut self, delta_seconds: f32) {
         if self.step_unified_manually(delta_seconds, None) {
             return;

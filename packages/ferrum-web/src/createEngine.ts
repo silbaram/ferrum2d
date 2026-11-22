@@ -707,11 +707,23 @@ async function buildEngineFacade(
     rustEngine.set_physics_debug_lines_enabled(flags !== 0);
   };
 
+  let warnedManualStepDuringAutoStep = false;
   const stepRigidBodies = (
     deltaSeconds: number,
     options?: PhysicsRigidBodyStepOptions,
   ): PhysicsRigidBodyStepStats => {
     requireAlive();
+    // The native default steps automatically on every update. A manual step
+    // while the loop runs is a second solver step in that frame.
+    if (!warnedManualStepDuringAutoStep && running && !paused
+      && rustEngine.auto_rigid_body_step_active?.() === true) {
+      warnedManualStepDuringAutoStep = true;
+      console.warn(
+        "Ferrum2D: stepRigidBodies() was called while automatic rigid body stepping is active; "
+        + "each frame now runs two solver steps. Call configureAutoRigidBodyStep(false) "
+        + "or pause the scene for manual stepping.",
+      );
+    }
     return stepRigidBodiesWithStats(rustEngine, deltaSeconds, options);
   };
 
