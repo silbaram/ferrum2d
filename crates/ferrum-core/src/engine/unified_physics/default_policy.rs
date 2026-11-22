@@ -45,28 +45,18 @@ impl Engine {
         if self.default_unified_physics.is_none() && self.unified_physics.is_none() {
             return true;
         }
-        let config = initial_world_config();
-        let mut initial_step = crate::physics::RigidBodyStepConfig::default();
-        execution::copy_native_settings(&mut initial_step, config.gravity, config.solver);
         let initial = self.is_built_in_shooter()
             && self.active_scene_game_state() == crate::game_state::GameState::Title
             && self.elapsed_seconds == 0.
             && self.checkpoint_revision == 0
             && self.world.alive_count() == 1
-            && !self.fixed_timestep_enabled
-            && !self.default_unified_physics_fixed
-            && self.auto_rigid_body_step_enabled
-            && self.auto_rigid_body_step_config == initial_step
-            && self.default_unified_physics.as_ref() == Some(&config)
-            && self.fixed_timestep.config() == crate::physics::FixedTimestepConfig::default()
+            && self.engine_owned_native_settings()
             && self.unified_physics.as_ref().is_some_and(|runtime| {
                 runtime.shooter_gameplay
                     && runtime.bindings.is_empty()
                     && runtime.physics.body_count() == 0
                     && runtime.physics.collider_count() == 0
                     && runtime.physics.joint_count() == 0
-                    && !runtime.physics.has_active_interval()
-                    && runtime.physics.config() == &config
                     && runtime.last_error.get().is_none()
             });
         if !initial {
@@ -76,6 +66,47 @@ impl Engine {
         self.discard_unified_physics();
         self.default_unified_physics_fixed = false;
         true
+    }
+
+    /// Data Scene activation for a physics-omitted HD-2D document. Its
+    /// heightSpan/AABB actor and legacy combat navigation cannot run on the
+    /// planar default world. Accepted on a legacy Engine, or for an actual switch
+    /// from a built-in scene under the untouched engine-owned defaults. The new
+    /// scene then never receives a native world. The switch discards the
+    /// built-in world and restores the pre-native automatic step settings
+    /// through the existing scene-local native exit. A Data Scene's own world is
+    /// never dropped. The result equals the explicit legacy selection, including
+    /// later scenes. Rejection changes nothing.
+    pub(in crate::engine) fn activate_legacy_data_scene(&mut self) -> bool {
+        if self.default_unified_physics.is_some() || self.unified_physics.is_some() {
+            if self.scene_mode == SceneMode::Data
+                || self.physics_restore_transaction.is_some()
+                || !self.engine_owned_native_settings()
+            {
+                return false;
+            }
+            self.default_unified_physics = None;
+            self.default_unified_physics_fixed = false;
+        }
+        self.use_data_scene();
+        true
+    }
+
+    /// No user world, clock or automatic-step setting replaced the engine-owned
+    /// defaults, and no native interval is open.
+    fn engine_owned_native_settings(&self) -> bool {
+        let config = initial_world_config();
+        let mut initial_step = crate::physics::RigidBodyStepConfig::default();
+        execution::copy_native_settings(&mut initial_step, config.gravity, config.solver);
+        !self.fixed_timestep_enabled
+            && !self.default_unified_physics_fixed
+            && self.auto_rigid_body_step_enabled
+            && self.auto_rigid_body_step_config == initial_step
+            && self.default_unified_physics.as_ref() == Some(&config)
+            && self.fixed_timestep.config() == crate::physics::FixedTimestepConfig::default()
+            && self.unified_physics.as_ref().is_some_and(|runtime| {
+                !runtime.physics.has_active_interval() && runtime.physics.config() == &config
+            })
     }
 
     /// Selects planar native defaults for this Engine and subsequent scene changes.

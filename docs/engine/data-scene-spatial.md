@@ -55,6 +55,15 @@ camera-only patch도 기존 Undo/Redo·export·host 저장·다시 열기 계약
 문서에 `physics.space: "spatial"`을 설정하면 `spatial.actor`는
 `body.kind: "kinematic-position"`, capsule collider, `body.character`가 있는 billboard를 참조한다.
 `up`은 `[0,1,0]`이어야 한다. 앞의 AABB/heightSpan 예제는 `physics`를 생략한 기존 경로다.
+planar native 기본 world는 이 actor를 실행할 수 없다. 따라서 `physics`를 생략하고 `spatial.actor` 또는
+`gameplay.combatNavigation`을 쓰는 문서를 무옵션 `createEngine()`에 적용하면, SDK는 Data Scene을
+legacy 경로로 활성화(`use_legacy_data_scene`)한다. Rust는 legacy Engine이거나, built-in 씬에서 Data Scene으로
+실제 전환하면서 기본 world·clock·자동 실행 설정이 그대로인 경우에만 받아들인다. 이때 새 Data Scene에는
+native world를 설치하지 않으며, 이전 built-in world는 일반 씬 전환과 같이 폐기한다. 결과는
+`physicsBackend: "legacy"`로 만든 Engine과 같아 이후 씬도 legacy 기본값을 따른다.
+명시적 `physicsBackend: "unified"`, 장면 전용 native world, 이미 활성인 Data Scene의 world는 바꾸지 않는다.
+이 경우 SDK는 기존처럼 활성화하며 문서는 거절된다. 예를 들어 같은 Engine에서 native 2D Data Scene 다음에
+이 문서를 적용하면 거절된다.
 [캐릭터·관절 샘플](samples/data-scene-constraints.scene-authoring.json)은 native 캡슐을 사용한다.
 
 WASD와 목적지 이동 의도는 Rust에서 native fixed tick 앞에 전달한다. 실제 이동·높이·접지는

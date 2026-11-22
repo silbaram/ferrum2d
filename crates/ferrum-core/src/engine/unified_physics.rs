@@ -41,6 +41,8 @@ mod execution;
 pub(in crate::engine) mod file_admission;
 mod gameplay;
 #[cfg(test)]
+mod legacy_spatial_actor_tests;
+#[cfg(test)]
 mod model_pose_tests;
 mod model_poses;
 pub(super) mod variable_clock;

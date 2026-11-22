@@ -907,6 +907,7 @@ Native 생성의 `none`은 Wasm Engine 생성 전에 거절한다. `fixedTimeste
 무옵션 생성은 native variable clock에 맞게 Physics Spec metadata의 fixedTimestep도 false로 표시한다. `physicsMode: "none"`은 `physicsBackend: "legacy"`와 함께 선택한다. 명시적 fixed override의 step은 실제 clock과 함께 반영한다.
 
 다른 built-in 또는 Data Scene으로 전환하면 저장한 기본 설정으로 새 native world를 설치한다. Physics를 생략한 Data Scene도 이 정책을 따른다.
+예외로 physics를 생략한 HD-2D heightSpan/AABB actor 문서는 [통합 캐릭터 이동](../data-scene-spatial.md#통합-3d-물리의-캐릭터-이동)의 장면 단위 legacy 호환 선택을 따른다.
 같은 씬의 선택·reset은 현재 world를 유지하며 auto=false 상태와 clock의 frame/step 상한도 보존한다.
 기존 `configureUnifiedPhysics`만 사용하면 씬별 선택으로 유지된다.
 이 API는 현재 scene을 고정 시간·자동 실행으로 구성하지만 저장된 다음 scene의 clock mode는 바꾸지 않는다.

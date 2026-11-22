@@ -97,6 +97,20 @@ export function configureInitialPhysics(
   applyPhysicsRuntimeOptions(native, spec, options, options.physicsMode !== undefined || usesDefaultNativePhysics(options));
 }
 
+interface LegacyDataSceneActivation { use_legacy_data_scene(): boolean }
+/** Physics-omitted HD-2D Data Scenes keep the documented heightSpan/AABB actor
+ * path, which the planar default world cannot run. Only the implicit creation
+ * policy may leave native. Rust accepts it for a legacy Engine or an actual
+ * switch from a built-in scene under untouched engine-owned defaults; any other
+ * case activates the Data Scene normally. Returns whether the legacy path ran. */
+export function activateLegacySpatialDataScene(native: Engine, options: CreateEngineOptions): boolean {
+  const activation: Engine & Partial<LegacyDataSceneActivation> = native;
+  if (options.physicsBackend !== "unified" && typeof activation.use_legacy_data_scene === "function"
+    && activation.use_legacy_data_scene()) return true;
+  native.use_data_scene();
+  return false;
+}
+
 /** Validate an authored override before setGameSpec changes scene or entities. */
 export function validateDefaultPhysicsOverride(
   spec: ResolvedPhysicsSpec, defaults: ResolvedPhysicsSpec,
