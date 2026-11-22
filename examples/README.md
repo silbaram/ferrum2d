@@ -50,6 +50,14 @@ Breakout·Platformer는 `P/Esc`, 터치 이동·점프와 색상 안내를 제�
 
 각 실험의 조작과 API는 [기능·예제 지도](../docs/engine/showcase-hub.md)를 따른다.
 
+## 코드 레시피
+
+실행 앱이 아니라 게임에 복사해 쓰는 공개 API 코드 예시다. 엔진 문서가 링크하고 브라우저 검사가 같은 코드를 실행한다.
+
+| 경로 | 내용 |
+| --- | --- |
+| [data-scene-native](data-scene-native/README.md) | Data Scene 기본 구성·화면 표현·HD-2D 공간 지형·이동 발판·공간 오디오 레시피와 검증용 glTF 모델 |
+
 ## 참고·자동 검증용으로 유지하는 경로
 
 아래는 기본 예제 목록에 표시하지 않는다. 기존 URL과 검증은 유지한다.
