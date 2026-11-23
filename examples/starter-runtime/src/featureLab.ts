@@ -11,7 +11,7 @@ import { createFeatureExtra, extraControls, extraHelp, shooterFeatures, type Fea
 import { createGameplayFeature, gameplayControls, gameplayHelp } from "./featureGameplay";
 import { createContentFeature, contentControls, contentHelp } from "./featureContent";
 import { createFeatureNavigation, mountFeatureNavigation } from "./featureNavigation";
-import { createFeatureCode, featureDocsUrl } from "./featureCode";
+import { createFeatureCode } from "./featureCode";
 import { createProjectileFeature, projectileControls } from "./featureProjectiles";
 import { createSystemFeature, systemControls } from "./featureSystems";
 import { createTerrainFeature, terrainControls } from "./featureTerrain";
@@ -64,7 +64,7 @@ export async function startFeatureLab(): Promise<void> {
   const shell = createRuntimeDemoShell({ title: "엔진 기능 실험실", exampleId: "starter-runtime", controls: false, metrics: [] });
   const { canvas, stage } = shell;
   const root = stage.closest<HTMLElement>(".demo-shell")!;
-  root.classList.add("feature-lab");
+  root.classList.add("feature-lab", "example-detail");
   document.title = `${feature.title} · Ferrum2D`;
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", `${feature.title} 실험 화면`);
@@ -96,7 +96,7 @@ export async function startFeatureLab(): Promise<void> {
   stats.textContent = "오브젝트 — · 그리기 명령 — · 드로우 콜 —";
   stage.append(stats);
   mountFeatureNavigation(root, navigation);
-  const code = createFeatureCode({ id, api: feature.api, sources: featureSources(id), docsUrl: featureDocsUrl() });
+  const code = createFeatureCode({ id, api: feature.api, sources: featureSources(id) });
   navigation.pager.before(code.element);
   const control = <T extends HTMLElement>(key: string) => root.querySelector<T>(`[data-control="${key}"]`)!;
   const choice = (key: string) => control<HTMLSelectElement>(key).value;

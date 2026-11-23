@@ -27,10 +27,8 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
   const root = document.createElement('main');
   root.className = 'shooter-shell';
   root.innerHTML = `
-    <header class="shooter-header">
-      <div><p class="shooter-eyebrow">FERRUM2D / GAME SPEC SHOWCASE</p><h1>NEON <span>OUTPOST</span></h1><p class="shooter-subtitle">전초기지 방어 · Top-down Shooter</p></div>
-    </header>
-    <section class="shooter-layout">
+    <section class="demo-toolbar"><h1>Neon Outpost</h1><p class="example-subtitle">전초기지 방어 · Game Spec 쇼케이스</p></section>
+    <section class="shooter-layout demo-stage-layout">
       <div class="shooter-column">
         <div class="shooter-scoreboard" aria-label="게임 현황">
           <div><span class="shooter-status" role="status" aria-live="polite">준비 중</span><strong data-readout="score">0</strong><small>획득 점수</small></div>
@@ -58,7 +56,6 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
           <button type="button" data-action="restart" disabled>처음부터 다시 시작</button>
           <p class="shooter-small">화면 설정은 게임 속도·충돌·점수에 영향을 주지 않습니다. 소리는 첫 입력 후 활성화됩니다.</p>
         </section>
-        <details class="shooter-card shooter-feature-guide"><summary>이 예제의 엔진 기능</summary><div class="shooter-guide-mount"></div><a href="./game.json" target="_blank" rel="noopener">Game Spec JSON 보기 ↗</a></details>
       </aside>
     </section>`;
   root.prepend(createExampleHeader("topdown-shooter"));
@@ -125,7 +122,9 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
   }, { signal: signal.signal });
   document.addEventListener('visibilitychange', () => { if (document.hidden && state === 1 && !paused) togglePause(); }, { signal: signal.signal });
   return {
-    root, stage, guideMount: get<HTMLDivElement>('.shooter-guide-mount'), hint,
+    root, stage, hint,
+    heading: get<HTMLHeadingElement>('.demo-toolbar h1'), layout: get<HTMLElement>('.shooter-layout'),
+    column: get<HTMLDivElement>('.shooter-column'), sidebar: get<HTMLElement>('.shooter-sidebar'),
     setCanvas(next: HTMLCanvasElement) { activeCanvas = next; },
     setPaused(value: boolean) { paused = value; updatePhase(); },
     setBusy(value: boolean) { busy = value; start.disabled = busy || !actions; restart.disabled = busy || !actions; updatePhase(); },

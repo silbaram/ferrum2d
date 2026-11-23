@@ -1,14 +1,14 @@
 .demo-shell { padding: 16px; }
-.demo-toolbar { max-width: 1240px; justify-content: flex-start; flex-wrap: wrap; gap: 8px 24px; }
-.demo-toolbar h1 { color: var(--example-accent); font-size: 20px; letter-spacing: -.04em; }
-.pixel-subtitle { margin: 0; color: var(--example-muted); font-size: 13px; }
-/* 960 + 16 + 264 = 1240: retain a 3x 320px viewport at desktop width. */
-.demo-stage-layout { max-width: 1240px; grid-template-columns: minmax(0, 960px) 264px; gap: 16px; align-items: start; }
+.demo-toolbar { justify-content: flex-start; flex-wrap: wrap; gap: 8px 24px; }
+/* Keep whole-number scaling of the 320 × 192 garden: 3x (960px) once the list, stage and panel fit,
+   2x (640px) beside the list below that. The frame itself comes from shared/exampleDetail.css. */
+@media (min-width: 861px) and (max-width: 1279px) { .example-detail.pixel-garden { --detail-max: 1240px; --detail-columns: minmax(0, 960px) 264px; } }
+@media (min-width: 1280px) { .example-detail.pixel-garden { --detail-max: 1168px; --detail-columns: 232px 640px 264px; } }
+@media (min-width: 1520px) { .example-detail.pixel-garden { --detail-max: 1488px; --detail-columns: 232px 960px 264px; } }
 .demo-stage { width: 100%; }
 .demo-canvas { width: 100%; max-width: none; height: auto; aspect-ratio: 5 / 3; min-width: 0; border: 0; outline: 1px solid var(--demo-canvas-border); image-rendering: pixelated; touch-action: none; }
 .demo-canvas:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 4px; }
-.pixel-controls { padding: 20px; border: 1px solid var(--example-border); border-radius: var(--example-radius); background: var(--example-panel); font-size: 13px; }
-.pixel-controls h2 { font-size: 18px; margin: 0 0 10px; }
+.pixel-controls > h2 { font-size: 16px; margin: 0 0 10px; }
 .pixel-controls p { color: var(--example-muted); line-height: 1.65; }
 .pixel-controls .pixel-eyebrow { font-size: 10px; color: var(--example-accent); letter-spacing: .12em; margin: 0 0 12px; }
 .pixel-progress { display: block; color: var(--example-accent); background: var(--example-raised); padding: 12px; border-radius: var(--example-radius); margin: 16px 0 10px; line-height: 1.5; }
@@ -27,7 +27,5 @@
 .pixel-backend { display: block; font-size: 11px; color: var(--example-muted); }
 @media (max-width: 900px) {
   .demo-shell { padding: 16px; }
-  .demo-stage-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .pixel-controls { max-width: none; }
   .pixel-seeds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

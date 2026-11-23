@@ -13,7 +13,7 @@ import {
 import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
 import { createGuidedGameSurface } from "../../shared/guidedGameSurface";
-import { createExampleGuide } from "../../shared/exampleGuide";
+import { createGameDetail, mountShellGameDetail } from "../../shared/gameDetail";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
 
 function gameStateLabel(code: number): string {
@@ -43,10 +43,20 @@ async function bootstrap(): Promise<void> {
   lifetime.own(() => shell.destroy());
   const root = shell.stage.closest<HTMLElement>(".demo-shell")!;
   root.classList.add("example-guided");
-  root.querySelector(".demo-toolbar")!.after(createExampleGuide([
-    { title: "공 · 벽 · 패들 충돌", action: "A/D 또는 방향키로 패들을 움직여 공을 받아보세요.", observe: "충돌면에 따라 공이 반사합니다. 충돌 영역을 켜면 실제 판정 형태를 비교할 수 있습니다." },
-    { title: "충돌 이벤트 · 파티클", action: "공이 벽돌에 닿을 때 score와 particles를 확인하세요.", observe: "벽돌 충돌이 점수·제거·파티클로 이어집니다. hits는 현재 프레임의 hit 이벤트 수입니다." },
-  ], shell.canvas));
+  const detail = createGameDetail({
+    id: "breakout",
+    canvas: shell.canvas,
+    topics: [
+      { id: "collision", title: "공 · 벽 · 패들 충돌", action: "A/D 또는 방향키로 패들을 움직여 공을 받아보세요.", observe: "충돌면에 따라 공이 반사합니다. 충돌 영역을 켜면 실제 판정 형태를 비교할 수 있습니다." },
+      { id: "events", title: "충돌 이벤트 · 파티클", action: "공이 벽돌에 닿을 때 점수와 파티클을 확인하세요.", observe: "벽돌 충돌이 점수·제거·파티클로 이어집니다. 현재 충돌은 이번 프레임의 충돌 이벤트 수입니다." },
+    ],
+    code: {
+      api: "createFerrumRuntime · useBreakoutGame · setPixelPerfect · frame.physics.collisionHitEvents · particleCount · VirtualControls",
+      sources: ["examples/breakout/src/main.ts", "examples/shared/guidedGameSurface.ts"],
+    },
+  });
+  lifetime.own(() => detail.destroy());
+  mountShellGameDetail(detail, shell.stage);
 
   const surface = createGuidedGameSurface(shell.stage, "breakout", (parent, buttons) => new VirtualControls(parent, { joystick: false, buttons }));
   lifetime.own(() => surface.destroy());

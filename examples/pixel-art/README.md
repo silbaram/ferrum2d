@@ -13,6 +13,8 @@ pnpm dev:pixel-art
 - 화면 효과에서 bloom/vignette, 도트 디더/스캔라인, 곡면 CRT, glitch를 비교한다.
 - WebGL2가 기본이다. WebGPU 선택은 페이지를 새로 시작하며, 사용할 수 없으면 실제 fallback 상태를 표시한다.
 - 정수 배율은 브라우저 크기와 DPR에서 결정한다. 창이 가상 해상도보다 작으면 기존 pixel-perfect 축소 정책을 따른다.
+  왼쪽 게임 목록과 함께 보이는 1280px 이상에서는 1520px부터 3배(960px), 그보다 좁으면 2배(640px)로 정원을 그린다.
+- 왼쪽 목록(좁은 화면은 선택 상자)의 체험할 기능은 길찾기·걷기 애니메이션, 노멀 조명, 팔레트·화면 효과다. 실행 화면 아래 코드 보기에서 `public/scene.json`을 볼 수 있다.
 
 `pnpm build:pages` 후 Pages 홈 또는 `/pixel-art/`에서 같은 production 예제를 열 수 있다.
 개발 소스 예제이며 공개 npm beta에 포함됐다는 뜻은 아니다.

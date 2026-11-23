@@ -7,6 +7,7 @@ import type { LightingScene2D, SpriteMaterialPresetInput } from "@ferrum2d/ferru
 import { diagnosticReport } from "@ferrum2d/ferrum-web/quality";
 import { createRuntimeDemoShell, renderRuntimeDemoError } from "../../shared/runtimeDemoShell";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
+import { createGameDetail, mountShellGameDetail } from "../../shared/gameDetail";
 import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
 
@@ -59,9 +60,25 @@ async function bootstrap(): Promise<void> {
     <output class="pixel-backend" role="status">불러오는 중…</output>`;
   stage.parentElement!.querySelector(".demo-metrics")!.replaceWith(panel);
   const subtitle = document.createElement("p");
-  subtitle.className = "pixel-subtitle";
+  subtitle.className = "example-subtitle";
   subtitle.textContent = "도트 원본에서 플레이까지 · 320 × 192 픽셀의 작은 정원";
   document.querySelector(".demo-toolbar")!.append(subtitle);
+  stage.closest(".demo-shell")!.classList.add("pixel-garden");
+  const detail = createGameDetail({
+    id: "pixel-art",
+    physicsDebugLink: false,
+    topics: [
+      { id: "navigation", title: "길찾기 · 걷기 애니메이션", action: "바닥을 클릭하거나 씨앗 버튼으로 정원지기를 보내세요.", observe: "정원지기가 연못을 돌아가는 길로 걷고, 걷는 동안 4프레임 걷기 애니메이션이 재생됩니다." },
+      { id: "lighting", title: "노멀 조명", action: "조명을 '밤 · 노멀 조명'으로 두고 정원 위로 포인터를 움직이세요.", observe: "포인터 쪽에서 오는 빛에 따라 도트의 밝은 면이 바뀝니다. '낮 · 원본 색상'과 비교하세요." },
+      { id: "palette-effects", title: "팔레트 · 화면 효과", action: "캐릭터 팔레트와 화면 효과를 바꿔 보세요.", observe: "같은 도트 원본이 색상 교체와 후처리만으로 달라집니다. 걷기와 씨앗 수는 그대로입니다." },
+    ],
+    code: {
+      data: { label: "씬 JSON", path: "examples/pixel-art/public/scene.json", url: "./scene.json" },
+      api: "createRenderer · AssetLoader · resolveSceneAuthoringDocument · createFerrumRuntime({ dataScene, lighting, postProcess, spriteMaterial }) · createDataSceneView · configureDataSceneMovementAnimation · moveDataSceneActorTo",
+      sources: ["examples/pixel-art/src/main.ts"],
+    },
+  });
+  mountShellGameDetail(detail, stage, panel);
   const progress = panel.querySelector<HTMLOutputElement>(".pixel-progress")!;
   const backendStatus = panel.querySelector<HTMLOutputElement>(".pixel-backend")!;
   const lightChoice = panel.querySelector<HTMLSelectElement>("#pixel-light")!;
@@ -73,6 +90,7 @@ async function bootstrap(): Promise<void> {
   rendererChoice.value = requested;
   const lifetime = createExampleLifetime();
   lifetime.own(() => shell.destroy());
+  lifetime.own(() => detail.destroy());
   const signal = lifetime.signal;
   try {
     const renderer = await createRenderer(canvas, {

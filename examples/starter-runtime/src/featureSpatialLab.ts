@@ -6,7 +6,7 @@ import { applyDataSceneAuthoringDocument, type SceneAuthoringDocumentSpec } from
 import catalog from "../../shared/featureCatalog.json";
 import { cleanupRuntimeDemoResources, createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
 import { createFeatureNavigation, mountFeatureNavigation } from "./featureNavigation";
-import { createFeatureCode, featureDocsUrl } from "./featureCode";
+import { createFeatureCode } from "./featureCode";
 import { spatialControls, spatialFeatureScene } from "./featureSpatialScenes";
 import "./featureLab.css";
 import { environmentEffects, spatialEnvironmentCamera, spatialEnvironmentSettings } from "./featureSpatialEnvironment";
@@ -22,7 +22,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   const shell = createRuntimeDemoShell({ title: "엔진 기능 실험실", exampleId: "starter-runtime", controls: false, metrics: [] });
   const { canvas, stage } = shell;
   const root = stage.closest<HTMLElement>(".demo-shell")!;
-  root.classList.add("feature-lab");
+  root.classList.add("feature-lab", "example-detail");
   document.title = `${feature.title} · Ferrum2D`;
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", `${feature.title} 실험 화면`);
@@ -48,7 +48,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   statistics.textContent = "오브젝트 — · 공간 그리기 —";
   stage.append(help, statistics);
   mountFeatureNavigation(root, navigation);
-  const code = createFeatureCode({ id, api: feature.api, sources: ["src/featureSpatialLab.ts", "src/featureSpatialScenes.ts"], docsUrl: featureDocsUrl() });
+  const code = createFeatureCode({ id, api: feature.api, sources: ["src/featureSpatialLab.ts", "src/featureSpatialScenes.ts"] });
   navigation.pager.before(code.element);
   for (const button of root.querySelectorAll("button")) button.type = "button";
   const control = <T extends HTMLElement>(name: string) => root.querySelector<T>(`[data-control="${name}"]`)!;

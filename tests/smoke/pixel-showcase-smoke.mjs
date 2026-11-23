@@ -31,7 +31,8 @@ try {
   browser = await chromium.launch({ headless: true, executablePath: process.env.FERRUM_BROWSER_EXECUTABLE,
     args: ['--no-sandbox', '--enable-unsafe-webgpu', '--use-vulkan=swiftshader'] });
   for (const backend of ['webgl2', 'webgpu']) {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+    // 1520px and wider fit the game list, the 3x garden and its panel side by side.
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
     const errors = [], wasm = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => {
@@ -94,7 +95,7 @@ try {
       // groups; the four scene textures therefore need more than the hero's draw.
       assert(initial.normalDrawCalls >= 1 && initial.normalDrawCalls <= 4); assert(initial.drawCalls <= 20);
       assert(initial.presentation.integerScale && initial.presentation.sourceWidth === 320 && initial.presentation.sourceHeight === 192);
-      assert.equal(initial.presentation.scale, 3, 'desktop frame must not consume the pixels needed for 3x integer scale');
+      assert.equal(initial.presentation.scale, 3, 'the desktop frame beside the game list must keep 3x integer scale');
       // A real button keyboard activation issues a destination; movement and collection
       // must be observed in the native state instead of invoking test-only setters.
       await page.locator('[data-seed="0"]').focus(); await page.keyboard.press('Enter');

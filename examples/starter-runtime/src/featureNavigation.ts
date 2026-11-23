@@ -1,23 +1,16 @@
 import catalog from "../../shared/featureCatalog.json";
 import topics from "../../shared/featureTopics.json";
 import physics from "../../shared/physicsExamples.json";
-import lucide from "../../shared/gallery/lucideIcons.json";
 import { exampleSiteRoot } from "../../shared/exampleHeader";
+import { exampleIcon } from "../../shared/exampleIcons";
+import "../../shared/exampleDetail.css";
 
 // Gallery thumbnails are bundled so the standalone lab shows the same pictures.
 const thumbnails = import.meta.glob<string>("../../shared/thumbnails/feature-*.jpg", { eager: true, query: "?url", import: "default" });
 const thumbnail = (name: string): string | undefined => thumbnails[`../../shared/thumbnails/${name}`];
-const icons: Record<string, string> = lucide.icons;
 
-function icon(name: string): SVGSVGElement {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  for (const [key, value] of Object.entries({ class: "feature-icon", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
-    "stroke-width": "1.75", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(key, value);
-  svg.innerHTML = icons[name] ?? "";
-  return svg;
-}
 function dot(domain: string): HTMLElement {
-  const span = document.createElement("span"); span.className = "feature-dot"; span.dataset.domain = domain;
+  const span = document.createElement("span"); span.className = "example-dot"; span.dataset.domain = domain;
   return span;
 }
 
@@ -36,7 +29,7 @@ export interface FeatureNavigation {
 export function createFeatureNavigation(selected: string): FeatureNavigation {
   const lifetime = new AbortController(), { signal } = lifetime;
   const element = document.createElement("nav");
-  element.className = "feature-topics"; element.setAttribute("aria-label", "엔진 기능 선택");
+  element.className = "example-sidebar"; element.setAttribute("aria-label", "엔진 기능 선택");
   const current = catalog.find(item => item.id === selected)!;
   const site = document.querySelector('meta[name="ferrum-example-suite"][content="1"]')
     ? exampleSiteRoot(new URL(location.href), "starter-runtime/") : undefined;
@@ -46,12 +39,12 @@ export function createFeatureNavigation(selected: string): FeatureNavigation {
     return url;
   };
 
-  const label = document.createElement("p"); label.className = "feature-sidebar-label";
+  const label = document.createElement("p"); label.className = "example-sidebar-label";
   const total = document.createElement("span"); total.textContent = String(catalog.length);
   label.append("기능 실험 ", total);
-  const list = document.createElement("div"); list.className = "feature-topic-list";
+  const list = document.createElement("div"); list.className = "example-sidebar-list";
   const mobile = document.createElement("label"), select = document.createElement("select");
-  mobile.className = "feature-topic-picker"; mobile.textContent = "기능 선택 ";
+  mobile.className = "example-picker"; mobile.textContent = "기능 선택 ";
   select.setAttribute("aria-label", "실험 선택"); mobile.append(select);
 
   const groups: { topic: string; button: HTMLButtonElement; links: HTMLElement }[] = [];
@@ -63,23 +56,23 @@ export function createFeatureNavigation(selected: string): FeatureNavigation {
     }
   };
   const link = (title: string, url: URL, topic: string, image: string | undefined, active: boolean) => {
-    const a = document.createElement("a"); a.href = url.href; a.dataset.topic = topic;
+    const a = document.createElement("a"); a.className = "example-item"; a.href = url.href; a.dataset.topic = topic;
     if (active) a.setAttribute("aria-current", "page");
     const picture = document.createElement("img"); picture.alt = ""; picture.loading = "lazy"; picture.decoding = "async";
     if (image) picture.src = image;
-    const text = document.createElement("span"); text.className = "feature-link-title"; text.textContent = title;
+    const text = document.createElement("span"); text.className = "example-item-title"; text.textContent = title;
     a.append(picture, text);
     return a;
   };
   for (const topic of topics) {
     const items = catalog.filter(item => item.topic === topic.id);
-    const group = document.createElement("div"); group.className = "feature-topic"; group.dataset.topic = topic.id;
+    const group = document.createElement("div"); group.className = "example-group"; group.dataset.topic = topic.id;
     const button = document.createElement("button"); button.type = "button"; button.dataset.topic = topic.id;
     button.setAttribute("aria-controls", `feature-topic-${topic.id}`);
-    const name = document.createElement("span"); name.className = "feature-topic-title"; name.textContent = topic.title;
-    const count = document.createElement("span"); count.className = "feature-topic-count"; count.textContent = String(items.length);
-    button.append(dot(topic.domain), icon(topic.icon), name, count);
-    const links = document.createElement("div"); links.className = "feature-topic-links"; links.id = `feature-topic-${topic.id}`;
+    const name = document.createElement("span"); name.className = "example-group-title"; name.textContent = topic.title;
+    const count = document.createElement("span"); count.className = "example-group-count"; count.textContent = String(items.length);
+    button.append(dot(topic.domain), exampleIcon(topic.icon), name, count);
+    const links = document.createElement("div"); links.className = "example-group-items"; links.id = `feature-topic-${topic.id}`;
     links.setAttribute("role", "group"); links.setAttribute("aria-label", `${topic.title} 실험`);
     const optgroup = document.createElement("optgroup"); optgroup.label = topic.title; select.append(optgroup);
     for (const item of items) {
@@ -91,10 +84,10 @@ export function createFeatureNavigation(selected: string): FeatureNavigation {
     // mixing its scenarios in with this lab's experiments; the gallery lists each scenario.
     if (site && topic.id === "physics") {
       const url = new URL("physics-sandbox/", site);
-      const a = document.createElement("a"); a.href = url.href; a.dataset.topic = topic.id; a.className = "feature-topic-external";
-      const title = document.createElement("span"); title.className = "feature-link-title"; title.textContent = "물리 심화 실험실";
-      const note = document.createElement("span"); note.className = "feature-link-note"; note.textContent = `시나리오 ${physics.length}개 · 새 화면`;
-      a.append(icon("external-link"), title, note);
+      const a = document.createElement("a"); a.href = url.href; a.dataset.topic = topic.id; a.className = "example-item example-item-external";
+      const title = document.createElement("span"); title.className = "example-item-title"; title.textContent = "물리 심화 실험실";
+      const note = document.createElement("span"); note.className = "example-item-note"; note.textContent = `시나리오 ${physics.length}개 · 새 화면`;
+      a.append(exampleIcon("external-link"), title, note);
       links.append(a);
       optgroup.append(new Option(`물리 심화 실험실 · 시나리오 ${physics.length}개 (새 화면)`, url.href));
     }
@@ -110,11 +103,11 @@ export function createFeatureNavigation(selected: string): FeatureNavigation {
   openTopic(current.topic);
   element.append(label, list, mobile);
 
-  const pager = document.createElement("nav"); pager.className = "feature-pager"; pager.setAttribute("aria-label", "이전·다음 실험");
+  const pager = document.createElement("nav"); pager.className = "example-pager"; pager.setAttribute("aria-label", "이전·다음 실험");
   const index = ordered.findIndex(item => item.id === selected);
   for (const [rel, item, caption] of [["prev", ordered[index - 1], "이전"], ["next", ordered[index + 1], "다음"]] as const) {
     if (!item) { pager.append(document.createElement("span")); continue; }
-    const a = document.createElement("a"); a.href = featureUrl(item.id).href; a.rel = rel; a.className = `feature-pager-${rel}`;
+    const a = document.createElement("a"); a.href = featureUrl(item.id).href; a.rel = rel; a.className = `example-pager-${rel}`;
     const small = document.createElement("small"); small.textContent = `${caption} · ${topics.find(topic => topic.id === item.topic)!.title}`;
     const title = document.createElement("span"); title.textContent = item.title;
     a.append(small, title); pager.append(a);

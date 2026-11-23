@@ -1,5 +1,5 @@
 import { resolveShooterGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
-import { createExampleGuide } from "../../shared/exampleGuide";
+import { createGameDetail, mountGameDetail } from "../../shared/gameDetail";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
 import "./styles.css";
 import { createShooterShowcase, type ShowcaseWave } from "./showcase";
@@ -1203,10 +1203,21 @@ async function bootstrap(): Promise<void> {
     canvas.setAttribute("aria-label", "Neon Outpost 게임 화면. WASD 이동, 마우스 조준, 클릭 또는 Space 발사, P 일시정지");
     const showcase = createShooterShowcase(canvas);
     own(() => showcase.destroy());
-    showcase.guideMount.append(createExampleGuide([
-      { title: "Game Spec · 웨이브", action: "출격하기 또는 Enter로 시작하고 WASD로 이동·마우스로 조준하세요.", observe: "Rust가 추적·중장갑·선회 웨이브, 점수, 충돌을 처리합니다. HUD는 같은 native 상태를 읽습니다." },
-      { title: "타일 충돌 · 피격 효과", action: "금속 엄폐물을 돌아 이동하고 적을 향해 사격하세요.", observe: "타일 충돌·피격 파티클·오디오·카메라 흔들림을 확인하고 조명·후처리 설정을 비교하세요." },
-    ], canvas));
+    const detail = createGameDetail({
+      id: "topdown-shooter",
+      canvas,
+      topics: [
+        { id: "game-spec", title: "Game Spec · 웨이브", action: "출격하기 또는 Enter로 시작하고 WASD로 이동·마우스로 조준하세요.", observe: "Rust가 추적·중장갑·선회 웨이브, 점수, 충돌을 처리합니다. 점수판은 같은 native 상태를 읽습니다." },
+        { id: "tile-collision", title: "타일 충돌 · 피격 효과", action: "금속 엄폐물을 돌아 이동하고 적을 향해 사격하세요.", observe: "타일 충돌·피격 파티클·오디오·카메라 흔들림을 확인하고 조명·후처리 설정을 비교하세요." },
+      ],
+      code: {
+        data: { label: "Game Spec", path: "examples/topdown-shooter/public/game.json", url: "./game.json" },
+        api: "createEngine · WebGL2Renderer · setGameSpec · builtInShooterProgress · setShooterHitParticlePreset · setLighting · renderPostProcess · BrowserPlatformHost · VirtualControls",
+        sources: ["examples/topdown-shooter/src/main.ts", "examples/topdown-shooter/src/showcase.ts", "examples/topdown-shooter/src/presentation.ts", "examples/topdown-shooter/src/platformScope.ts"],
+      },
+    });
+    own(() => detail.destroy());
+    mountGameDetail(detail, { root: showcase.root, heading: showcase.heading, layout: showcase.layout, stage: showcase.column, panel: showcase.sidebar });
     const debugEnabled = searchParams.get("debug") === "true";
     const debugPanel = document.createElement("aside");
     debugPanel.className = "shooter-debug-panel";

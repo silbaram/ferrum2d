@@ -79,44 +79,44 @@ try {
   await page.goto(base+'starter-runtime/'); await ready(page);
   // Wide screens list topics beside the stage; opening a topic shows its experiments with thumbnails.
   for (const topic of topics) {
-    const button = page.locator(`.feature-topics button[data-topic="${topic.id}"]`);
+    const button = page.locator(`.example-sidebar button[data-topic="${topic.id}"]`);
     if (await button.getAttribute('aria-expanded') !== 'true') await button.click();
     assert.equal(await button.getAttribute('aria-expanded'), 'true');
-    const visible = page.locator(`.feature-topics a[data-topic="${topic.id}"]:visible`);
+    const visible = page.locator(`.example-sidebar a[data-topic="${topic.id}"]:visible`);
     // The physics topic adds one row to the separate physics lab, marked as a new page.
     assert.equal(await visible.count(),features.filter(item=>item.topic===topic.id).length+(topic.id==='physics'?1:0));
-    assert.equal(await page.locator('.feature-topics a:visible').count(), await visible.count(), 'only one topic is open');
+    assert.equal(await page.locator('.example-sidebar a:visible').count(), await visible.count(), 'only one topic is open');
   }
-  await page.waitForFunction(() => [...document.querySelectorAll('.feature-topics a img')].filter(image => image.offsetParent).every(image => image.complete && image.naturalWidth > 0));
-  const physicsLab = page.locator('.feature-topics a.feature-topic-external');
+  await page.waitForFunction(() => [...document.querySelectorAll('.example-sidebar a img')].filter(image => image.offsetParent).every(image => image.complete && image.naturalWidth > 0));
+  const physicsLab = page.locator('.example-sidebar a.example-item-external');
   assert.equal(await physicsLab.getAttribute('href'), new URL('physics-sandbox/', base).href);
   assert.match(await physicsLab.innerText(), new RegExp(`시나리오 ${physicsTopics.length}개 · 새 화면`));
   // Keyboard focus walks the open topic and keeps the focused experiment inside the scrolled list.
-  const topicLinks=page.locator('.feature-topics a:visible');
+  const topicLinks=page.locator('.example-sidebar a:visible');
   await topicLinks.first().focus();
   for(let i=1;i<await topicLinks.count();i++)await page.keyboard.press('Tab');
   assert(await topicLinks.last().evaluate(link=>document.activeElement===link),'Tab must reach the final example');
   assert(await topicLinks.last().evaluate(link=>{
-    const r=link.getBoundingClientRect(),list=link.closest('.feature-topics').getBoundingClientRect();
+    const r=link.getBoundingClientRect(),list=link.closest('.example-sidebar').getBoundingClientRect();
     return r.top>=list.top-1&&r.bottom<=list.bottom+1;
   }),'keyboard focus must reveal the focused example in the topic list');
   assert.equal(await overflow(page),false,'the topic list must not overflow the page');
   // Narrower screens keep the stage wide and switch to the compact picker.
   for (const width of [1024, 390]) {
     await page.setViewportSize({width,height:1000});
-    assert.equal(await page.locator('.feature-topic-list').isVisible(), false);
-    assert.equal(await page.locator('.feature-topic-picker option').count(),features.length+1);
+    assert.equal(await page.locator('.example-sidebar-list').isVisible(), false);
+    assert.equal(await page.locator('.example-picker option').count(),features.length+1);
     assert.equal(await overflow(page),false,`picker overflow ${width}`);
   }
   await page.setViewportSize({width:1440,height:1100});
   // Previous and next follow the topic order across topic boundaries.
   const order = topics.flatMap(topic => features.filter(item => item.topic === topic.id));
   const position = order.findIndex(item => item.id === features[0].id);
-  assert.equal(await page.locator('.feature-pager a[rel=prev]').getAttribute('href'), new URL(`starter-runtime/?feature=${order[position - 1].id}`, base).href);
-  assert.equal(await page.locator('.feature-pager a[rel=next]').getAttribute('href'), new URL(`starter-runtime/?feature=${order[position + 1].id}`, base).href);
-  await page.locator(`.feature-topics button[data-topic="${features[0].topic}"]`).click();
+  assert.equal(await page.locator('.example-pager a[rel=prev]').getAttribute('href'), new URL(`starter-runtime/?feature=${order[position - 1].id}`, base).href);
+  assert.equal(await page.locator('.example-pager a[rel=next]').getAttribute('href'), new URL(`starter-runtime/?feature=${order[position + 1].id}`, base).href);
+  await page.locator(`.example-sidebar button[data-topic="${features[0].topic}"]`).click();
   // Inside the suite the code view links the public API reference on this site.
-  const apiDocs = await page.locator('#feature-code-api a').getAttribute('href');
+  const apiDocs = await page.locator('#example-code-api a').getAttribute('href');
   assert.equal(apiDocs, new URL('docs/engine/public-api.html', base).href);
   assert.equal(await page.evaluate(async url => (await fetch(url)).status, apiDocs), 200);
   await page.screenshot({path:resolve(run,'entry.png')});
@@ -151,6 +151,38 @@ try {
     await header.locator('summary').click();
     const theme = await header.evaluate(root => ({font:getComputedStyle(root).fontFamily, background:getComputedStyle(root.querySelector('select')).backgroundColor, radius:getComputedStyle(root.querySelector('select')).borderRadius}));
     assert.match(theme.font, /Ferrum Example UI/); assert.equal(theme.background, 'rgb(17, 24, 33)'); assert.equal(theme.radius, '2px');
+    if (entry.kind === 'game') {
+      // Game pages share the lab's frame: the games and this game's topics beside the stage,
+      // a guide card leading the panel, then the code view and the previous/next game.
+      const games = publicExamples.filter(item => item.kind === 'game'), index = games.indexOf(entry);
+      const rows = page.locator('.example-sidebar .example-item-parent');
+      assert.deepEqual(await rows.evaluateAll(links => links.map(link => link.href)), games.map(item => new URL(item.path, base).href));
+      assert.equal(await page.locator('.example-item-parent[aria-current=page]').getAttribute('data-example'), entry.id);
+      await page.waitForFunction(() => [...document.querySelectorAll('.example-sidebar img')].every(image => image.complete && image.naturalWidth > 0));
+      const topicLinks = page.locator('.example-sidebar .example-subitem'), topicCount = await topicLinks.count();
+      assert(topicCount >= 2, `${entry.id} lists its topics`);
+      assert.equal(await page.locator('.example-subitem[aria-current]').count(), 1);
+      assert.equal(await page.locator('.example-picker option').count(), topicCount);
+      await topicLinks.last().click();
+      const lastTopic = await topicLinks.last().getAttribute('data-topic');
+      assert.equal(new URL(page.url()).searchParams.get('topic'), lastTopic);
+      assert.equal(await page.locator('.example-intro h2').textContent(), await topicLinks.last().textContent());
+      assert.equal(await page.locator('.example-picker select').inputValue(), lastTopic);
+      await topicLinks.first().click();
+      const tabs = await page.locator('.example-code [role=tab]').allTextContents();
+      assert.deepEqual(tabs.slice(-2), ['API', '코드 위치']);
+      if (tabs.length === 3) {
+        // The data tab shows the exact file the game loads.
+        await page.waitForFunction(() => document.querySelector('.example-code')?.dataset.dataLines);
+        const file = JSON.parse(await readFile(await page.locator('.example-code-path').textContent(), 'utf8'));
+        assert.deepEqual(JSON.parse(await page.locator('.example-code-json').textContent()), file);
+      }
+      assert.equal(await page.locator('#example-code-api a').getAttribute('href'), new URL('docs/engine/public-api.html', base).href);
+      for (const [rel, other] of [['prev', games[index - 1]], ['next', games[index + 1]]]) {
+        const link = page.locator(`.example-pager a[rel=${rel}]`);
+        if (other) assert.equal(await link.getAttribute('href'), new URL(other.path, base).href); else assert.equal(await link.count(), 0);
+      }
+    }
     let controls;
     if (entry.id === 'breakout' || entry.id === 'platformer') controls = await smokeGuidedExample(page, entry.id);
     if (entry.id === 'physics-sandbox') {
@@ -182,10 +214,15 @@ try {
     }
     if (entry.id === 'physics-sandbox') controls = await smokePhysicsLabViewport(page);
     if (entry.id === 'topdown-shooter') controls = await smokeTopdownShowcase(page, 20000);
+    if (entry.id === 'pixel-art') {
+      await page.setViewportSize({width:1600,height:1000});
+      await page.waitForFunction(() => window.ferrumPixelShowcase.snapshot().presentation.scale === 3);
+    }
     for (const width of [1440,390,320]) {
       await page.setViewportSize({width,height:1000}); await page.waitForTimeout(80);
       assert.equal(await overflow(page), false, `${entry.id} overflow ${width}`);
-      if (width === 1440 && entry.id === 'pixel-art') await page.waitForFunction(() => window.ferrumPixelShowcase.snapshot().presentation.scale === 3);
+      // Beside the game list the garden keeps whole-number scaling: 2x at 1440px, 3x from 1520px.
+      if (width === 1440 && entry.id === 'pixel-art') await page.waitForFunction(() => window.ferrumPixelShowcase.snapshot().presentation.scale === 2);
       if (width === 1440 && (entry.id === 'breakout' || entry.id === 'platformer')) {
         const presentation = await page.evaluate(() => window.ferrumRuntime.renderer.pixelPerfectPresentation());
         assert.equal(presentation.canvasWidth, 800); assert.equal(presentation.width, 800);
@@ -236,7 +273,7 @@ try {
   console.log('Example suite: initialization/teardown and scenario requests');
   const lifecycles = await checkExampleLifecycles(browser, base);
   const scenarioRequests = await checkPhysicsScenarioRequests(browser, base);
-  const report = {ok:true,run,navigation:{features:features.length,topics:topics.length,physics:physicsTopics.length,publicApps:publicExamples.length,galleryCards,galleryFilter:true,gallerySearch:true,noJavaScriptGallery:true,headerHome:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
+  const report = {ok:true,run,navigation:{features:features.length,topics:topics.length,physics:physicsTopics.length,publicApps:publicExamples.length,galleryCards,galleryFilter:true,gallerySearch:true,noJavaScriptGallery:true,headerHome:true,gameFrame:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
   await writeFile(resolve(run,'verification.json'),JSON.stringify(report,null,2)+'\n');
   await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n'); console.log(`Example suite passed: ${results.length} apps, gallery entry and menu navigation, reference routes, standalone and nested paths. ${run}`);
 } catch (error) {
