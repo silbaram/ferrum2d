@@ -103,6 +103,15 @@ importers:
         specifier: ^5.4.19
         version: 5.4.21
 
+  examples/site:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.19
+        version: 5.4.21
+
   examples/starter-runtime:
     dependencies:
       '@ferrum2d/ferrum-web':

@@ -77,13 +77,13 @@ export function loadExampleCatalog(root = process.cwd()) {
       assert(item.features.length > 0, `Public example needs a learning link: ${item.id}`);
     }
   }
-  assert(catalog.some(item => item.id === 'starter-runtime' && item.kind === 'lab'), 'The feature lab must remain a public entry');
-  // Every gallery card shows a captured thumbnail; regenerate with pnpm thumbnails:examples.
+  assert(catalog.some(item => item.id === 'starter-runtime' && item.kind === 'lab'), 'The feature lab entry must remain in the catalog');
+  // The previous example apps (kept as engine test fixtures) show these thumbnails in their lists.
   const thumbnails = exampleThumbnailEntries({catalog, features, physics}).map(entry => entry.name);
   const thumbnailDir = resolve(root, EXAMPLE_THUMBNAIL_DIR);
-  for (const name of thumbnails) assert(existsSync(resolve(thumbnailDir, name)), `Missing gallery thumbnail ${name}; run pnpm thumbnails:examples`);
+  for (const name of thumbnails) assert(existsSync(resolve(thumbnailDir, name)), `Missing example thumbnail ${name}`);
   const extra = existsSync(thumbnailDir) ? readdirSync(thumbnailDir).filter(name => name.endsWith('.jpg') && !thumbnails.includes(name)) : [];
-  assert.deepEqual(extra, [], 'Unused gallery thumbnails');
+  assert.deepEqual(extra, [], 'Unused example thumbnails');
   return catalog;
 }
 

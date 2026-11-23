@@ -10,14 +10,16 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { githubHeadingId, stripInlineMarkdown } from "../lib/markdown-heading-ids.mjs";
-import { loadExampleCatalog } from "../validate/check-example-catalog.mjs";
-import { renderExampleGallery } from "./example-gallery.mjs";
-import { EXAMPLE_THUMBNAIL_DIR } from "../../examples/shared/gallery/thumbnailNames.mjs";
 
 const outputDir = "dist-pages";
 const docsSourceDir = "docs";
 const docsOutputDir = path.join(outputDir, "docs");
-const examples = loadExampleCatalog().filter(item => item.kind !== "reference");
+// The example site is the Pages entry and Studio is published beside it. The previous example apps stay
+// in the repository as engine test fixtures and are not published (docs/planning/example-site-rebuild-plan.md).
+const site = { source: "examples/site/dist" };
+const apps = [{ id: "studio", source: "apps/studio/dist" }];
+/** Former example routes lead to the site entry, so links from outside keep working. */
+const formerRoutes = ["starter-runtime", "physics-sandbox", "breakout", "platformer", "topdown-shooter", "pixel-art"];
 const userGuideDocs = new Set([
   "README.md",
   "engine/showcase-hub.md",
@@ -41,15 +43,12 @@ const documentationGroups = [
   { title: "기타 문서", titleEn: "Other documents", matches: () => true },
 ];
 
-// Validate every example before replacing the last successful local preview.
-const exampleBuilds = examples.map(example => {
-  const source = example.source;
+// Validate every build input before replacing the last successful local preview.
+for (const { source } of [site, ...apps]) {
   const entry = path.join(source, "index.html");
   if (!existsSync(entry)) throw new Error(`Missing ${entry}. Run pnpm build before pnpm build:pages.`);
-  const html = readFileSync(entry, "utf8");
-  if (!/<head(?:\s[^>]*)?>/iu.test(html)) throw new Error(`Missing head in ${entry}. Rebuild the example before pnpm build:pages.`);
-  return { example, source, html };
-});
+  if (!/<head(?:\s[^>]*)?>/iu.test(readFileSync(entry, "utf8"))) throw new Error(`Missing head in ${entry}. Rebuild it before pnpm build:pages.`);
+}
 
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
@@ -57,15 +56,33 @@ writeFileSync(path.join(outputDir, ".nojekyll"), "");
 cpSync("apps/studio/public/fonts", path.join(outputDir, "fonts"), { recursive: true });
 cpSync("apps/studio/src/fonts/NotoSansKR-UI.woff2", path.join(outputDir, "fonts/NotoSansKR-UI.woff2"));
 
-for (const { example, source, html } of exampleBuilds) {
-  cpSync(source, path.join(outputDir, example.id), { recursive: true });
-  const entry = path.join(outputDir, example.id, "index.html");
-  writeFileSync(entry, html.replace(/<head(?:\s[^>]*)?>/iu,
-    head => `${head}\n    <meta name="ferrum-example-suite" content="1" />`));
+cpSync(site.source, outputDir, { recursive: true });
+for (const app of apps) cpSync(app.source, path.join(outputDir, app.id), { recursive: true });
+for (const route of formerRoutes) {
+  mkdirSync(path.join(outputDir, route), { recursive: true });
+  writeFileSync(path.join(outputDir, route, "index.html"), formerRouteHtml());
 }
 
 buildDocsSite();
-buildExampleGallery();
+
+/** A former example address: point to the new example site instead of a 404. */
+function formerRouteHtml() {
+  return `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0; url=../">
+<link rel="canonical" href="../">
+<title>Ferrum2D 예제로 이동</title>
+</head>
+<body>
+<p>이 예제는 새 예제 사이트로 옮겨졌습니다. <a href="../">Ferrum2D 예제</a>로 이동합니다.</p>
+</body>
+</html>
+`;
+}
 
 function buildDocsSite() {
   const markdownFiles = collectFiles(docsSourceDir)
@@ -175,26 +192,6 @@ function outputPathForMarkdown(sourceRelativePath) {
 function firstHeading(markdown) {
   const match = /^#\s+(.+)$/mu.exec(markdown);
   return match ? stripInlineMarkdown(match[1].trim()) : "Ferrum2D Docs";
-}
-
-/** The site entry is the example gallery, rendered from the shared catalogs. */
-function buildExampleGallery() {
-  const galleryDir = path.join(outputDir, "gallery");
-  mkdirSync(galleryDir, { recursive: true });
-  for (const file of ["gallery.css", "gallery.mjs", "LICENSE-lucide.txt"]) {
-    cpSync(path.join("examples/shared/gallery", file), path.join(galleryDir, file));
-  }
-  cpSync(EXAMPLE_THUMBNAIL_DIR, path.join(galleryDir, "thumbs"), { recursive: true });
-  const read = file => JSON.parse(readFileSync(file, "utf8"));
-  const html = renderExampleGallery({
-    catalog: examples,
-    features: read("examples/shared/featureCatalog.json"),
-    topics: read("examples/shared/featureTopics.json"),
-    physics: read("examples/shared/physicsExamples.json"),
-    icons: read("examples/shared/gallery/lucideIcons.json").icons,
-    thumbnail: name => `./gallery/thumbs/${name}`,
-  });
-  writeFileSync(path.join(outputDir, "index.html"), html);
 }
 
 function docPageHtml(page, pages) {
