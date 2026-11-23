@@ -8,6 +8,9 @@ An AI agent can implement game features while you review the result in the brows
 
 ## Try it without installing
 
+> The example site is being rebuilt ([plan](../../planning/example-site-rebuild-plan.md)). The public links below currently lead to the new site's first page.
+> The same experiments run from the repository: `pnpm dev:starter-runtime`, then open `?feature=<id>`.
+
 [Open the Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/).
 Choose lighting, physics, cameras, or animation. Follow the on-screen actions and compare the result as you change settings.
 Use the example switcher to try the shooter, platformer, or Breakout.

@@ -18,6 +18,9 @@ AI agent가 데이터와 코드를 수정하고, **Ferrum2D Studio**에서 씬·
 
 ## 기능을 먼저 체험하기
 
+> 예제 사이트를 새로 만드는 중입니다([계획](docs/planning/example-site-rebuild-plan.md)). 아래 공개 링크는 지금 새 사이트 첫 화면으로 이동합니다.
+> 같은 실험은 저장소에서 `pnpm dev:starter-runtime`을 실행한 뒤 `?feature=<id>`로 열 수 있습니다.
+
 [**엔진 기능 실험실**](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 **31개 기능을 각각 독립된 씬**으로 체험할 수 있습니다.
 10개 기능 주제로 탐색하고 2D·HD-2D를 따로 필터링합니다. 물리 심화 7종도 같은 주제에서 바로 엽니다.
 게임에서 쓰는 상황·조작 순서·객체 이름표·화면 범례를 따라 결과를 비교합니다.
@@ -118,9 +121,9 @@ WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따
 
 ## 예제 갤러리
 
-예제는 **주제별 기능 실험 → 게임 응용** 순서로 구성합니다. [기능 실험실](https://silbaram.github.io/ferrum2d/)에서 주제를 고르고,
-상단의 **예제 이동**으로 게임·물리 심화·제작 도구를 엽니다. 조작·관찰 결과·관련 실험은 각 화면에서 확인합니다.
-Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제외합니다. [예제 역할과 로컬 통합 실행](examples/README.md).
+[예제 사이트](https://silbaram.github.io/ferrum2d/)를 실행 화면 중심의 편집기형 화면으로 새로 만들고 있습니다. 지금 사이트에는 새 틀과 Studio·문서 링크만 있고,
+예제는 하나씩 다시 추가합니다([계획](docs/planning/example-site-rebuild-plan.md)). 아래는 이전 예제 화면이며, 저장소에서 직접 실행할 수 있습니다.
+이전 예제 폴더는 엔진 검사 데이터로도 쓰입니다. [예제 역할과 로컬 실행](examples/README.md).
 
 | 2D 등불 정원 | HD-2D 중세 마을 |
 | --- | --- |

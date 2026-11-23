@@ -4,21 +4,17 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 
 ## 배포 대상
 
-`pnpm build:pages`는 `pnpm build`가 만든 예제 dist를 `dist-pages/` 아래로 복사하고, `docs/**/*.md`를 `dist-pages/docs/` HTML 문서 사이트로 렌더링한다.
+`pnpm build:pages`는 `pnpm build`가 만든 예제 사이트와 Studio를 `dist-pages/`로 복사하고, `docs/**/*.md`를 `dist-pages/docs/` HTML 문서 사이트로 렌더링한다.
 
 | 경로 | 원본 |
 | --- | --- |
-| `/` | 예제 갤러리 · 카탈로그와 `examples/shared/thumbnails/`로 빌드할 때 생성 |
+| `/` | `examples/site/dist` · 예제 사이트([다시 만들기 계획](../../planning/example-site-rebuild-plan.md)) |
 | `/docs/` | `docs/**/*.md` 기반 HTML 문서 사이트 |
-| `/starter-runtime/` | `examples/starter-runtime/dist` · 기능별 독립 실험 31종 |
-| `/topdown-shooter/` | `examples/topdown-shooter/dist` |
 | `/studio/` | `apps/studio/dist` |
-| `/physics-sandbox/` | `examples/physics-sandbox/dist` |
-| `/breakout/` | `examples/breakout/dist` |
-| `/platformer/` | `examples/platformer/dist` |
-| `/pixel-art/` | `examples/pixel-art/dist` · 작은 빛의 정원 |
+| `/starter-runtime/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/topdown-shooter/`, `/pixel-art/` | 옛 예제 주소. 새 첫 화면(`../`)으로 보내는 안내 페이지 |
 
-예제 package의 production build는 `vite build --base=./`를 사용한다. 이 설정은 GitHub Pages의 project subpath에서도 JS/CSS/Wasm asset을 상대 경로로 찾게 하기 위한 것이다.
+이전 예제 앱(기능 실험실·물리 심화 실험실·게임 데모 4개)은 공개하지 않고 엔진 검사 데이터로 남긴다. 사이트와 Studio의 production build는
+`vite build --base=./`를 사용한다. GitHub Pages의 project subpath에서도 JS/CSS/Wasm asset을 상대 경로로 찾게 하기 위한 것이다.
 
 ## 문서 사이트 생성
 
@@ -32,23 +28,15 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 
 문서 사이트의 기준 소스는 계속 `docs/**/*.md`다. `dist-pages/docs/`는 배포 artifact일 뿐 git에 포함하지 않는다.
 
-기본 주소는 예제 갤러리다. `scripts/build/example-gallery.mjs`가 `exampleCatalog.json`·`featureCatalog.json`·
-`featureTopics.json`·`physicsExamples.json`에서 정적 HTML을 만들고, 카드마다 실제 화면 썸네일·이름·용도를 보인다.
-링크는 상대 경로라 JavaScript 비활성 상태와 GitHub Pages 하위 경로에서도 동작하며, `gallery/gallery.mjs`는 분류·검색만 더한다.
+기본 주소는 예제 사이트다. Pixelforge 편집기형 틀(상단 막대·예제 목록·가운데 화면·상태 막대)이며, 넓은 화면은 창 높이에 고정하고
+패널마다 따로 스크롤하고, 900px 이하는 한 줄로 쌓고 예제 목록은 서랍으로 연다. 예제는 사이트 안의 모듈로 하나씩 추가해 `?example=<id>`로 연다.
+아직 예제가 없어 첫 화면은 준비 중 안내와 문서·Studio·이전 예제 코드(GitHub) 링크다. 없는 예제 주소는 안내를 보인다.
 스타일은 Studio와 같은 Pixelforge 토큰을 쓰고 외부 글꼴·CDN 없이 한국어 subset 글꼴과 Lucide 아이콘 일부(ISC)를 함께 발행한다.
-썸네일은 `examples/shared/thumbnails/`에 두며, 예제와 `dist-pages`를 빌드한 뒤 `pnpm thumbnails:examples`로 다시 찍는다.
-카탈로그 검사가 썸네일 누락과 쓰지 않는 썸네일을 거부한다. 물리 시나리오의 `knownIssue`는 갤러리의 "알려진 문제" 배지로 보인다.
-예제 상단의 **Ferrum2D 예제**는 갤러리로 돌아가고 그 옆 경로(`기능 실험 › 조명·그림자` 등)는 갤러리의 해당 분류로 이어진다. **예제 이동**은 게임·물리 심화·제작 도구를, 기능 실험실의 주제 목록(좁은 화면은 선택 상자)과 이전·다음은 개별 실험을 선택한다.
-상세 화면은 기능 실험실·게임 데모·물리 심화 실험실 모두 같은 틀이다. 처음에는 실행 화면 위 제목·한 문장과 오른쪽 해 보기·볼 것만 보이고, 이전·다음은 실행 화면 바로 아래 한 줄이다. 설명·데이터 파일(씬 JSON·Game Spec·Physics Spec)·API·코드 위치·엔진 수치는 레이아웃 아래 접힌 '더 보기' 탭에 있다.
 상단의 **문서**는 사용자 설명서·프로젝트 생성·씬 작성·공개 API 안내로 이어진다.
 문서 메뉴는 간단 사용법·AI 게임 개발을 먼저 구분하고, 공통 API 참조·공통 데이터/기능 참조·예제 계약·엔진 개발/검증·배포/운영·개발 계획/후보로 묶는다.
 사이트는 배포한 개발 소스의 문서·예제이며 GitHub Release 설치 파일의 버전과 별개다.
-예제 목록은 `examples/shared/exampleCatalog.json`에서 읽고 `pnpm validate:example-catalog`로 역할·경로·실행 명령·관련 실험을 검사한다.
-Minimal·이전 통합 데모는 참고·검증용으로 갤러리와 기본 메뉴에서 제외한다.
-공통 탐색은 중첩 배포 경로를 유지하고 단독 Vite에서는 교차 앱 링크를 만들지 않는다. `pnpm smoke:example-suite`로 검증한다.
-Pages 빌드는 발행 복사본 HTML에만 `ferrum-example-suite` 표식을 넣는다. 경로 이름만으로 통합 사이트를 추정하지 않으므로 개별 앱을 같은 이름의 폴더에 올려도 단독 모드를 유지한다.
-모든 예제의 `index.html`과 `head`를 출력 교체 전에 확인한다. 이 예제 입력 검증 실패는 마지막 정상 `dist-pages`를 보존한다.
-`pnpm test:example-catalog-build`가 이 실패 경로와 원본/발행 표식 경계를 검사하며 통합 예제 gate에도 포함된다.
+사이트와 Studio의 `index.html`과 `head`를 출력 교체 전에 확인한다. 이 입력 검증 실패는 마지막 정상 `dist-pages`를 보존한다.
+`pnpm test:pages-build`가 이 실패 경로와 첫 화면·Studio·옛 주소 안내를 검사하고, `pnpm smoke:example-site`가 빌드된 사이트를 브라우저로 검사한다.
 간단 사용법과 현재 문서의 그룹을 기본으로 펼친다. `<details>`를 사용하므로 별도 JavaScript 없이
 마우스와 키보드로 다른 그룹을 펼칠 수 있다. 새 문서는 경로에 따라 해당 그룹에 자동 포함된다.
 모바일 상단에는 **본문으로 바로 가기**를 표시한다. 데스크톱에서도 첫 Tab으로 같은 링크를 사용할 수 있으며 본문으로 스크롤·키보드 초점을 옮긴다.

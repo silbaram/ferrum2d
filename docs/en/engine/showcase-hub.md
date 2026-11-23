@@ -2,6 +2,9 @@
 
 [한국어](../../engine/showcase-hub.md) · English
 
+> The example site is being rebuilt ([plan](../../planning/example-site-rebuild-plan.md)). The public links below currently lead to the new site's first page.
+> The same experiments run from the repository: `pnpm dev:starter-runtime`, then open `?feature=<id>`.
+
 Try engine features without installing tools. Follow the actions and expected results shown in each demo.
 Open the [Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/) to choose a topic, or use the direct links below.
 Some controls are in Korean. For audio, click the screen or press Play first.

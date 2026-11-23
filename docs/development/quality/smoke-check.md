@@ -712,23 +712,18 @@ Blender tree/pine 후보는 FPS 개선이 확인되지 않아 기본 예제에 �
 
 ## 예제·package consumer·배포
 
-`pnpm validate:example-catalog`, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground`,
-`pnpm smoke:example-suite`로 기능 실험과 Pages의 통합 예제를 검증한다.
+`pnpm smoke:example-site`는 빌드된 Pages(중첩 경로)에서 새 예제 사이트를 검사한다. 상단 막대(첫 화면 링크·문서·GitHub), 창 높이에 맞는 틀,
+예제 목록 네 분류와 접기, 도구 링크(Studio 200 응답), 예제가 없을 때의 준비 중 안내, 검색과 `/` 단축키, 없는 예제(`?example=`) 안내,
+옛 예제 주소 6개의 첫 화면 이동, 1024px 목록과 390/320px 서랍(초점 이동·Esc·바깥 누르기), 가로 넘침, 콘솔 오류를 확인한다.
+`pnpm test:pages-build`는 사이트·Studio 빌드 누락이나 잘못된 HTML이 기존 Pages를 지우기 전에 거절되는지와 발행 구성을 확인한다.
+
+이전 예제 앱은 공개하지 않지만 엔진 검사 데이터로 남아 다음 검사가 그대로 쓴다.
+`pnpm validate:example-catalog`, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground`가 기능 실험의 native 상태·픽셀·상호작용·자원을 검증한다.
 Start/Pause/Resume/Restart·P/Esc·터치 취소는 실제 native 시간/위치/HUD와 비교한다.
 정지 중 게임 상태 불변, resize·letterbox pointer 좌표와 예제별 draw 예산을 유지한다.
 Physics Lab의 `visibleBodyCount`는 조회한 body 수이며 화면 culling 측정값이 아니다.
-`pnpm smoke:example-suite`는 첫 화면 갤러리의 카드 수·썸네일 로딩·분류·검색·JavaScript 비활성·390/320px 폭과
-카드 링크의 배포 경로 유지, 예제 머리글의 갤러리 복귀 링크와 경로(갤러리 분류 링크, 마지막 단계 `aria-current`)도 확인한다.
-상세 화면마다 '더 보기'가 닫힌 채 시작하는지, 1440×900 첫 화면에 제목·실행 화면·해 보기·볼 것이 들어오는지 확인한다.
-기능 실험실은 넓은 화면의 주제 목록(한 번에 한 주제·썸네일 로딩·키보드 이동), 1024/390px의 선택 상자, 주제 순서의 이전·다음을 확인한다.
-게임 데모 4종은 같은 틀에서 게임 목록과 링크, 체험할 기능 전환(`?topic=`·제목·선택 상자·볼 것), 더 보기의 게임 설명·관련 기능 실험·데이터 파일·API 문서 링크, 게임 순서의 이전·다음을 확인한다.
-Platformer는 더 보기 토글에 초점이 있을 때 Space가 점프로 새지 않고 키를 뗀 입력은 게임에 닿는지 확인한다. 단독 실행에서는 게임 설명 탭에 통합 미리보기 안내가 있다.
-물리 심화 실험실은 시나리오 목록·알려진 문제 점, 시나리오 전환(`?demo=`·제목·알려진 문제 표시·선택 상자), 해 보기의 동작 버튼과 볼 것, 더 보기 탭 순서,
-Physics Spec이 전환을 따라 실제 파일과 같은지, 이전·다음 시나리오를 확인한다.
-시나리오 요청 순서 검사는 넓은 화면 목록으로 느린 이전 요청·실패 요청·복구를 확인한다.
-작은 빛의 정원은 목록 옆에서 1440px 2배, 1600px 3배 정수 배율을 확인한다. `pnpm smoke:feature-examples`는 게임 목록의 기능 전환과 `이 위치에서 실험`, 충돌 영역 다시 시작을 확인한다.
-`pnpm smoke:feature-examples`는 실험마다 제목·한 문장(`summary`)·볼 것(`observe` 문장)과 해 보기 맨 위의 주요 동작, 닫힌 더 보기를 확인한다.
-설명 탭의 쓰는 상황·순서·화면 읽는 법, 탭을 연 뒤 불러온 씬 JSON이 실제 씬 파일과 같은지, API 수와 소스 링크, 탭 키보드 이동과 토글 닫기도 확인한다. 썸네일은 `pnpm thumbnails:examples`로 다시 찍는다.
+`pnpm smoke:feature-examples`는 실험마다 제목·한 문장·볼 것과 해 보기, 닫힌 더 보기, 설명 탭과 씬 JSON·API·소스 링크, 게임 목록의 기능 전환과
+`이 위치에서 실험`, 충돌 영역 다시 시작을 확인한다.
 물리 실험실 smoke(`--mode=physics-sandbox`, `--mode=physics-demo-suite`)는 `physicsExamples.json`의 `knownIssue` 시나리오만
 멈춤을 허용하고, 그 경우에도 화면에 오류가 표시돼야 한다.
 

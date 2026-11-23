@@ -8,6 +8,9 @@ AI에게 게임 기능을 맡기고, 사람은 브라우저와 **Ferrum2D Studio
 
 ## 설치 없이 먼저 둘러보기
 
+> 예제 사이트를 새로 만드는 중입니다([계획](../planning/example-site-rebuild-plan.md)). 아래 공개 링크는 지금 새 사이트 첫 화면으로 이동합니다.
+> 같은 실험은 저장소에서 `pnpm dev:starter-runtime`을 실행한 뒤 `?feature=<id>`로 열 수 있습니다.
+
 [기능 실험실 열기](https://silbaram.github.io/ferrum2d/starter-runtime/)
 
 조명·물리·카메라·애니메이션 중 관심 있는 주제를 고르세요.
