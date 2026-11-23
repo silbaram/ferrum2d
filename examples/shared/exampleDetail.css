@@ -1,4 +1,4 @@
-/* Detail frame shared by the feature lab and the game demos: a list beside the stage on wide
+/* Detail frame shared by the feature lab, the physics lab and the game demos: a list beside the stage on wide
    screens (a picker above it otherwise), an intro line over the stage, a panel beside it, and a
    code view and previous/next links under it. Colors are the Pixelforge tokens in exampleTheme.css.
    A page tunes the frame with --detail-max and --detail-columns on `.example-detail`. */
@@ -118,8 +118,10 @@
 .example-pager a:hover { background: var(--example-hover); }
 .example-pager a:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
 .example-pager small { font-size: 11px; color: var(--example-subtle); }
-.example-pager span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.example-pager-next { text-align: right; }
+.example-pager span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+/* A page that updates the links in place hides an end instead of removing it; next stays in the right column. */
+.example-pager a[hidden] { display: none; }
+.example-pager-next { grid-column: 2; text-align: right; }
 
 @media (min-width: 1280px) {
   .example-detail { --detail-max: 1520px; --detail-columns: 232px minmax(0, 1fr) 304px; }

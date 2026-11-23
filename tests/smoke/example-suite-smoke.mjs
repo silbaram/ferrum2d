@@ -186,19 +186,39 @@ try {
     let controls;
     if (entry.id === 'breakout' || entry.id === 'platformer') controls = await smokeGuidedExample(page, entry.id);
     if (entry.id === 'physics-sandbox') {
-      // Wide screens list every scenario beside the canvas; a click switches in place and updates ?demo=.
-      const links = page.locator('.scenario-list .scenario-link');
-      assert.equal(await links.count(), physicsTopics.length);
-      assert.equal(await page.locator('.scenario-link-caption[data-issue]').count(), physicsTopics.filter(item => item.knownIssue).length);
-      await page.waitForFunction(() => [...document.querySelectorAll('.scenario-link img')].every(image => image.complete && image.naturalWidth > 0));
+      // The physics lab shares the frame too: scenarios beside the canvas, a scenario line over it,
+      // the guide leading the panel, then the current Physics Spec and the previous/next scenario.
+      const links = page.locator('.example-sidebar-list .example-item[data-scenario]');
+      assert.deepEqual(await links.evaluateAll(items => items.map(item => item.dataset.scenario)), physicsTopics.map(item => item.id));
+      assert.equal(await page.locator('.example-item-note[data-issue]').count(), physicsTopics.filter(item => item.knownIssue).length);
+      await page.waitForFunction(() => [...document.querySelectorAll('.example-sidebar img')].every(image => image.complete && image.naturalWidth > 0));
+      assert.equal(await page.locator('.example-picker option').count(), physicsTopics.length);
+      assert.equal(await page.locator('.example-panel .example-guide .action-button').count() > 0, true);
       const initial = await page.evaluate(() => window.ferrumPhysicsSandboxSmokeFrame.demoId), target = physicsTopics.at(-1).id;
-      await page.locator(`.scenario-link[data-scenario="${target}"]`).click();
+      const specPath = id => `examples/physics-sandbox/public/demos/${id}.physics.json`;
+      const showsSpec = async id => {
+        await page.waitForFunction(path => document.querySelector('.example-code-path')?.textContent === path && document.querySelector('.example-code')?.dataset.dataLines, specPath(id));
+        assert.deepEqual(JSON.parse(await page.locator('.example-code-json').textContent()), JSON.parse(await readFile(specPath(id), 'utf8')));
+      };
+      await showsSpec(initial);
+      assert.deepEqual(await page.locator('.example-code [role=tab]').allTextContents(), ['Physics Spec', 'API', '코드 위치']);
+      assert.equal(await page.locator('#example-code-api a').getAttribute('href'), new URL('docs/engine/public-api.html', base).href);
+      await page.locator(`.example-item[data-scenario="${target}"]`).click();
       await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, target);
       assert.equal(new URL(page.url()).searchParams.get('demo'), target);
-      assert.equal(await page.locator('.scenario-link[aria-current]').getAttribute('data-scenario'), target);
-      assert.equal(await page.locator('.scenario-select').inputValue(), target);
+      assert.equal(await page.locator('.example-item[aria-current]').getAttribute('data-scenario'), target);
+      assert.equal(await page.locator('.example-picker select').inputValue(), target);
+      assert.equal(await page.locator('.example-intro h2').textContent(), physicsTopics.at(-1).title);
+      await showsSpec(target);
+      // The last scenario has no next link; previous switches in place.
+      assert.equal(await page.locator('.example-pager a[rel=next]').isHidden(), true);
+      const previous = physicsTopics.at(-2).id;
+      assert.equal(await page.locator('.example-pager a[rel=prev]').getAttribute('data-scenario'), previous);
+      await page.locator('.example-pager a[rel=prev]').click();
+      await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, previous);
+      assert.equal(new URL(page.url()).searchParams.get('demo'), previous);
       // Later checks expect the scenario the page opened with.
-      await page.locator(`.scenario-link[data-scenario="${initial}"]`).click();
+      await page.locator(`.example-item[data-scenario="${initial}"]`).click();
       await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, initial);
     }
     if (entry.id === 'platformer') {
@@ -273,7 +293,7 @@ try {
   console.log('Example suite: initialization/teardown and scenario requests');
   const lifecycles = await checkExampleLifecycles(browser, base);
   const scenarioRequests = await checkPhysicsScenarioRequests(browser, base);
-  const report = {ok:true,run,navigation:{features:features.length,topics:topics.length,physics:physicsTopics.length,publicApps:publicExamples.length,galleryCards,galleryFilter:true,gallerySearch:true,noJavaScriptGallery:true,headerHome:true,gameFrame:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
+  const report = {ok:true,run,navigation:{features:features.length,topics:topics.length,physics:physicsTopics.length,publicApps:publicExamples.length,galleryCards,galleryFilter:true,gallerySearch:true,noJavaScriptGallery:true,headerHome:true,gameFrame:true,physicsFrame:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
   await writeFile(resolve(run,'verification.json'),JSON.stringify(report,null,2)+'\n');
   await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n'); console.log(`Example suite passed: ${results.length} apps, gallery entry and menu navigation, reference routes, standalone and nested paths. ${run}`);
 } catch (error) {

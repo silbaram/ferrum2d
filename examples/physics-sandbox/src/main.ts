@@ -37,6 +37,7 @@ import "./styles.css";
 import { createExampleHeader } from "../../shared/exampleHeader";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
 import sharedScenarios from "../../shared/physicsExamples.json";
+import { createScenarioDetail } from "./scenarioDetail";
 
 // Gallery thumbnails, so the scenario list matches the example gallery and the feature lab.
 const scenarioThumbnails = import.meta.glob<string>("../../shared/thumbnails/physics-*.jpg", { eager: true, query: "?url", import: "default" });
@@ -200,7 +201,6 @@ interface SandboxShell {
   ready(): void;
   canvas: HTMLCanvasElement;
   debugRoot: HTMLElement;
-  scenarioSelect: HTMLSelectElement;
   setPaused(paused: boolean): void;
   setStatus(status: SandboxStatus): void;
   setScenario(
@@ -330,6 +330,7 @@ function publicAssetUrl(path: string): string {
 
 function createShell(
   scenarios: readonly PhysicsScenarioEntry[],
+  initialScenario: string,
   onScenarioChange: (id: string) => void,
   onReset: () => void,
   onRun: () => void,
@@ -348,39 +349,40 @@ function createShell(
   }
 
   const shell = document.createElement("main");
-  const header = document.createElement("header");
-  const titleBlock = document.createElement("div");
-  const titleRow = document.createElement("div");
+  const header = document.createElement("section");
   const title = document.createElement("h1");
+  const subtitle = document.createElement("p");
   const statusBadge = document.createElement("span");
-  const summary = document.createElement("p");
   const toolbar = document.createElement("div");
-  const scenarioSelect = document.createElement("select");
   const runButton = createRuntimeDemoButton("실행", onRun);
   const pauseButton = createRuntimeDemoButton("일시정지", onPause);
   const stepButton = createRuntimeDemoButton("한 프레임", onStep);
   const resetButton = createRuntimeDemoButton("리셋", onReset);
-  const scenarioList = document.createElement("nav");
+  const layout = document.createElement("section");
   const debugControls = document.createElement("div");
-  const stage = document.createElement("section");
   const canvasPanel = document.createElement("section");
+  const canvasFrame = document.createElement("div");
   const canvasStack = document.createElement("div");
   const canvas = document.createElement("canvas");
   const canvasHud = document.createElement("div");
   const canvasTitle = document.createElement("span");
   const canvasSignal = document.createElement("span");
   const sidePanel = document.createElement("aside");
-  const metrics = document.createElement("dl");
-  const specPanel = document.createElement("dl");
-  const actionPanel = document.createElement("section");
-  const actionTitle = document.createElement("h2");
+  const guide = document.createElement("section");
+  const guideTitle = document.createElement("h2");
+  const guideAction = document.createElement("p");
   const actionButtons = document.createElement("div");
+  const guideObserve = document.createElement("div");
+  const focusList = document.createElement("ul");
+  const metricsPanel = document.createElement("section");
+  const metricsTitle = document.createElement("h2");
+  const metrics = document.createElement("dl");
+  const specSection = document.createElement("section");
+  const specTitle = document.createElement("h2");
+  const specPanel = document.createElement("dl");
   const materialPanel = document.createElement("section");
   const materialTitle = document.createElement("h2");
   const materialControls = document.createElement("div");
-  const focusPanel = document.createElement("section");
-  const focusTitle = document.createElement("h2");
-  const focusList = document.createElement("div");
   const selectedPanel = document.createElement("section");
   const selectedTitle = document.createElement("h2");
   const selectedBody = document.createElement("dl");
@@ -413,48 +415,52 @@ function createShell(
   const debugControlInputs = new Map<DebugControlKey, HTMLInputElement>();
   const debugControlLabels = new Map<DebugControlKey, HTMLLabelElement>();
 
-  shell.className = "app-shell";
+  shell.className = "app-shell physics-lab example-detail";
   shell.append(createExampleHeader("physics-sandbox"));
-  header.className = "showcase-header";
-  titleBlock.className = "title-block";
-  titleRow.className = "title-row";
+  header.className = "demo-toolbar";
+  subtitle.className = "example-subtitle";
   statusBadge.className = "status-badge";
-  summary.className = "scenario-summary";
   toolbar.className = "toolbar";
-  scenarioSelect.className = "scenario-select";
-  scenarioList.className = "scenario-list";
-  scenarioList.setAttribute("aria-label", "시나리오");
+  layout.className = "demo-stage-layout";
   debugControls.className = "debug-controls";
-  stage.className = "stage";
   canvasPanel.className = "canvas-panel";
+  canvasFrame.className = "canvas-frame";
   canvasStack.className = "canvas-stack";
   canvas.className = "physics-canvas";
   canvasHud.className = "canvas-hud";
   canvasTitle.className = "canvas-hud-label";
   canvasSignal.className = "canvas-hud-label";
-  sidePanel.className = "side-panel";
+  sidePanel.className = "side-panel example-panel";
+  sidePanel.setAttribute("aria-label", "체험 방법과 실행 상태");
+  guide.className = "example-guide";
+  guide.setAttribute("aria-label", "체험 방법");
+  actionButtons.className = "example-guide-actions action-buttons";
+  guideObserve.className = "guide-observe";
+  focusList.className = "focus-list";
+  metricsPanel.className = "panel-section";
   metrics.className = "metrics";
+  specSection.className = "panel-section";
   specPanel.className = "spec-panel";
-  actionPanel.className = "panel-block action-panel";
-  actionButtons.className = "action-buttons";
   materialPanel.className = "panel-block material-panel";
   materialControls.className = "material-controls";
-  focusPanel.className = "panel-block";
-  focusList.className = "focus-list";
   selectedPanel.className = "panel-block selected-panel";
   selectedBody.className = "selected-body";
-  eventPanel.className = "panel-block event-panel";
+  eventPanel.className = "panel-section event-panel";
   eventList.className = "event-list";
   warningList.className = "warning-list";
   debugRoot.className = "debug-root";
   errorBox.className = "error-box";
 
   title.textContent = "물리 심화 실험실";
+  subtitle.textContent = `Physics Spec 시나리오 ${scenarios.length}개`;
   statusBadge.textContent = STATUS_LABELS.loading;
   statusBadge.dataset.status = "loading";
-  actionTitle.textContent = "조작";
+  guideTitle.textContent = "체험 방법";
+  guideAction.append(strongText("조작"), "버튼으로 장면의 동작을 다시 실행합니다. 캔버스에서 물체를 누르면 실행 화면 아래에 그 물체의 상태가 나옵니다.");
+  guideObserve.append(strongText("관찰"));
+  metricsTitle.textContent = "실행 상태";
+  specTitle.textContent = "물리 설정";
   materialTitle.textContent = "재질 조절";
-  focusTitle.textContent = "관찰 포인트";
   selectedTitle.textContent = "선택한 물체";
   eventTitle.textContent = "물리 신호";
   canvas.width = 800;
@@ -464,46 +470,16 @@ function createShell(
   errorBox.hidden = true;
   warningList.hidden = true;
 
-  for (const scenario of scenarios) {
-    const option = document.createElement("option");
-    option.value = scenario.id;
-    option.textContent = scenarioOptionLabel(scenario);
-    scenarioSelect.append(option);
-  }
-  scenarioSelect.addEventListener("change", () => onScenarioChange(scenarioSelect.value));
-
-  // Wide screens list every scenario beside the canvas, like the feature lab's topic list.
-  // Links keep a real ?demo= URL; a plain click switches the scenario in place.
-  const listLabel = document.createElement("p");
-  listLabel.className = "scenario-list-label";
-  listLabel.textContent = `시나리오 ${scenarios.length}`;
-  scenarioList.append(listLabel);
-  for (const scenario of scenarios) {
-    const link = document.createElement("a");
-    link.className = "scenario-link";
-    link.href = `?demo=${encodeURIComponent(scenario.id)}`;
-    link.dataset.scenario = scenario.id;
-    const image = document.createElement("img");
-    image.alt = "";
-    image.decoding = "async";
-    const thumbnail = scenarioThumbnails[`../../shared/thumbnails/physics-${scenario.id}.jpg`];
-    if (thumbnail) image.src = thumbnail;
-    const name = document.createElement("span");
-    name.className = "scenario-link-title";
-    name.textContent = scenarioTitle(scenario);
-    const caption = document.createElement("span");
-    caption.className = "scenario-link-caption";
-    const issue = knownIssues.get(scenario.id);
-    caption.textContent = issue ? `${categoryLabel(scenario.category, scenarios)} · 알려진 문제` : categoryLabel(scenario.category, scenarios);
-    if (issue) { caption.dataset.issue = "true"; link.title = issue; }
-    link.append(image, name, caption);
-    link.addEventListener("click", (event) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      onScenarioChange(scenario.id);
-    });
-    scenarioList.append(link);
-  }
+  const detail = createScenarioDetail(scenarios.map((scenario) => ({
+    id: scenario.id,
+    title: scenarioTitle(scenario),
+    category: categoryLabel(scenario.category, scenarios),
+    summary: scenarioSummary(scenario),
+    issue: knownIssues.get(scenario.id),
+    thumbnail: scenarioThumbnails[`../../shared/thumbnails/physics-${scenario.id}.jpg`],
+    physicsSpec: scenario.physicsSpec,
+    specUrl: publicAssetUrl(scenario.physicsSpec),
+  })), initialScenario, onScenarioChange);
 
   for (const { key, label } of DEBUG_CATEGORIES) {
     const item = document.createElement("label");
@@ -543,30 +519,30 @@ function createShell(
   appendMetric(specPanel, "재질", materialValue);
   appendMetric(specPanel, "레이어", layerValue);
 
-  toolbar.append(scenarioSelect, runButton, pauseButton, stepButton, resetButton);
-  titleRow.append(title, statusBadge);
-  titleBlock.append(titleRow, summary);
-  header.append(titleBlock, toolbar);
+  toolbar.append(statusBadge, runButton, pauseButton, stepButton, resetButton);
+  header.append(title, subtitle, toolbar);
   canvasHud.append(canvasTitle, canvasSignal);
   canvasStack.append(canvas, canvasHud);
-  canvasPanel.append(canvasStack, debugControls, materialPanel, actionPanel, selectedPanel);
-  actionPanel.append(actionTitle, actionButtons);
+  canvasFrame.append(detail.intro, canvasStack);
+  canvasPanel.append(canvasFrame, debugControls, materialPanel, selectedPanel);
   materialPanel.append(materialTitle, materialControls);
-  focusPanel.append(focusTitle, focusList);
   selectedPanel.append(selectedTitle, selectedBody);
+  guideObserve.append(focusList);
+  guide.append(guideTitle, guideAction, actionButtons, guideObserve);
+  metricsPanel.append(metricsTitle, metrics);
+  specSection.append(specTitle, specPanel);
   eventPanel.append(eventTitle, eventList);
-  sidePanel.append(debugRoot, metrics, specPanel, focusPanel, eventPanel, warningList);
-  stage.append(scenarioList, canvasPanel, sidePanel);
-  shell.append(header, stage, errorBox);
+  sidePanel.append(guide, warningList, metricsPanel, specSection, eventPanel, debugRoot);
+  layout.append(detail.sidebar, canvasPanel, sidePanel);
+  shell.append(header, layout, errorBox, detail.code, detail.pager);
   app.replaceChildren(shell);
   shell.inert = true;
 
   return {
-    destroy: () => shell.remove(),
+    destroy: () => { detail.destroy(); shell.remove(); },
     ready: () => { shell.inert = false; },
     canvas,
     debugRoot,
-    scenarioSelect,
     setPaused(paused) {
       pauseButton.disabled = paused;
       runButton.disabled = !paused;
@@ -583,8 +559,7 @@ function createShell(
     },
     setScenario(scenario, spec, world, nextDebugOptions) {
       Object.assign(debugOptions, nextDebugOptions);
-      scenarioSelect.value = scenario.id;
-      summary.textContent = scenarioSummary(scenario);
+      detail.select(scenario.id);
       canvasTitle.textContent = scenarioTitle(scenario);
       fixtureValue.textContent = scenario.physicsSpec;
       gravityValue.textContent = formatVector(spec.gravityX, spec.gravityY);
@@ -594,11 +569,7 @@ function createShell(
       layerValue.textContent = formatCount(Object.keys(spec.layers).length);
       bodyValue.textContent = formatCount(world.bodyCount);
       jointValue.textContent = formatCount(world.jointCount);
-      focusList.replaceChildren(...scenarioFocus(scenario).map(createFocusChip));
-      for (const link of scenarioList.querySelectorAll<HTMLAnchorElement>(".scenario-link")) {
-        if (link.dataset.scenario === scenario.id) link.setAttribute("aria-current", "page");
-        else link.removeAttribute("aria-current");
-      }
+      focusList.replaceChildren(...scenarioFocus(scenario).map(createFocusItem));
       applyDebugControlAvailability(scenario, spec, debugOptions, debugControlInputs, debugControlLabels);
     },
     setRuntimeMetrics(metrics) {
@@ -962,6 +933,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
 
   const shell = createShell(
     catalog.scenarios,
+    initialScenario.id,
     (id) => {
       // Keep the address shareable: ?demo= follows the chosen scenario.
       const url = new URL(location.href);
@@ -1651,10 +1623,6 @@ function scenarioFocus(scenario: PhysicsScenarioEntry): readonly string[] {
   return scenario.focusKo ?? scenario.focus;
 }
 
-function scenarioOptionLabel(scenario: PhysicsScenarioEntry): string {
-  return `${scenario.categoryKo ?? scenario.category} / ${scenarioTitle(scenario)}`;
-}
-
 function categoryLabel(category: string, scenarios: readonly PhysicsScenarioEntry[]): string {
   return scenarios.find((scenario) => scenario.category === category)?.categoryKo ?? category;
 }
@@ -1685,11 +1653,16 @@ function materialFieldLabel(field: MaterialControlField): string {
   return field === "friction" ? "마찰" : "탄성";
 }
 
-function createFocusChip(label: string): HTMLElement {
-  const chip = document.createElement("span");
-  chip.className = "focus-chip";
-  chip.textContent = label;
-  return chip;
+function strongText(text: string): HTMLElement {
+  const strong = document.createElement("strong");
+  strong.textContent = text;
+  return strong;
+}
+
+function createFocusItem(label: string): HTMLElement {
+  const item = document.createElement("li");
+  item.textContent = label;
+  return item;
 }
 
 function createWarningRow(warning: PhysicsWorldApplyWarning): HTMLElement {

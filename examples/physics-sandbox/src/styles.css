@@ -75,29 +75,22 @@ input:focus-visible {
 
 .app-shell {
   min-height: 100vh;
-  width: min(1272px, 100%);
-  margin: 0 auto;
   padding: 16px;
 }
 
-.showcase-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-  max-width: 1320px;
-  margin: 0 auto 12px;
-}
-
-.title-block {
-  min-width: 0;
-}
-
-.title-row {
+/* Title row of the shared detail frame: title, subtitle, status and playback controls. */
+.physics-lab .demo-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.physics-lab .demo-stage-layout {
+  display: grid;
+  gap: 16px;
+  align-items: start;
 }
 
 h1,
@@ -106,14 +99,6 @@ p,
 dl,
 ol {
   margin-top: 0;
-}
-
-.title-row h1 {
-  margin-bottom: 0;
-  color: var(--example-text);
-  font-size: 22px;
-  font-weight: 680;
-  line-height: 1.2;
 }
 
 .status-badge {
@@ -150,14 +135,6 @@ ol {
   background: rgba(255, 107, 107, 0.15);
 }
 
-.scenario-summary {
-  max-width: 780px;
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.38;
-}
-
 .toolbar,
 .debug-controls,
 .action-buttons {
@@ -167,26 +144,42 @@ ol {
 }
 
 .toolbar {
-  justify-content: flex-end;
+  align-items: center;
 }
 
-.scenario-select {
-  width: 360px;
-  padding: 0 10px;
-}
-
-.stage {
-  display: grid;
-  grid-template-columns: minmax(0, 920px) minmax(320px, 1fr);
-  gap: 16px;
-  align-items: start;
-  max-width: 1320px;
-  margin: 0 auto;
+.physics-lab .toolbar button {
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
 }
 
 .canvas-panel {
   display: grid;
   gap: 10px;
+  min-width: 0;
+}
+
+/* The intro line sits on the canvas like the feature lab's and the game demos'. */
+.canvas-frame .canvas-stack {
+  border-radius: 0 0 4px 4px;
+}
+
+.example-intro .scenario-summary {
+  margin: 4px 0 0;
+  color: var(--example-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.example-intro .scenario-issue {
+  margin: 4px 0 0;
+  color: var(--example-danger);
+  font-size: 12px;
+}
+
+.example-item-note[data-issue] {
+  color: var(--example-danger);
 }
 
 .canvas-stack {
@@ -269,27 +262,12 @@ ol {
   accent-color: rgba(196, 210, 202, 0.34);
 }
 
-.side-panel {
-  display: grid;
-  gap: 12px;
-}
-
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 0;
-  padding: 0;
-  font-size: 14px;
-}
-
-.spec-panel,
 .panel-block,
 .warning-list {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--surface);
+  background: var(--example-panel);
 }
 
 .spec-panel,
@@ -359,22 +337,12 @@ ol {
 }
 
 .focus-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.focus-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid rgba(122, 162, 255, 0.35);
-  border-radius: var(--example-radius);
-  color: var(--example-text);
-  background: rgba(55, 79, 128, 0.38);
-  font-size: 13px;
-  font-weight: 650;
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding-left: 16px;
+  color: var(--example-muted);
+  line-height: 1.6;
 }
 
 .material-controls {
@@ -469,6 +437,7 @@ ol {
 }
 
 .warning-list {
+  margin-bottom: 16px;
   border-color: rgba(255, 155, 118, 0.48);
   background: rgba(66, 33, 24, 0.72);
 }
@@ -485,8 +454,8 @@ ol {
 }
 
 .error-box {
-  max-width: 1320px;
-  margin: 12px auto 0;
+  max-width: var(--detail-max);
+  margin: 16px auto 0;
   padding: 12px;
   border: 1px solid rgba(255, 107, 107, 0.35);
   border-radius: 4px;
@@ -521,18 +490,69 @@ ol {
   font-size: 22px;
 }
 
-@media (max-width: 1040px) {
-  .showcase-header,
-  .stage {
-    grid-template-columns: 1fr;
+/* One panel beside the stage: guide first, then hairline-separated sections with name/value rows. */
+.side-panel .panel-section h2 {
+  margin: 0 0 6px;
+  color: var(--example-text);
+  font-size: 13px;
+}
+
+.side-panel .panel-section ~ .panel-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--example-hairline);
+}
+
+.side-panel :is(.metrics, .spec-panel) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  font-size: 13px;
+}
+
+.side-panel .metric-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+}
+
+.side-panel .metric-item dt {
+  flex: none;
+  color: var(--example-muted);
+  font-size: 12px;
+  text-transform: none;
+}
+
+.side-panel .metric-item dd {
+  color: var(--example-text);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.side-panel .event-list {
+  font-size: 12px;
+}
+
+.side-panel .debug-root:not(:empty) {
+  margin-top: 16px;
+}
+
+@media (max-width: 860px) {
+  .example-detail.physics-lab {
+    --detail-columns: minmax(0, 1fr);
   }
 
-  .toolbar {
-    justify-content: flex-start;
-  }
-
-  .side-panel {
-    grid-template-columns: 1fr;
+  .physics-lab .example-panel {
+    position: static;
+    max-height: none;
   }
 }
 
@@ -541,30 +561,13 @@ ol {
     padding: 14px;
   }
 
-  .title-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .title-row h1 {
-    font-size: 19px;
-  }
-
-  .toolbar,
+  .physics-lab .toolbar,
   .debug-controls {
     width: 100%;
   }
 
-  .scenario-select {
-    width: 100%;
-  }
-
-  button {
-    flex: 1 1 96px;
-  }
-
-  .metrics {
-    grid-template-columns: 1fr;
+  .physics-lab .toolbar button {
+    flex: 1 1 72px;
   }
 
   .canvas-hud {
@@ -577,26 +580,3 @@ ol {
     max-width: none;
   }
 }
-
-/* Scenario list beside the canvas on wide screens, matching the feature lab's topic list.
-   Narrower screens keep the scenario picker in the toolbar. */
-.scenario-list { display: none; }
-.scenario-list-label { margin: 0; padding: 8px 12px 4px; font-size: 11px; color: var(--example-subtle); }
-.scenario-link { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; column-gap: 8px; min-height: 44px;
-  padding: 4px 12px; border-left: 2px solid transparent; color: var(--example-muted); text-decoration: none; font-size: 12px; }
-.scenario-link:hover { background: var(--example-hover); color: var(--example-text); }
-.scenario-link[aria-current] { background: var(--example-selection); border-left-color: var(--example-accent); color: var(--example-text); }
-.scenario-link:focus-visible { outline: 2px solid var(--example-accent); outline-offset: -2px; }
-.scenario-link img { grid-row: span 2; width: 48px; height: 30px; object-fit: cover; border: 1px solid var(--example-border);
-  border-radius: var(--example-radius); background: var(--example-bg); }
-.scenario-link-title { line-height: 1.35; }
-.scenario-link-caption { font-size: 10px; color: var(--example-subtle); }
-.scenario-link-caption[data-issue] { color: var(--example-danger); }
-@media (min-width: 1280px) {
-  .app-shell { width: min(1552px, 100%); }
-  .app-shell > :is(.example-header, .showcase-header, .stage, .error-box) { max-width: 1520px; }
-  .stage { grid-template-columns: 232px minmax(0, 920px) minmax(300px, 1fr); }
-  .scenario-list { display: block; position: sticky; top: 12px; align-self: start; max-height: calc(100dvh - 24px); overflow-y: auto;
-    padding: 4px 0; border: 1px solid var(--example-border); background: var(--example-panel); }
-}
-

@@ -99,8 +99,22 @@ function highlightLine(line: string): DocumentFragment {
   return fragment;
 }
 
+export interface ExampleCode {
+  element: HTMLElement;
+  /** Show another data file, for pages that switch scenes in place. Ignored without an initial data file. */
+  setData(data: ExampleCodeData): void;
+  destroy(): void;
+}
+
+function sourceItem(path: string): HTMLLIElement {
+  const item = element("li"); const a = element("a"); a.href = `${REPOSITORY}${path}`; a.target = "_blank"; a.rel = "noreferrer";
+  a.append(exampleIcon(path.endsWith(".json") ? "file-json" : "file-code"), element("code", undefined, path));
+  item.append(a);
+  return item;
+}
+
 /** Code view under the stage: the page's data file, its public API and the example sources. */
-export function createExampleCode(options: ExampleCodeOptions): { element: HTMLElement; destroy(): void } {
+export function createExampleCode(options: ExampleCodeOptions): ExampleCode {
   const lifetime = new AbortController(), { signal } = lifetime;
   const root = element("section", "example-code"); root.setAttribute("aria-labelledby", "example-code-title");
   const head = element("div", "example-code-head");
@@ -130,25 +144,41 @@ export function createExampleCode(options: ExampleCodeOptions): { element: HTMLE
   };
 
   // Data file: the scene or Game Spec this page loads, fetched when the tab opens.
-  const { data } = options;
+  let data = options.data;
+  let setData = (_next: ExampleCodeData): void => {};
+  let dataSource: HTMLLIElement | undefined;
   if (data) {
     const file = element("div");
     const bar = element("div", "example-code-bar");
-    const path = element("code", "example-code-path", data.path);
-    const lines = element("span", "example-code-lines", "불러오는 중…");
+    const path = element("code", "example-code-path");
+    const lines = element("span", "example-code-lines");
     const copy = element("button", "example-code-button"); copy.type = "button"; copy.append(exampleIcon("copy"), "복사");
-    const download = element("a", "example-code-button"); download.href = data.url; download.download = data.path.split("/").at(-1)!;
-    download.append(exampleIcon("download"), "내려받기");
-    bar.append(path, lines, copy, download, externalLink(`${REPOSITORY}${data.path}`, "GitHub", "github"));
+    const download = element("a", "example-code-button"); download.append(exampleIcon("download"), "내려받기");
+    const github = externalLink("", "GitHub", "github");
+    bar.append(path, lines, copy, download, github);
     const pre = element("pre", "example-code-json"); const code = element("code"); pre.append(code);
     const status = element("p", "example-code-status"); status.setAttribute("role", "status");
     file.append(bar, pre, status);
-    let text: string | undefined, loading: Promise<void> | undefined;
+    let text: string | undefined, request: AbortController | undefined;
+    signal.addEventListener("abort", () => request?.abort(), { once: true });
+    const show = (next: ExampleCodeData) => {
+      data = next;
+      path.textContent = next.path; lines.textContent = "불러오는 중…";
+      download.href = next.url; download.download = next.path.split("/").at(-1)!;
+      github.href = `${REPOSITORY}${next.path}`;
+      code.replaceChildren(); status.textContent = ""; text = undefined;
+      delete root.dataset.dataLines;
+    };
     const load = () => {
-      loading ??= fetch(data.url, { signal }).then(response => {
+      if (request || signal.aborted) return;
+      // Each file gets its own request, so a slow earlier file never replaces a later one.
+      const current = data!, own = new AbortController();
+      request = own;
+      fetch(current.url, { signal: own.signal }).then(response => {
         if (!response.ok) throw Error(`HTTP ${response.status}`);
         return response.text();
       }).then(body => {
+        if (request !== own) return;
         // Copy keeps the exact file; the view packs plain-value arrays to stay readable.
         text = body;
         const rows = formatSceneJson(JSON.parse(body)).split("\n");
@@ -161,15 +191,23 @@ export function createExampleCode(options: ExampleCodeOptions): { element: HTMLE
         code.replaceChildren(fragment);
         root.dataset.dataLines = String(rows.length);
       }).catch(error => {
-        if (signal.aborted) return;
+        if (request !== own || own.signal.aborted) return;
         lines.textContent = "";
-        status.textContent = `${data.label} 파일을 불러오지 못했습니다. ${error instanceof Error ? error.message : String(error)}`;
+        status.textContent = `${current.label} 파일을 불러오지 못했습니다. ${error instanceof Error ? error.message : String(error)}`;
       });
+    };
+    show(data);
+    setData = next => {
+      request?.abort(); request = undefined;
+      show(next);
+      const item = sourceItem(next.path);
+      dataSource?.replaceWith(item); dataSource = item;
+      if (!file.hidden) load();
     };
     copy.addEventListener("click", () => {
       if (!text) return;
       navigator.clipboard.writeText(text)
-        .then(() => { status.textContent = `${data.label}을 복사했습니다.`; })
+        .then(() => { status.textContent = `${data!.label}을 복사했습니다.`; })
         .catch(() => { status.textContent = "복사하지 못했습니다. 내려받기를 사용하세요."; });
     }, { signal });
     addTab("data", data.label, file, load);
@@ -189,11 +227,8 @@ export function createExampleCode(options: ExampleCodeOptions): { element: HTMLE
   const sources = element("div");
   sources.append(element("p", "example-code-note", options.sourcesNote));
   const files = element("ul", "example-code-files");
-  for (const path of [...options.sources, ...(data ? [data.path] : [])]) {
-    const item = element("li"); const a = element("a"); a.href = `${REPOSITORY}${path}`; a.target = "_blank"; a.rel = "noreferrer";
-    a.append(exampleIcon(path.endsWith(".json") ? "file-json" : "file-code"), element("code", undefined, path));
-    item.append(a); files.append(item);
-  }
+  files.append(...options.sources.map(sourceItem));
+  if (data) { dataSource = sourceItem(data.path); files.append(dataSource); }
   sources.append(files);
   addTab("sources", "코드 위치", sources);
 
@@ -211,5 +246,5 @@ export function createExampleCode(options: ExampleCodeOptions): { element: HTMLE
     select((next + panels.length) % panels.length, true);
   }, { signal });
   select(0);
-  return { element: root, destroy: () => lifetime.abort() };
+  return { element: root, setData: next => setData(next), destroy: () => lifetime.abort() };
 }
