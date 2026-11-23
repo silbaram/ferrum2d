@@ -13,7 +13,7 @@ import {
 import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
 import { createGuidedGameSurface } from "../../shared/guidedGameSurface";
-import { createExampleGuide } from "../../shared/exampleGuide";
+import { createGameDetail, mountShellGameDetail } from "../../shared/gameDetail";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
 
 function gameStateLabel(code: number): string {
@@ -48,11 +48,25 @@ async function bootstrap(): Promise<void> {
   };
   const root = shell.stage.closest<HTMLElement>(".demo-shell")!;
   root.classList.add("example-guided");
-  root.querySelector(".demo-toolbar")!.after(createExampleGuide([
-    { title: "점프 · 착지", action: "A/D 또는 방향키로 이동하고 Space로 점프하세요.", observe: "분홍색 플레이어가 파란 발판에 착지합니다. 착지 순간 particles가 증가합니다.", start: () => jumpTo(260, 420) },
-    { title: "단방향 발판", action: "노란 발판 위에서 내려온 뒤 아래쪽에서 점프해 보세요.", observe: "노란 발판은 아래에서 통과할 수 있고 위에서는 밟을 수 있습니다.", start: () => jumpTo(610, 272) },
-    { title: "이동 발판", action: "청록색 발판 위에 올라가 이동 입력을 멈추세요.", observe: "발판의 이동량이 플레이어에게 전달됩니다. kinematic은 이동/충돌 처리 횟수입니다.", start: () => jumpTo(760, 440) },
-  ], shell.canvas));
+  const detail = createGameDetail({
+    id: "platformer",
+    canvas: shell.canvas,
+    topics: [
+      { id: "jump", title: "점프 · 착지", summary: "엔진의 캐릭터 이동이 점프·낙하·착지를 처리합니다.",
+        action: "A/D 또는 방향키로 이동하고 Space로 점프하세요. P나 Esc로 멈춥니다.", observe: "분홍색 플레이어가 파란 발판에 착지합니다. 착지 순간 파티클이 늘어납니다.", start: () => jumpTo(260, 420) },
+      { id: "one-way", title: "단방향 발판", summary: "아래에서는 지나가고 위에서는 밟히는 발판입니다.",
+        action: "노란 발판 위에서 내려온 뒤 아래쪽에서 점프해 보세요.", observe: "노란 발판은 아래에서 통과할 수 있고 위에서는 밟을 수 있습니다.", start: () => jumpTo(610, 272) },
+      { id: "moving-platform", title: "이동 발판", summary: "움직이는 발판 위에 서면 발판의 이동이 캐릭터에게 전해집니다.",
+        action: "청록색 발판 위에 올라가 이동 입력을 멈추세요.", observe: "입력을 멈춰도 플레이어가 발판과 함께 움직입니다.", start: () => jumpTo(760, 440) },
+    ],
+    engine: shell.metrics,
+    code: {
+      api: "createFerrumRuntime · usePlatformerGame · setPixelPerfect · setBuiltInSceneEntityPosition · builtInPlatformerPlayerHandle · VirtualControls",
+      sources: ["examples/platformer/src/main.ts", "examples/shared/guidedGameSurface.ts"],
+    },
+  });
+  lifetime.own(() => detail.destroy());
+  mountShellGameDetail(detail, shell.stage);
 
   const surface = createGuidedGameSurface(shell.stage, "platformer", (parent, buttons) => new VirtualControls(parent, { joystick: false, buttons }));
   lifetime.own(() => surface.destroy());

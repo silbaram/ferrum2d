@@ -1,33 +1,28 @@
 .demo-shell { padding: 16px; }
-.demo-toolbar { max-width: 1240px; justify-content: flex-start; flex-wrap: wrap; gap: 8px 24px; }
-.demo-toolbar h1 { color: var(--example-accent); font-size: 20px; letter-spacing: -.04em; }
-.pixel-subtitle { margin: 0; color: var(--example-muted); font-size: 13px; }
-/* 960 + 16 + 264 = 1240: retain a 3x 320px viewport at desktop width. */
-.demo-stage-layout { max-width: 1240px; grid-template-columns: minmax(0, 960px) 264px; gap: 16px; align-items: start; }
+/* Keep whole-number scaling of the 320 × 192 garden: 3x (960px) once the list, stage and panel fit,
+   2x (640px) beside the list below that. The frame itself comes from shared/exampleDetail.css;
+   these widths assume its 16px gap. */
+@media (min-width: 861px) and (max-width: 1279px) { .example-detail.pixel-garden { --detail-max: 1240px; --detail-columns: minmax(0, 960px) 264px; } }
+@media (min-width: 1280px) { .example-detail.pixel-garden { --detail-max: 1168px; --detail-columns: 232px 640px 264px; } }
+@media (min-width: 1520px) { .example-detail.pixel-garden { --detail-max: 1488px; --detail-columns: 232px 960px 264px; } }
 .demo-stage { width: 100%; }
 .demo-canvas { width: 100%; max-width: none; height: auto; aspect-ratio: 5 / 3; min-width: 0; border: 0; outline: 1px solid var(--demo-canvas-border); image-rendering: pixelated; touch-action: none; }
 .demo-canvas:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 4px; }
-.pixel-controls { padding: 20px; border: 1px solid var(--example-border); border-radius: var(--example-radius); background: var(--example-panel); font-size: 13px; }
-.pixel-controls h2 { font-size: 18px; margin: 0 0 10px; }
-.pixel-controls p { color: var(--example-muted); line-height: 1.65; }
-.pixel-controls .pixel-eyebrow { font-size: 10px; color: var(--example-accent); letter-spacing: .12em; margin: 0 0 12px; }
-.pixel-progress { display: block; color: var(--example-accent); background: var(--example-raised); padding: 12px; border-radius: var(--example-radius); margin: 16px 0 10px; line-height: 1.5; }
-.pixel-seeds { display: grid; grid-template-columns: 1fr; gap: 6px; }
-.pixel-controls button { font-size: 12px; min-height: 36px; padding: 0 12px; }
-.pixel-controls fieldset { border: 0; border-top: 1px solid var(--example-border); padding: 18px 0 0; margin: 24px 0 16px; }
-.pixel-controls legend { color: var(--example-text); padding: 0 10px 0 0; }
-.pixel-controls label { display: grid; gap: 6px; margin-bottom: 14px; }
-.pixel-controls select { width: 100%; min-height: 36px; border: 1px solid var(--example-border); border-radius: var(--example-radius); background: var(--example-raised); color: var(--example-text); padding: 5px 8px; font: inherit; }
-.pixel-controls select:focus-visible, .pixel-controls summary:focus-visible, .pixel-controls a:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 3px; }
-.pixel-controls .pixel-help { font-size: 11px; margin: -5px 0 14px; }
-.pixel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.pixel-controls details { margin: 22px 0; border-top: 1px solid var(--example-border); border-bottom: 1px solid var(--example-border); padding: 14px 0; }
-.pixel-controls summary { cursor: pointer; color: var(--example-render); }
-.pixel-controls a { display: block; color: var(--example-render); padding: 6px 0; }
-.pixel-backend { display: block; font-size: 11px; color: var(--example-muted); }
+/* The panel frame is shared/exampleDetail.css; these style the garden's own controls in "해 보기". */
+.pixel-try { display: grid; gap: 10px; }
+.pixel-progress { display: block; color: var(--example-accent); line-height: 1.5; }
+.pixel-seeds { display: flex; flex-wrap: wrap; gap: 6px; }
+.pixel-garden .example-panel button, .pixel-garden .example-run button { min-width: 0; height: 32px; padding: 0 12px; font-size: 13px; }
+.pixel-try label, .pixel-renderer label { display: grid; gap: 4px; color: var(--example-muted); }
+.pixel-try select { width: 100%; height: 32px; border: 1px solid var(--example-border); border-radius: var(--example-radius); background: var(--example-raised); color: var(--example-text); padding: 0 8px; font: inherit; }
+.pixel-try select:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+.pixel-renderer { display: grid; gap: 6px; }
+.pixel-making h3 { margin: 0 0 6px; color: var(--example-subtle); font-size: 12px; font-weight: 600; }
+.pixel-making p { margin: 0 0 6px; color: var(--example-muted); }
+.pixel-downloads { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.pixel-downloads a { color: var(--example-render); text-decoration: none; }
+.pixel-downloads a:hover { text-decoration: underline; }
+.pixel-backend { display: block; color: var(--example-text); }
 @media (max-width: 900px) {
   .demo-shell { padding: 16px; }
-  .demo-stage-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .pixel-controls { max-width: none; }
-  .pixel-seeds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

@@ -71,6 +71,10 @@ export async function smokeTopdownShowcase(page, timeout) {
     const stats = window.ferrumRuntime.renderer.stats();
     return stats.pointLightCount === 3 && stats.postProcessPassCount >= 2;
   }, null, { timeout });
+  // Screen and sound settings are folded inside "해 보기".
+  const settings = page.locator('details:has([data-setting])');
+  assert.equal(await settings.getAttribute('open'), null);
+  await settings.locator('summary').click();
   await page.locator('[data-setting=lighting]').uncheck();
   await page.locator('[data-setting=effects]').uncheck();
   await page.locator('[data-setting=motion]').check();

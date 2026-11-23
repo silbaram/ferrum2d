@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import {existsSync, readFileSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {EXAMPLE_THUMBNAIL_DIR, exampleThumbnailEntries} from '../../examples/shared/gallery/thumbnailNames.mjs';
 
 export function loadExampleCatalog(root = process.cwd()) {
   const read = path => JSON.parse(readFileSync(resolve(root, path), 'utf8'));
@@ -9,11 +10,22 @@ export function loadExampleCatalog(root = process.cwd()) {
   const features = read('examples/shared/featureCatalog.json');
   const topics = read('examples/shared/featureTopics.json');
   const physics = read('examples/shared/physicsExamples.json');
-  const scenarioIds = new Set(read('examples/physics-sandbox/public/catalog.json').scenarios.map(item => item.id));
+  const scenarios = read('examples/physics-sandbox/public/catalog.json').scenarios;
+  const scenarioIds = new Set(scenarios.map(item => item.id));
+  // Scenario display names live only in physicsExamples.json; both apps read them from there.
+  for (const item of scenarios) assert(!('titleKo' in item), `Physics scenario ${item.id} must take its name from physicsExamples.json`);
   assert.equal(new Set(topics.map(item => item.id)).size, topics.length, 'Duplicate topic');
+  // Topic icon and engine-domain color are shared by the gallery and the feature lab navigation.
+  const topicIcons = read('examples/shared/gallery/lucideIcons.json').icons;
+  for (const topic of topics) {
+    assert(typeof topic.icon === 'string' && topic.icon in topicIcons, `Topic ${topic.id} needs a bundled icon`);
+    assert(['runtime', 'physics', 'render', 'behavior', 'collision', 'audio'].includes(topic.domain), `Topic ${topic.id} needs an engine domain`);
+  }
   assert.equal(new Set(physics.map(item => item.id)).size, physics.length, 'Duplicate physics link');
   assert.equal(physics.length, scenarioIds.size, 'Every physics scenario needs a topic entry');
   for (const item of physics) assert(scenarioIds.has(item.id) && item.title?.trim() && item.summary?.trim(), `Invalid physics entry ${item.id}`);
+  // A known issue is shown as a gallery badge and is the physics lab smoke's single exception list.
+  for (const item of physics) if ('knownIssue' in item) assert(typeof item.knownIssue === 'string' && item.knownIssue.trim() && item.knownIssue.length <= 60, `Invalid physics known issue ${item.id}`);
   const commands = read('package.json').scripts;
   assert(Array.isArray(catalog) && catalog.length > 0, 'Example catalog must not be empty');
   assert(Array.isArray(features) && features.length > 0, 'Feature catalog must not be empty');
@@ -53,6 +65,11 @@ export function loadExampleCatalog(root = process.cwd()) {
     assert(existsSync(resolve(root, dirname(item.source), 'package.json')), `Missing source package ${item.id}`);
     assert.match(item.command, /^pnpm dev:[a-z-]+$/);
     assert(commands[item.command.slice(5)], `Unknown command ${item.command}`);
+    if (item.parent !== undefined) {
+      const parent = catalog.find(other => other.id === item.parent.id);
+      assert(parent?.kind === 'lab' && parent.id !== item.id, `Invalid parent app ${item.id}`);
+      assert(featureIds.has(item.parent.feature) && item.parent.label?.trim(), `Invalid parent topic ${item.id}`);
+    }
     assert(Array.isArray(item.features) && new Set(item.features).size === item.features.length);
     for (const id of item.features) assert(featureIds.has(id), `Unknown related feature ${item.id}/${id}`);
     if (item.kind !== 'reference') {
@@ -61,6 +78,12 @@ export function loadExampleCatalog(root = process.cwd()) {
     }
   }
   assert(catalog.some(item => item.id === 'starter-runtime' && item.kind === 'lab'), 'The feature lab must remain a public entry');
+  // Every gallery card shows a captured thumbnail; regenerate with pnpm thumbnails:examples.
+  const thumbnails = exampleThumbnailEntries({catalog, features, physics}).map(entry => entry.name);
+  const thumbnailDir = resolve(root, EXAMPLE_THUMBNAIL_DIR);
+  for (const name of thumbnails) assert(existsSync(resolve(thumbnailDir, name)), `Missing gallery thumbnail ${name}; run pnpm thumbnails:examples`);
+  const extra = existsSync(thumbnailDir) ? readdirSync(thumbnailDir).filter(name => name.endsWith('.jpg') && !thumbnails.includes(name)) : [];
+  assert.deepEqual(extra, [], 'Unused gallery thumbnails');
   return catalog;
 }
 

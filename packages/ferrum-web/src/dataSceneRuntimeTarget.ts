@@ -158,6 +158,11 @@ export interface DataSceneRuntimeEngineAdapter extends SpatialEnvironmentCapabil
   supportsSpriteSurfaceMaterials?():boolean;
   supportsSpriteNineSlices?(): boolean;
   useDataScene(): void;
+  /** Activates a physics-omitted HD-2D actor scene on the legacy path when the
+   * untouched engine-owned defaults allow it, otherwise activates it normally. */
+  useLegacySpatialDataScene?(): boolean;
+  /** Read-only: whether `useLegacySpatialDataScene` would take the legacy path now. */
+  canUseLegacySpatialDataScene?(): boolean;
   preflightPhysics?(world: UnifiedPhysicsOptions, bodies: readonly CompiledDataScenePhysicsBody[], joints: readonly CompiledDataScenePhysicsJoint[], path: string, tilemap?: EncodedDataSceneCollisionTilemap): void;
   /** Publish the exact packet admitted by cold physics preflight. Required for graphical grids. */
   configureCollisionTilemap?(tilemap: EncodedDataSceneCollisionTilemap): boolean;
@@ -192,6 +197,22 @@ export function attachDataSceneRuntimeEngineAdapter(
     value: adapter,
   });
   return engine;
+}
+
+type LegacySpatialActorDocument = Pick<ResolvedSceneAuthoringDocument, "physics" | "spatial" | "gameplay">;
+/** @internal A physics-omitted HD-2D document on the documented heightSpan/AABB
+ * actor path. The planar default world cannot run its spatial actor or legacy
+ * combat navigation. The apply and the JSON progress guard share this test. */
+export function usesLegacySpatialActorPath(document: LegacySpatialActorDocument): boolean {
+  return document.physics === undefined && document.spatial !== undefined
+    && (document.spatial.actor !== undefined || document.gameplay?.combatNavigation !== undefined);
+}
+/** @internal Read-only: whether a full apply of this resolved document would
+ * activate the Data Scene on the legacy path of `engine` now. */
+export function dataSceneApplySelectsLegacySpatialPath(engine: FerrumEngine, document: LegacySpatialActorDocument): boolean {
+  const adapter = (engine as DataSceneRuntimeEngine)[DATA_SCENE_RUNTIME_ENGINE_ADAPTER];
+  return usesLegacySpatialActorPath(document) && adapter?.useLegacySpatialDataScene !== undefined
+    && adapter.canUseLegacySpatialDataScene?.() === true;
 }
 
 export function createDataSceneRuntimeTarget(
@@ -370,6 +391,7 @@ export function applyDataSceneAuthoringDocument(
   const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
   const nativePhysics = resolved.physics !== undefined
     || (typeof engine.physicsBackend === "function" && engine.physicsBackend() === "unified-3d");
+  const legacySpatialPhysics = usesLegacySpatialActorPath(resolved);
   let collisionTilemap: EncodedDataSceneCollisionTilemap | undefined;
   if (resolved.physics?.collisionTilemap !== undefined) {
     const tileTextureIds = new Map<string, number>();
@@ -543,7 +565,10 @@ export function applyDataSceneAuthoringDocument(
     if(preserveAnimationAndLod)continuity=prepareDataSceneAuthoringContinuity(engine,continuityMetadata,bindingPlan.instances,runtimeAdapter,`${path}.preserveAnimationAndLod`);
     forgetDataSceneProgressContext(engine);
     if (activateDataScene !== false) {
-      runtimeAdapter.useDataScene();
+      // The documented heightSpan/AABB actor path omits physics, and the planar
+      // default world cannot run it. Rust never drops a Data Scene's own world.
+      if (legacySpatialPhysics && runtimeAdapter.useLegacySpatialDataScene) runtimeAdapter.useLegacySpatialDataScene();
+      else runtimeAdapter.useDataScene();
     }
     if (resolved.physics) engine.configureUnifiedPhysics(resolved.physics);
     const variables = synchronizeDataSceneVariableStore(

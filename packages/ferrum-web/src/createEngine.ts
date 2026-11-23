@@ -58,7 +58,7 @@ import {
 import type { BuiltInShooterStateSnapshot } from "./builtInShooterStateSnapshot.js";
 import { resolvePhysicsSpec } from "./physicsSpec.js";
 import { requireNativeDebugGeometry } from "./physicsDebugCompatibility.js";
-import { configureInitialPhysics, configureDefaultGamePhysics, usesDefaultNativePhysics, resolveDefaultGamePhysics, resolveDefaultPhysicsPolicySpec, resolveInitialPhysicsSpec, synchronizeDefaultPhysicsMetadata } from "./physicsDefaults.js";
+import { configureInitialPhysics, configureDefaultGamePhysics, usesDefaultNativePhysics, resolveDefaultGamePhysics, resolveDefaultPhysicsPolicySpec, resolveInitialPhysicsSpec, activateLegacySpatialDataScene, legacySpatialDataSceneAvailable, synchronizeDefaultPhysicsMetadata } from "./physicsDefaults.js";
 import { registerLegacyJsonPhysicsRuntime } from "./physicsLegacyJsonRuntime.js";
 import type { ResolvedPhysicsSpec } from "./physicsSpec.js";
 import { finiteNumber, particlePresetId, resolveParticlePresetConfigForWasm, uint32Number } from "./particlePreset";
@@ -326,17 +326,21 @@ async function buildEngineFacade(
   const registeredParticlePresetIds = new Set<number>(detached?.metadata.particlePresetIds);
   // A restored file owns its actual saved policy. Old explicit/implicit legacy
   // files must not acquire new-Engine defaults while their facade is attached.
-  const nativeDefaultPolicy = usesDefaultNativePhysics(options)
+  const nativeDefaultPolicyAtCreation = usesDefaultNativePhysics(options)
     && (!detached || rustEngine.default_physics_policy_scene() !== 0);
+  // A physics-omitted HD-2D Data Scene can select legacy compatibility later;
+  // rolling that apply back restores the native policy. Rust owns the answer.
+  const nativeDefaultPolicy = (): boolean => nativeDefaultPolicyAtCreation
+    && rustEngine.default_physics_policy_scene() !== 0;
   const framePipeline: FramePipelineContext = {
     isAlive: () => !destroyed,
     bridge,
     rustEngine,
-    physicsSpec: detached ? structuredClone(detached.metadata.physicsSpec) : nativeDefaultPolicy ? {
+    physicsSpec: detached ? structuredClone(detached.metadata.physicsSpec) : nativeDefaultPolicyAtCreation ? {
       ...structuredClone(initialPhysicsSpec), solver: { ...initialPhysicsSpec.solver,
         fixedTimestep: rustEngine.fixed_timestep_enabled(), stepSeconds: Math.fround(initialPhysicsSpec.solver.stepSeconds) },
     } : structuredClone(initialPhysicsSpec),
-    physicsSpecScene: detached ? detached.metadata.physicsSpecScene : nativeDefaultPolicy ? rustEngine.default_physics_policy_scene() : undefined,
+    physicsSpecScene: detached ? detached.metadata.physicsSpecScene : nativeDefaultPolicyAtCreation ? rustEngine.default_physics_policy_scene() : undefined,
     lastViewportWidth: detached?.metadata.lastViewportWidth,
     lastViewportHeight: detached?.metadata.lastViewportHeight,
     viewportDirty: detached?.metadata.viewportDirty,
@@ -350,12 +354,19 @@ async function buildEngineFacade(
     viewportProvider,
     options,
   };
-  const synchronizePhysicsMetadata = nativeDefaultPolicy
-    ? () => synchronizeDefaultPhysicsMetadata(rustEngine, framePipeline, initialPhysicsSpec) : undefined;
+  const synchronizePhysicsMetadata = nativeDefaultPolicyAtCreation ? () => {
+    if (nativeDefaultPolicy()) {
+      synchronizeDefaultPhysicsMetadata(rustEngine, framePipeline, initialPhysicsSpec);
+    } else if (framePipeline.physicsSpecScene !== undefined) {
+      // After the legacy selection, report the same metadata as a legacy-created facade.
+      framePipeline.physicsSpec = structuredClone(initialPhysicsSpec);
+      framePipeline.physicsSpecScene = undefined;
+    }
+  } : undefined;
   framePipeline.synchronizePhysicsMetadata = synchronizePhysicsMetadata;
   const acceptPhysicsMetadata = (spec: ResolvedPhysicsSpec): void => {
     framePipeline.physicsSpec = structuredClone(spec);
-    if (nativeDefaultPolicy) framePipeline.physicsSpecScene = rustEngine.default_physics_policy_scene();
+    if (nativeDefaultPolicy()) framePipeline.physicsSpecScene = rustEngine.default_physics_policy_scene();
   };
 
   let frameInProgress = false;
@@ -431,9 +442,10 @@ async function buildEngineFacade(
   const setGameSpec = (spec: ShooterGameSpec): ResolvedShooterGameSpec => {
     requireAlive();
     synchronizePhysicsMetadata?.();
+    const nativePolicy = nativeDefaultPolicy();
     const targetPhysics = framePipeline.physicsSpecScene === 1 ? framePipeline.physicsSpec
-      : nativeDefaultPolicy ? resolveDefaultPhysicsPolicySpec(rustEngine, initialPhysicsSpec) : initialPhysicsSpec;
-    const policyPhysics = nativeDefaultPolicy
+      : nativePolicy ? resolveDefaultPhysicsPolicySpec(rustEngine, initialPhysicsSpec) : initialPhysicsSpec;
+    const policyPhysics = nativePolicy
       ? resolveDefaultGamePhysics(spec.physics, targetPhysics, options)
       : undefined;
     const resolved = applyShooterGameSpec(rustEngine, spec, {
@@ -449,7 +461,7 @@ async function buildEngineFacade(
       }
     }
     acceptPhysicsMetadata(resolved.physics);
-    if (nativeDefaultPolicy) {
+    if (nativePolicy) {
       // The retained native world or the actual scene switch already owns its
       // clock. Reapplying creation overrides would overwrite a local setup.
       applyPhysicsDebugLineOptions(rustEngine, options, resolved.physics);
@@ -688,7 +700,14 @@ async function buildEngineFacade(
 
   const configureAutoRigidBodyStep = (autoStep: boolean | PhysicsRigidBodyStepOptions): void => {
     requireAlive();
-    configureAutoRigidBodyStepOptions(rustEngine, autoStep);
+    const accepted = configureAutoRigidBodyStepOptions(rustEngine, autoStep);
+    // Native steps with the accepted gravity and CCD, so frame physics reports them. The
+    // compatibility backend keeps its separate Physics Spec gravity for arcade movement.
+    if (accepted && typeof rustEngine.physics_spec_backend_active === "function"
+      && rustEngine.physics_spec_backend_active()) {
+      synchronizePhysicsMetadata?.();
+      acceptPhysicsMetadata({ ...framePipeline.physicsSpec, ...accepted });
+    }
   };
 
   const setPhysicsDebugLinesEnabled = (enabled: boolean | PhysicsDebugOptions): void => {
@@ -1239,6 +1258,12 @@ async function buildEngineFacade(
     supportsSpriteLightMasks:()=>{requireAlive();return supportsSpriteLightMasks(rustEngine);},
     supportsSpriteSurfaceMaterials:()=>{requireAlive();return supportsSpriteSurface(rustEngine);},
     useDataScene,
+    useLegacySpatialDataScene: () => {
+      let legacy = false;
+      selectScene(() => { legacy = activateLegacySpatialDataScene(rustEngine, options); });
+      return legacy;
+    },
+    canUseLegacySpatialDataScene: () => { requireAlive(); return legacySpatialDataSceneAvailable(rustEngine, options); },
     spatialModelAssets: spec => {
       requireAlive();
       const registry = spatialModelRegistry(rustEngine);

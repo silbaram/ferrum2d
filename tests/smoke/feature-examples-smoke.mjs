@@ -69,6 +69,7 @@ async function pixelHash() {
   return {hash,colors:colors.size,...(emissiveRgb?{emissiveRgb}:{})};
 }
 const catalog = JSON.parse(await readFile('examples/shared/featureCatalog.json', 'utf8'));
+const topics = JSON.parse(await readFile('examples/shared/featureTopics.json', 'utf8'));
 const results = [];
 let browser, activePage;
 try {
@@ -104,8 +105,29 @@ try {
       assert.equal(initial.nativeState, 1, `${id} must actually run in native Playing state`);
       const learning=await checkLearningInitial(page,catalog.find(item=>item.id===id));
       assert(initial.entities <= 100 && initial.commands <= 400 && initial.drawCalls <= 64, `${id} initial scene/render budget exceeded`);
-      assert.equal(await page.locator('.feature-topics a').count(), catalog.length);
-      assert.equal(await page.locator('.feature-topics a[aria-current=page]').count(), 1);
+      assert.equal(await page.locator('.example-sidebar a').count(), catalog.length);
+      assert.equal(await page.locator('.example-sidebar a[aria-current=page]').count(), 1);
+      // "더 보기" holds the description, the scene this experiment loads, its public API, the lab
+      // sources and the engine numbers. It starts closed; the scene loads when its tab opens.
+      const code = page.locator('.example-code');
+      assert.deepEqual(await code.locator('[role=tab]').allTextContents(), ['설명', '씬 JSON', 'API', '코드 위치', '엔진 수치']);
+      assert.equal(await code.getAttribute('data-dataLines'), null, 'the scene file waits until its tab opens');
+      await code.getByRole('tab', { name: '씬 JSON', exact: true }).click();
+      await page.waitForFunction(() => document.querySelector('.example-code')?.dataset.dataLines);
+      assert.deepEqual(JSON.parse(await code.locator('.example-code-json').textContent()), scene, `${id} code view must show the loaded scene`);
+      const feature = catalog.find(item => item.id === id);
+      assert.equal(await code.locator('.example-code-api code').count(), feature.api.split('·').filter(text => text.trim()).length);
+      assert(await code.locator('.example-code-files a').count() >= 2);
+      if (id === 'animation') {
+        await code.getByRole('tab', { name: '씬 JSON', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+        assert.equal(await code.locator('[role=tab][aria-selected=true]').textContent(), 'API');
+        assert(await code.locator('#example-code-api').isVisible() && !(await code.locator('#example-code-data').isVisible()));
+        await page.keyboard.press('Home');
+        assert.equal(await code.locator('[role=tab][aria-selected=true]').textContent(), '설명');
+        // The toggle closes "더 보기" again.
+        await code.locator('.example-more-toggle').click();
+        assert.equal(await code.getAttribute('data-open'), 'false');
+      }
       assert.equal(await page.locator('.playground-progress').count(), 0);
       const pixels = await page.evaluate(pixelHash);
       // The original panel PNG deliberately has only five colors plus the canvas background.
@@ -116,12 +138,16 @@ try {
         assert.equal((await page.evaluate(pixelHash)).hash, pixels.hash, `${id} baseline changes without a feature edit`);
       }
       if (id === 'animation') {
-        const category = page.locator('.feature-categories button[data-topic=runtime]');
+        const category = page.locator('.example-sidebar button[data-topic=runtime]');
         await category.focus(); await page.keyboard.press('Enter');
-        assert.equal(await category.getAttribute('aria-pressed'), 'true');
-        assert.equal(await page.locator('.feature-topic-links a:not([hidden])').count(), catalog.filter(f => f.topic === 'runtime').length);
-        await page.locator('.feature-categories button[data-topic=sprites]').click();
-        assert(await page.locator('.feature-topics a[aria-current]').isVisible());
+        assert.equal(await category.getAttribute('aria-expanded'), 'true');
+        assert.equal(await page.locator('.example-sidebar a:visible').count(), catalog.filter(f => f.topic === 'runtime').length);
+        await page.locator('.example-sidebar button[data-topic=sprites]').click();
+        assert(await page.locator('.example-sidebar a[aria-current]').isVisible());
+        // Previous and next cross topic boundaries in topic order.
+        const order = topics.flatMap(topic => catalog.filter(f => f.topic === topic.id)), position = order.findIndex(f => f.id === id);
+        assert.match(await page.locator('.example-pager a[rel=next]').getAttribute('href'), new RegExp(`feature=${order[position + 1].id}(?:&|$)`));
+        assert.match(await page.locator('.example-pager a[rel=prev]').getAttribute('href'), new RegExp(`feature=${order[position - 1].id}(?:&|$)`));
         await control('pause').click();
         const paused = (await snapshot()).animation;
         await page.waitForTimeout(200); assert.deepEqual((await snapshot()).animation, paused);
@@ -153,7 +179,10 @@ try {
         assert.match(await page.locator('[data-value=destination]').textContent(), /이동할 수 없는/);
       }
       if (id === 'physics') {
-        await control('physics-rate').selectOption('30');
+        // Another fixed step needs a new native world, so the page reopens at that rate.
+        await Promise.all([page.waitForURL(/physicsRate=30/), control('physics-rate').selectOption('30')]);
+        await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().nativeState === 1, undefined, { timeout: 30000 });
+        assert.equal(await control('physics-rate').inputValue(), '30');
         await control('interpolate').check();
         await control('launch').click();
         await page.waitForFunction(() => {
@@ -240,17 +269,17 @@ try {
       await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(100);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${id} narrow overflow`);
       await checkLearningNarrow(page,id);
-      assert(await page.locator('.feature-topics').evaluate(e => e.getBoundingClientRect().height < 80), 'mobile navigation must stay compact');
-      assert.equal(await page.locator('.feature-topic-picker select option:checked').textContent(), catalog.find(f => f.id === id).title);
+      assert(await page.locator('.example-sidebar').evaluate(e => e.getBoundingClientRect().height < 80), 'mobile navigation must stay compact');
+      assert.equal(await page.locator('.example-picker select option:checked').textContent(), catalog.find(f => f.id === id).title);
       const bounds = await page.locator('canvas').boundingBox(); assert(bounds.width >= 300 && bounds.x >= 0 && bounds.x + bounds.width <= 390);
       const state = (await snapshot()).state;
       await control('pause').focus(); await page.keyboard.press('Enter'); assert.notEqual((await snapshot()).state, state);
       if (id === 'animation') {
-        const picker = page.locator('.feature-topic-picker select');
+        const picker = page.locator('.example-picker select');
         await picker.selectOption({ label: '에셋 로딩과 캐시' });
         await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().id === 'asset-loading');
         assert.equal((await snapshot()).backend, backend);
-        await page.locator('.feature-topic-picker select').selectOption({ label: '스프라이트 애니메이션' });
+        await page.locator('.example-picker select').selectOption({ label: '스프라이트 애니메이션' });
         await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().id === 'animation');
         assert.equal((await snapshot()).backend, backend);
       }
@@ -261,7 +290,7 @@ try {
       const resources = await page.evaluate(() => window.ferrumFeatureLab.destroy());
       console.log(`Destroyed ${backend}/${id}`);
       if (id === 'audio' || id === 'cutscene' || id === 'animation') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
-      assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview, .nine-slice-overlay, .feature-scene, .feature-lesson-intro, .feature-lesson-visual, .feature-particle-comparison').count(), 0);
+      assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview, .nine-slice-overlay, .feature-scene, .feature-lesson-actions, .feature-lesson-visual, .feature-particle-comparison').count(), 0);
       for (const key of ['textureCount', 'bufferCount', 'programCount', 'renderTargetCount']) assert.equal(resources[key], 0, `${id} leaked ${key}`);
       results.push({ backend, id, initial, pixels, learning, ...(lightingDirections ? {lightingDirections} : {}), ...(lightingQuality ? {lightingQuality} : {}), ...(shadowComparison?{shadowComparison}:{}), ...(nineSlice ? {nineSlice} : {}), controls: 'native state / GPU readback checked', narrow: true, resources });
       await page.setViewportSize({ width: 1440, height: 1000 });
@@ -296,15 +325,14 @@ try {
     await page.evaluate(() => document.fonts.ready);
     assert(await page.evaluate(() => document.fonts.check('13px "Ferrum Example UI"')), `${id} Korean font did not load`);
     if (id === 'breakout' || id === 'platformer') await smokeGuidedExample(page, id);
-    if (id === 'topdown-shooter') {
-      await smokeTopdownShowcase(page, 15000);
-      await page.locator('.shooter-feature-guide summary').click();
-    }
+    if (id === 'topdown-shooter') await smokeTopdownShowcase(page, 15000);
+    // Topics are listed under this game beside the stage; "해 보기" and "볼 것" lead the panel.
+    const topicLinks = page.locator('.example-sidebar .example-subitem');
     if (id === 'platformer') {
       await page.evaluate(() => window.ferrumRuntime.pause());
       for (const [index, x, y] of [[0, 260, 420], [1, 610, 272], [2, 760, 440]]) {
-        await page.locator('.example-guide select').selectOption(String(index));
-        await page.locator('.example-guide button').click();
+        await topicLinks.nth(index).click();
+        await page.locator('.example-try .example-guide-actions button').click();
         // Built-in controller entities need not own rigid bodies. Query the public native
         // transform buffer rather than the rigid-body-only diagnostic getPhysicsEntity.
         const actor = await page.evaluate(() => {
@@ -317,15 +345,19 @@ try {
       }
       await page.evaluate(() => window.ferrumRuntime.resume());
     } else {
-      const initial = await page.locator('.example-guide p').allTextContents();
-      await page.locator('.example-guide select').selectOption('1');
-      assert.notDeepEqual(await page.locator('.example-guide p').allTextContents(), initial);
-      assert.equal(await page.locator('.example-guide button').isVisible(), false);
+      const guide = () => page.locator('.example-try-action, .example-watch li').allTextContents();
+      const initial = await guide();
+      await topicLinks.nth(1).click();
+      assert.notDeepEqual(await guide(), initial);
+      assert.equal(await page.locator('.example-try .example-guide-actions button').isVisible(), false);
     }
-    await page.locator('.example-guide select').focus();
+    // Switching a topic stays on the page and records it in the address.
+    assert.equal(new URL(page.url()).searchParams.get('topic'), await page.locator('.example-subitem[aria-current]').getAttribute('data-topic'));
+    assert.equal((await page.locator('.demo-toolbar h1').textContent()).trim(), await page.locator('.example-subitem[aria-current]').textContent());
+    await topicLinks.first().focus();
     await page.locator('canvas').click();
     assert(await page.locator('canvas').evaluate(c => document.activeElement === c), `${id} guide trapped game keyboard focus`);
-    await page.locator('.example-guide a').click();
+    await page.locator('.example-try .example-guide-actions a').click();
     await page.waitForURL('**/*physicsDebugLines=true*');
     await page.waitForFunction(() => window.ferrumEngine?.entityCount() > 0);
     // Shooter's title scene has no active collision bodies; start through its public UI.

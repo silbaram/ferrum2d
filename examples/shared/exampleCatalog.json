@@ -6,31 +6,32 @@
     "features": ["animation", "camera", "physics", "lighting", "scenes"]
   },
   {
-    "id": "physics-sandbox", "kind": "lab", "title": "물리 심화 실험실", "path": "physics-sandbox/", "source": "examples/physics-sandbox/dist", "command": "pnpm dev:physics-sandbox",
+    "id": "physics-sandbox", "kind": "lab", "title": "물리 심화 실험실",
+    "parent": { "id": "starter-runtime", "feature": "physics", "label": "물리" }, "path": "physics-sandbox/", "source": "examples/physics-sandbox/dist", "command": "pnpm dev:physics-sandbox",
     "summary": "7개 시나리오에서 충돌체·접촉·센서·관절·고속 충돌·공간 질의를 관찰합니다.",
     "action": "시나리오를 선택하고 일시정지·한 프레임 진행·재질 조절을 사용하세요.", "observe": "충돌 영역과 접촉 신호, 속도·반발·감쇠가 어떻게 연결되는지 확인합니다.",
     "features": ["physics", "tilemap", "destructible-terrain"]
   },
   {
-    "id": "breakout", "kind": "game", "title": "충돌 반응 · Breakout", "path": "breakout/", "source": "examples/breakout/dist", "command": "pnpm dev:breakout",
+    "id": "breakout", "kind": "game", "title": "Breakout · 충돌 반응", "path": "breakout/", "source": "examples/breakout/dist", "command": "pnpm dev:breakout",
     "summary": "충돌 이벤트가 반사·벽돌 제거·점수·파티클로 이어지는 작은 게임입니다.",
     "action": "패들을 움직여 공을 반사하고 체험할 기능에서 충돌 영역을 켜보세요.", "observe": "공의 반사와 벽돌 제거, 점수와 파티클이 같은 충돌에서 함께 바뀝니다.",
     "features": ["physics", "particles", "input"]
   },
   {
-    "id": "platformer", "kind": "game", "title": "플랫폼 이동 · Platformer", "path": "platformer/", "source": "examples/platformer/dist", "command": "pnpm dev:platformer",
+    "id": "platformer", "kind": "game", "title": "Platformer · 플랫폼 이동", "path": "platformer/", "source": "examples/platformer/dist", "command": "pnpm dev:platformer",
     "summary": "이동 컨트롤러와 발판의 규칙을 점프·착지·탑승으로 연결합니다.",
     "action": "방향키 또는 A/D와 Space로 이동하세요. 체험할 기능에서 발판 위치로 이동할 수 있습니다.", "observe": "단방향 발판의 통과·착지와 움직이는 발판에 탑승했을 때의 이동을 비교합니다.",
     "features": ["input", "physics", "camera", "hd2d-movement"]
   },
   {
-    "id": "topdown-shooter", "kind": "game", "title": "전투 구성 · Neon Outpost", "path": "topdown-shooter/", "source": "examples/topdown-shooter/dist", "command": "pnpm dev:topdown",
+    "id": "topdown-shooter", "kind": "game", "title": "Neon Outpost · 전투 구성", "path": "topdown-shooter/", "source": "examples/topdown-shooter/dist", "command": "pnpm dev:topdown",
     "summary": "Game Spec의 이동·사격·적 웨이브를 HUD·조명·오디오와 연결합니다.",
     "action": "시작 후 WASD로 이동하고 포인터로 조준해 발사하세요. P/Esc로 일시정지합니다.", "observe": "적 행동과 웨이브, 충돌·점수·HUD를 확인하고 화면 효과만 따로 꺼서 비교합니다.",
     "features": ["projectiles", "ai-combat", "hud", "particles", "postprocess"]
   },
   {
-    "id": "pixel-art", "kind": "game", "title": "도트 자산 · 작은 빛의 정원", "path": "pixel-art/", "source": "examples/pixel-art/dist", "command": "pnpm dev:pixel-art",
+    "id": "pixel-art", "kind": "game", "title": "작은 빛의 정원 · 도트 자산", "path": "pixel-art/", "source": "examples/pixel-art/dist", "command": "pnpm dev:pixel-art",
     "summary": "편집 가능한 도트 원본이 애니메이션·팔레트·노멀 조명으로 이어지는 과정을 보여줍니다.",
     "action": "바닥을 클릭해 걷고 조명·팔레트·효과를 바꾸세요. 제작 과정에서 도트 원본과 PNG를 내려받을 수 있습니다.", "observe": "같은 원본의 프레임 재생과 색상 교체, 표면 방향에 반응하는 조명을 비교합니다.",
     "features": ["animation", "navigation", "lighting", "postprocess"]

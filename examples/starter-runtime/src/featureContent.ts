@@ -3,14 +3,14 @@ import { DialogueSession, QuestLog, LocalizationBundle, createHudOverlayState, d
 import type { FeatureContext, FeatureExtra } from "./featureExtras";
 
 export const contentControls: Record<string, string> = {
-  dialogue: `<p>화면 안 대화창에서 선택하세요. Tab으로 이동하고 Enter로 결정할 수 있습니다.</p><output data-value="quest-status" role="status">퀘스트: 시작 전</output>`,
+  dialogue: `<p>화면 안 대화창은 엔진 UiOverlay가 생성합니다. 일시정지하면 선택도 멈춥니다.</p><output data-value="quest-status" role="status">퀘스트: 시작 전</output>`,
   hud: `<div class="feature-buttons"><button data-control="damage">피해 −25</button><button data-control="heal">회복 +25</button></div>
     <label>HUD 언어<select data-control="locale"><option value="ko">한국어</option><option value="en">English</option></select></label>
     <label>HUD 글자 크기<select data-control="text-size"><option value="14">기본 · 14px</option><option value="18">크게 · 18px</option><option value="22">더 크게 · 22px</option></select></label>
     <label>HUD 대비<select data-control="contrast"><option value="default">기본</option><option value="high-contrast">높은 대비</option></select></label>`,
 };
 export const contentHelp: Record<string, string> = {
-  dialogue: "화면 안 대화창은 엔진 UiOverlay가 생성합니다. 일시정지하면 선택도 멈춥니다.",
+  dialogue: "화면 안 대화창에서 선택하세요. Tab으로 이동하고 Enter로 결정할 수 있습니다.",
   hud: "화면 안 HUD가 실제 예제 체력 변수를 표시합니다. 언어·글자·대비 설정은 이 HUD에 적용됩니다.",
 };
 

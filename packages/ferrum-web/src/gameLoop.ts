@@ -1,5 +1,8 @@
 export type FrameCallback = (deltaSeconds: number) => void;
 
+/** The native variable clock rejects positive intervals below 0.1 ms (Rust MIN_INTERVAL). */
+const MIN_FRAME_DELTA_SECONDS = 0.0001;
+
 export class GameLoop {
   private rafId: number | null = null;
   private running = false;
@@ -74,6 +77,13 @@ export class GameLoop {
     const rawDeltaSeconds = (timestampMs - this.lastTimestampMs) / 1000;
     if (!Number.isFinite(rawDeltaSeconds) || rawDeltaSeconds < 0) {
       this.lastTimestampMs = timestampMs;
+      this.scheduleNextFrame();
+      return;
+    }
+
+    // Browsers occasionally deliver frame timestamps microseconds apart. Keep the
+    // previous timestamp so the gap accumulates into the next usable interval.
+    if (rawDeltaSeconds > 0 && rawDeltaSeconds < MIN_FRAME_DELTA_SECONDS) {
       this.scheduleNextFrame();
       return;
     }

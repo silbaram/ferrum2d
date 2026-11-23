@@ -49,6 +49,23 @@ test("implicit native Game Spec settings match applied metadata and explicit leg
   }finally{engine.destroy();legacy.destroy();}
 });
 
+test("native automatic step settings publish the accepted gravity and CCD in frame physics metadata",async()=>{
+  const engine=await createEngine(),legacy=await createEngine(undefined,undefined,undefined,undefined,{physicsBackend:"legacy"});
+  try{
+    engine.useDataScene();
+    const frame=nativeFileEngineOwner(engine).frame;
+    engine.configureAutoRigidBodyStep({gravityX:0,gravityY:300,continuous:false,velocityIterations:8,positionIterations:6});
+    equal(frame.physicsSpec.gravityX,0);equal(frame.physicsSpec.gravityY,300);equal(frame.physicsSpec.continuous,false);
+    // A native on/off toggle keeps the accepted settings and therefore the metadata.
+    engine.configureAutoRigidBodyStep(false);engine.configureAutoRigidBodyStep(true);
+    equal(frame.physicsSpec.gravityY,300);equal(frame.physicsSpec.continuous,false);
+    // The compatibility backend keeps its Physics Spec gravity separate from rigid-body stepping.
+    legacy.useDataScene();
+    const legacyFrame=nativeFileEngineOwner(legacy).frame,legacyGravity=legacyFrame.physicsSpec.gravityY;
+    legacy.configureAutoRigidBodyStep({gravityY:300});equal(legacyFrame.physicsSpec.gravityY,legacyGravity);
+  }finally{engine.destroy();legacy.destroy();}
+});
+
 test("file install and detached facade preserve saved explicit legacy/native policy without creation reapplication",async()=>{
   for(const legacy of [false,true]){
     const source=await createEngine(undefined,undefined,undefined,undefined,legacy?{physicsBackend:"legacy"}:{}),bridge=await WasmBridge.init();

@@ -3,8 +3,9 @@ type Data = Record<string, unknown>;
 const record = (value: unknown): Data => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Data : {};
 const num = (value: unknown, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
 const text = (value: unknown, fallback = "—") => typeof value === "string" || typeof value === "number" ? String(value) : fallback;
-/** Small presentation diagrams fed by the existing native/platform observations. */
-export function createLessonVisual(id: string, root: HTMLElement, scene: HTMLElement) {
+/** Small presentation diagrams fed by the existing native/platform observations. Status boards draw over the
+ * scene; comparison cards go to `host`, the description in "더 보기". */
+export function createLessonVisual(id: string, root: HTMLElement, scene: HTMLElement, host: HTMLElement) {
     const element = document.createElement("section");
     element.className = "feature-lesson-visual";
     element.dataset.kind = id;
@@ -360,7 +361,7 @@ export function createLessonVisual(id: string, root: HTMLElement, scene: HTMLEle
     if (element.classList.contains("feature-lesson-dashboard"))
         scene.append(element);
     else
-        scene.after(element);
+        host.prepend(element);
     return { update, destroy() {
             element.remove();
             overlay?.remove();

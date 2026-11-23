@@ -11,6 +11,8 @@ import {
 import path from "node:path";
 import { githubHeadingId, stripInlineMarkdown } from "../lib/markdown-heading-ids.mjs";
 import { loadExampleCatalog } from "../validate/check-example-catalog.mjs";
+import { renderExampleGallery } from "./example-gallery.mjs";
+import { EXAMPLE_THUMBNAIL_DIR } from "../../examples/shared/gallery/thumbnailNames.mjs";
 
 const outputDir = "dist-pages";
 const docsSourceDir = "docs";
@@ -63,7 +65,7 @@ for (const { example, source, html } of exampleBuilds) {
 }
 
 buildDocsSite();
-writeFileSync(path.join(outputDir, "index.html"), entryHtml());
+buildExampleGallery();
 
 function buildDocsSite() {
   const markdownFiles = collectFiles(docsSourceDir)
@@ -175,25 +177,31 @@ function firstHeading(markdown) {
   return match ? stripInlineMarkdown(match[1].trim()) : "Ferrum2D Docs";
 }
 
-/** Preserve the site's entry URL without maintaining a second example list. */
-function entryHtml() {
-  return `<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="refresh" content="0; url=./starter-runtime/" />
-  <title>Ferrum2D · 엔진 기능 실험실</title>
-</head>
-<body><a href="./starter-runtime/">엔진 기능 실험실 열기</a></body>
-</html>`;
+/** The site entry is the example gallery, rendered from the shared catalogs. */
+function buildExampleGallery() {
+  const galleryDir = path.join(outputDir, "gallery");
+  mkdirSync(galleryDir, { recursive: true });
+  for (const file of ["gallery.css", "gallery.mjs", "LICENSE-lucide.txt"]) {
+    cpSync(path.join("examples/shared/gallery", file), path.join(galleryDir, file));
+  }
+  cpSync(EXAMPLE_THUMBNAIL_DIR, path.join(galleryDir, "thumbs"), { recursive: true });
+  const read = file => JSON.parse(readFileSync(file, "utf8"));
+  const html = renderExampleGallery({
+    catalog: examples,
+    features: read("examples/shared/featureCatalog.json"),
+    topics: read("examples/shared/featureTopics.json"),
+    physics: read("examples/shared/physicsExamples.json"),
+    icons: read("examples/shared/gallery/lucideIcons.json").icons,
+    thumbnail: name => `./gallery/thumbs/${name}`,
+  });
+  writeFileSync(path.join(outputDir, "index.html"), html);
 }
 
 function docPageHtml(page, pages) {
   const isEnglish = page.language === "en";
   const currentDir = path.posix.dirname(page.outputRelativePath);
   const rootHref = relativeHref(currentDir, isEnglish ? "en/index.html" : "index.html");
-  const siteRootHref = relativeHref(path.posix.join("docs", currentDir), "starter-runtime/index.html");
+  const siteRootHref = relativeHref(path.posix.join("docs", currentDir), "index.html");
   const counterpartSource = isEnglish ? page.sourceRelativePath.slice(3) : `en/${page.sourceRelativePath}`;
   const counterpart = pages.find((item) => item.sourceRelativePath === counterpartSource);
   const languageHref = relativeHref(currentDir, counterpart?.outputRelativePath ?? (isEnglish ? "index.html" : "en/index.html"));

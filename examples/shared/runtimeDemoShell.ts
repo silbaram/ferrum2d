@@ -1,4 +1,4 @@
-import { createExampleHeader } from "./exampleHeader";
+import { createExampleHeader, type ExampleTrailItem } from "./exampleHeader";
 export { cleanupRuntimeDemoResources } from "./exampleLifetime";
 
 export interface RuntimeDemoFrameReport {
@@ -78,6 +78,8 @@ export interface RuntimeDemoUiAction {
 export interface RuntimeDemoShellOptions {
   title: string;
   exampleId?: string;
+  /** Path steps after the example's own place in the top bar, such as a lab topic. */
+  trail?: readonly ExampleTrailItem[];
   locale?: "en" | "ko";
   /** Reapply example-specific bindings once the native reset reaches Playing. */
   afterReset?: () => void;
@@ -106,6 +108,8 @@ export interface RuntimeDemoControls {
 export interface RuntimeDemoShell {
   canvas: HTMLCanvasElement;
   stage: HTMLElement;
+  /** Metric list beside the stage; detail pages move it into "더 보기". */
+  metrics: HTMLElement;
   debugRoot: HTMLElement;
   attachRuntime(runtime: RuntimeDemoRuntime): void;
   queueStart(): void;
@@ -195,7 +199,7 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
   const debugRoot = document.createElement("div");
 
   shell.className = "demo-shell";
-  if (options.exampleId) shell.append(createExampleHeader(options.exampleId));
+  if (options.exampleId) shell.append(createExampleHeader(options.exampleId, options.trail));
   toolbar.className = "demo-toolbar";
   actions.className = "demo-actions";
   actions.setAttribute("role", "group");
@@ -269,6 +273,7 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
   return {
     canvas,
     stage,
+    metrics,
     debugRoot,
     attachRuntime(nextRuntime) {
       removePageHide?.();

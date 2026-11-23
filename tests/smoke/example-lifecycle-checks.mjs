@@ -117,34 +117,36 @@ export async function checkExampleLifecycles(browser, base) {
 
 /** The most recently selected scenario wins, including a slow stale request and recovery. */
 export async function checkPhysicsScenarioRequests(browser, base) {
-  const page = await browser.newPage(); page.setDefaultTimeout(15000);
+  // Wide enough for the scenario list beside the canvas; each click switches in place.
+  const page = await browser.newPage({viewport:{width:1440,height:900}}); page.setDefaultTimeout(15000);
   const errors = []; page.on('pageerror', error => errors.push(error.stack ?? error.message));
   let release;
   try {
     await page.goto(new URL('physics-sandbox/', base).href);
     await page.waitForFunction(() => window.ferrumPhysicsSandboxSmokeFrame?.demoId);
-    const options = await page.locator('.scenario-select option').evaluateAll(options => options.map(o => o.value));
+    const options = await page.locator('.example-sidebar-list [data-scenario]').evaluateAll(items => items.map(item => item.dataset.scenario));
+    const choose = id => page.locator(`.example-sidebar-list [data-scenario="${id}"]`).click();
     const older = options[1], latest = options[2];
     let arrive, timer;
     const gate = new Promise(resolve => { release = resolve; }), arrival = new Promise(resolve => { arrive = resolve; });
     const slow = `**/demos/${older}.physics.json`;
     await page.route(slow, async route => { arrive(); await gate; try { await route.continue(); } catch {} });
-    await page.locator('.scenario-select').selectOption(older);
+    await choose(older);
     try { await Promise.race([arrival, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Slow scenario request not reached')), 15000); })]); }
     finally { clearTimeout(timer); }
-    await page.locator('.scenario-select').selectOption(latest);
+    await choose(latest);
     await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, latest);
     release(); await page.waitForTimeout(250);
-    assert.equal(await page.locator('.scenario-select').inputValue(), latest);
+    assert.equal(await page.locator('.example-picker select').inputValue(), latest);
     assert.equal(await page.evaluate(() => window.ferrumPhysicsSandboxSmokeFrame.demoId), latest);
     await page.unroute(slow);
     await page.route(slow, route => route.fulfill({status:503, body:'Scenario failure fixture'}));
-    await page.locator('.scenario-select').selectOption(older);
+    await choose(older);
     await page.waitForSelector('.error-box:not([hidden])');
     await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, latest);
     assert.equal(await page.evaluate(() => window.ferrumPhysicsSandboxSmokeFrame.demoId), latest, 'failed request must retain the last valid world');
     await page.unroute(slow);
-    await page.locator('.scenario-select').selectOption(older);
+    await choose(older);
     await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, older);
     assert.deepEqual(errors, [], 'handled scenario failures must not become unhandled rejections');
     return {older, latest, staleResponseIgnored:true, failedRequestRetainsWorld:true, recovered:true};

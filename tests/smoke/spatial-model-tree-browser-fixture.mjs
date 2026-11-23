@@ -147,7 +147,8 @@ export async function probeSpatialTree(scene, canvas) {
   engine.setPhysicsBodyPosition(handles.actor,0,8);engine.setPhysicsBodyHeightSpan(handles.tree,{floorId:1,elevation:16,height:40});await wait();
   const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:document}))),before=image();
   const registry=createSceneInstanceHandleRegistry();let frame;
-  const fresh=await createEngine(state=>{frame=state;},undefined,undefined,()=>renderer.viewportSize());
+  // JSON progress restore is compatibility-only for this physics-omitted scene.
+  const fresh=await createEngine(state=>{frame=state;},undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });
   try {
     fresh.setViewportSize(renderer.viewportSize().width,renderer.viewportSize().height);
     check(fresh.registerDataSceneSpatialModel("tree",assets.get("tree")),"fresh tree registration failed");

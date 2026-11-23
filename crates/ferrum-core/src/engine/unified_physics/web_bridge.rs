@@ -126,6 +126,23 @@ impl Engine {
         self.select_legacy_physics_defaults()
     }
 
+    /// `use_data_scene` for a physics-omitted HD-2D document that uses the
+    /// heightSpan/AABB actor path. Accepted on a legacy Engine, or for an actual
+    /// switch from a built-in scene while the engine-owned native defaults are
+    /// untouched; the Data Scene then runs without a native world, as after
+    /// `configure_legacy_physics_defaults`. False changes nothing and the caller
+    /// activates the Data Scene normally.
+    pub fn use_legacy_data_scene(&mut self) -> bool {
+        self.activate_legacy_data_scene()
+    }
+
+    /// Read-only `use_legacy_data_scene` admission: true exactly when that
+    /// call would activate the Data Scene on the legacy path now. Changes
+    /// nothing, so a JSON progress restore can preflight the same decision.
+    pub fn can_use_legacy_data_scene(&self) -> bool {
+        self.legacy_data_scene_available()
+    }
+
     /// Version 1 selects planar native defaults across subsequent scene changes.
     pub fn default_physics_policy_version(&self) -> u32 {
         1

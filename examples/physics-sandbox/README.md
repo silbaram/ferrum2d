@@ -6,18 +6,29 @@ Ferrum2D Physics Showcase Lab은 Physics Spec으로 작성한 rigid body, collid
 
 ## 화면과 재생 기준
 
+- 기능 실험실·게임 데모와 같은 상세 틀(`examples/shared/exampleDetail.css`)을 쓴다. 화면 폭이 1280px 이상이면 캔버스 왼쪽에
+  시나리오 7개를 갤러리와 같은 썸네일·분류·알려진 문제 표시와 함께 나열하고, 더 좁으면 실행 화면 위 선택 상자를 쓴다.
+  누르면 페이지를 다시 열지 않고 바꾸며, 주소의 `?demo=`가 따라 바뀌어 그대로 공유할 수 있다.
+- 실행 화면 위에 시나리오 이름과 한 문장, 알려진 문제가 있으면 이름 옆 작은 표시(내용은 마우스를 올리면 보임)를 둔다. 오른쪽에는
+  실행·일시정지·한 프레임·리셋 아이콘과 상태 표시가 있다. 목록의 알려진 문제는 빨간 점이다.
+- 오른쪽 '해 보기'는 시나리오 동작 버튼, 캔버스에서 고른 물체의 상태, 접힌 '재질 값 바꾸기'다. '볼 것'은 시나리오의 관찰 포인트다.
+  디버그 표시 선택은 실행 화면 아래 한 줄이다. 실행이 멈추면 그 아래 한 줄로 알리고, '자세히'가 엔진 수치 탭을 연다.
+- 레이아웃 아래 '더 보기'는 처음에 닫혀 있다. 설명(실험실 목적·관련 기능 실험·알려진 문제), 지금 시나리오의 Physics Spec(시나리오를 바꾸면
+  따라 바뀜), 공개 API, 코드 위치, 엔진 수치(실행 상태·경고·물리 설정·물리 신호·마지막 오류) 탭이다.
+  실행 화면 바로 아래 이전·다음은 카탈로그 순서의 시나리오로 제자리에서 바꾼다.
 - 시나리오에 선언한 논리 화면(현재 800×480)과 카메라 중심을 사용한다. 기본 Shooter 캐릭터가 실험에 섞이지 않는다.
 - 레터박스·배율·작은 창에서 `createDataSceneView(...)`로 포인터를 같은 월드 좌표로 변환한다. 본 물체를 클릭하면 해당 native body를 선택한다.
 - 물체 형상은 native 충돌체 선으로 표시한다. 충돌체 표시를 끄면 형상선이 숨겨지며, label과 UI는 유지된다.
 - 이 실험실은 빈 Data Scene을 paused로 두고 `stepRigidBodies(...)`로 물리만 직접 진행한다. 일시정지는 물체를 멈추고, 한 프레임은 solver를 한 번 호출한다. UI/frame loop는 계속 실행한다.
+- native step이 거절되면 world를 일시정지하고 상태를 "오류"로 바꿔 원인을 표시한다. 리셋이나 다른 시나리오가 world를 다시 만든다. 현재 강체·충돌체·접촉·관절 시나리오는 회전 상자 접촉의 운동 증명 한계로 1~2초 안에 멈춘다([통합 3D 물리 계획](../../docs/planning/unified-3d-physics-plan.md#미해결-회전-상자-접촉의-운동-증명-2026-11-22)).
 - `조회 물체`와 기존 smoke 필드 `visibleBodyCount`는 조회한 body 상태 수다. 화면 안에 실제 포함된 물체 수를 뜻하지 않는다. 카메라·선택·정지·단일 스텝은 별도 브라우저 검증으로 확인한다.
 
 ## 확인 기술
 
 | 기술 | 설명 |
 | --- | --- |
-| Physics Spec catalog | `public/catalog.json`이 scenario, 설명, focus body, action, smoke threshold를 관리한다. |
-| Body/collider debug | Rust core physics debug line과 entity-anchored bitmap label로 body, collider, sleep 상태를 표시한다. |
+| Physics Spec catalog | `public/catalog.json`이 scenario 사양 경로, 설명, focus body, action, smoke threshold를 관리한다. 시나리오 표시 이름은 기능 실험실과 같은 `examples/shared/physicsExamples.json`에서 읽는다. |
+| Body/collider debug | Rust core physics debug line과 entity-anchored bitmap label로 body, collider, sleep 상태를 표시한다. 캔버스 라벨은 영문 대문자 디버그 글꼴을 쓰며, 이웃한 관찰 대상은 라벨 높이를 번갈아 둔다. |
 | Contact visualization | `queryBodyContacts(...)`, `queryBodyManifolds(...)`, `queryRigidContactImpulses(...)` 결과를 engine debug line primitive로 표시한다. |
 | Joint visualization | Rust core가 resolved joint의 anchor와 constraint를 같은 debug line buffer에 생성한다. |
 | Scene query demo | pointer 위치를 raycast target으로 사용하고 arrow, hit circle, hit normal을 표시한다. |
@@ -44,7 +55,7 @@ http://localhost:5173/?debug=true
 
 한글 UI는 기존 Noto Sans KR subset을 재사용하며 OFL 고지와 출처는 `public/fonts/`에 포함한다.
 
-시나리오·조작·관찰 패널은 어두운 작업영역과 주황색 선택 표시로 기능 실험실과 시각적 기준을 맞춘다.
+제목 줄·목록·패널·더 보기·이전/다음은 기능 실험실과 같은 Pixelforge 공용 틀이며, 캔버스 안 HUD와 디버그 라벨은 이 실험실의 표현을 유지한다.
 
 ## Scenario Catalog
 

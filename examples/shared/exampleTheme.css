@@ -16,17 +16,37 @@
   --example-render: #7aa2ff;
   --example-runtime: #6ee7b7;
   --example-physics: #38d5e8;
+  --example-behavior: #c084fc;
+  --example-collision: #ff8a65;
+  --example-audio: #f97316;
+  --example-danger: #ff6b6b;
+  --example-pressed: #202b3a;
+  --example-hairline: #1b2430;
   --example-font: "Ferrum Example UI", system-ui, sans-serif;
   --example-radius: 2px;
   font-family: var(--example-font);
 }
 
 .example-header { max-width: 1240px; margin: 0 auto 16px; color: var(--example-text); font: 13px/1.6 var(--example-font); }
-.example-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--example-border); }
+/* Pixelforge top bar shared by every example page, matching the gallery's bar. */
+.example-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 40px; padding: 4px 12px;
+  background: var(--example-panel); border: 1px solid var(--example-hairline); border-radius: 4px; }
+.example-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-left: auto; min-width: 0; }
+.example-links > a { color: var(--example-muted); text-decoration: none; }
+.example-links > a:is(:hover, :focus-visible) { color: var(--example-text); }
 .example-brand { color: var(--example-text); font-weight: 700; font-size: 14px; }
+a.example-brand { text-decoration: none; }
+a.example-brand:hover { color: var(--example-text); text-decoration: underline; text-underline-offset: 2px; }
 .example-breadcrumb { color: var(--example-accent); border-left: 1px solid var(--example-border); padding-left: 16px; }
-.example-navigation > a { color: var(--example-muted); text-decoration: none; }
-.example-switcher { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; color: var(--example-muted); }
+.example-breadcrumb a { color: var(--example-muted); text-decoration: none; }
+.example-breadcrumb a:is(:hover, :focus-visible) { color: var(--example-text); text-decoration: underline; }
+/* Detail pages: the page's place as a path after the brand, such as `› 기능 실험 › 조명·그림자`. */
+.example-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; margin-left: -8px; color: var(--example-subtle); }
+.example-trail > *::before { content: "›"; display: inline-block; margin-right: 8px; color: var(--example-subtle); }
+.example-trail a { color: var(--example-muted); text-decoration: none; }
+.example-trail a:is(:hover, :focus-visible) { color: var(--example-text); text-decoration: underline; text-underline-offset: 2px; }
+.example-trail [aria-current] { color: var(--example-text); }
+.example-switcher { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--example-muted); }
 .example-header :is(select, button) { color: var(--example-text); background: var(--example-raised); border: 1px solid var(--example-border); border-radius: var(--example-radius); font: inherit; height: 32px; min-width: 0; max-width: 100%; padding: 0 8px; }
 .example-header :is(a, select, summary):focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
 .example-purpose { margin: 12px 0 8px; color: var(--example-muted); }
@@ -42,7 +62,8 @@
 @media (max-width: 700px) {
   .example-navigation { gap: 8px 12px; }
   .example-breadcrumb { padding-left: 12px; }
-  .example-switcher { flex-basis: 100%; margin-left: 0; }
+  .example-links { flex-basis: 100%; margin-left: 0; }
+  .example-switcher { flex: 1 1 100%; }
   .example-switcher select { flex: 1; width: 0; }
   .example-learning dl { grid-template-columns: minmax(0,1fr); gap: 4px; }
   .example-learning dd + dt { margin-top: 8px; }

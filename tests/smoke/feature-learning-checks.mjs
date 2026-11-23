@@ -1,22 +1,27 @@
 import assert from 'node:assert/strict';
 
 async function assertSettingsKeepPreview(page,id) {
-  const original=await page.evaluate(()=>({x:scrollX,y:scrollY,details:[...document.querySelectorAll('.feature-panel > details')].map(e=>e.open)}));
+  const original=await page.evaluate(()=>({x:scrollX,y:scrollY,details:[...document.querySelectorAll('.feature-panel details')].map(e=>e.open)}));
   try {
     await page.evaluate(()=>{
-      for(const details of document.querySelectorAll('.feature-panel > details'))details.open=true;
+      for(const details of document.querySelectorAll('.feature-panel details'))details.open=true;
       window.scrollTo(0,document.querySelector('.feature-preview').getBoundingClientRect().top+scrollY-12);
     });
     const before=await page.evaluate(()=>({y:scrollY}));
     // Keyboard focus must reach the bottom of the inspector without losing the scene.
-    await page.locator('.feature-panel a').last().focus();
+    // Focus must move to the control; refocusing an already focused control does not scroll.
+    await page.evaluate(()=>document.activeElement?.blur());
+    // Some experiments are played inside the scene (dialogue); their "해 보기" has nothing to focus.
+    const focusable=page.locator('.feature-panel').locator('a[href]:visible, button:not([disabled]):visible, input:visible, select:visible, summary:visible');
+    if(!await focusable.count()) return;
+    await focusable.last().focus();
     const result=await page.evaluate(()=>{
       const canvas=document.querySelector('canvas').getBoundingClientRect(),preview=document.querySelector('.feature-preview').getBoundingClientRect(),panel=document.querySelector('.feature-panel'),r=panel.getBoundingClientRect(),target=document.activeElement.getBoundingClientRect();
-      return {y:scrollY,canvas:canvas.toJSON(),preview:preview.toJSON(),target:target.toJSON(),panel:r.toJSON(),height:innerHeight};
+      return {y:scrollY,canvas:canvas.toJSON(),preview:preview.toJSON(),target:target.toJSON(),panel:r.toJSON(),height:innerHeight,active:document.activeElement.outerHTML.slice(0,120)};
     });
     assert(result.preview.top>=-1&&result.preview.bottom<=result.height+1&&result.canvas.top<result.preview.bottom&&result.canvas.bottom>result.preview.top,`${id}: settings focus hid the preview: ${JSON.stringify(result)}`);
     assert(Math.abs(result.y-before.y)<=1,`${id}: settings focus scrolled the page instead of the inspector`);
-    assert(result.target.top>=result.panel.top&&result.target.bottom<=result.panel.bottom,`${id}: lower settings must be reachable by keyboard`);
+    assert(result.target.top>=result.panel.top&&result.target.bottom<=result.panel.bottom,`${id}: lower settings must be reachable by keyboard: ${JSON.stringify({active:result.active,target:result.target,panel:result.panel})}`);
     assert(result.panel.left>=result.preview.right-1||result.panel.top>=result.preview.bottom-1,`${id}: pinned preview covered the settings`);
     // Scrolling past the end must not chain into a page scroll.
     await page.locator('.feature-panel').evaluate(panel=>{panel.scrollTop=panel.scrollHeight;});
@@ -27,7 +32,7 @@ async function assertSettingsKeepPreview(page,id) {
   } finally {
     await page.evaluate(original=>{
       document.activeElement?.blur();
-      document.querySelectorAll('.feature-panel > details').forEach((e,i)=>{e.open=original.details[i];});
+      document.querySelectorAll('.feature-panel details').forEach((e,i)=>{e.open=original.details[i];});
       document.querySelector('.feature-panel').scrollTop=0;
       window.scrollTo(original.x,original.y);
     },original);
@@ -63,27 +68,36 @@ async function assertRoleBounds(page,id) {
   return result.visible;
 }
 
+const sentences=text=>text.split(/(?<=[.!?])\s+/).map(item=>item.trim()).filter(Boolean);
+
 export async function checkLearningInitial(page,feature) {
-  assert.equal(await page.locator('.feature-lesson-intro h2').textContent(),feature.lesson.useCase);
-  assert.equal(await page.locator('.feature-lesson-steps li').count(),feature.lesson.steps.length);
-  assert.equal(await page.locator('.feature-lesson-legend li').count(),feature.lesson.legend.length);
-  for(const selector of feature.lesson.actions) assert(await page.locator(selector).evaluateAll(elements=>elements.every(element=>!!element.closest('.feature-lesson-actions'))),`${feature.id}: primary actions must stay next to the scene`);
+  // The first screen says what this is, what to try and what to watch; the lesson waits in "더 보기".
+  assert.equal((await page.locator('.demo-toolbar h1').textContent()).trim(),feature.title);
+  assert.equal(await page.locator('.demo-toolbar .example-subtitle').textContent(),feature.summary);
+  assert.deepEqual(await page.locator('.example-watch li').allTextContents(),sentences(feature.observe));
+  assert.equal(await page.locator('.example-code').getAttribute('data-open'),'false','"더 보기" starts closed');
+  assert.equal(await page.locator('.example-more-body').isHidden(),true);
+  assert.equal(await page.locator('.feature-about .feature-use-case').textContent(),feature.lesson.useCase);
+  assert.equal(await page.locator('.feature-about .feature-lesson-steps li').count(),feature.lesson.steps.length);
+  assert.equal(await page.locator('.feature-about .feature-lesson-legend li').count(),feature.lesson.legend.length);
+  for(const selector of feature.lesson.actions) assert(await page.locator(selector).evaluateAll(elements=>elements.every(element=>!!element.closest('.example-try .feature-lesson-actions'))),`${feature.id}: primary actions must lead "해 보기"`);
   if(feature.lesson.roles.length) await page.waitForFunction(()=>document.querySelector('.feature-role-labels span:not([hidden])'));
   const visibleRoles=await assertRoleBounds(page,feature.id);
   await assertSceneUiBounds(page,feature.id);
-  assert.equal(await page.locator('.feature-lesson-diagnostics').getAttribute('open'),null,'technical statistics should be secondary');
-  assert.equal(await page.locator('.feature-lesson-guide').getAttribute('open'),null,'long instructions should be folded before editing');
   await assertSettingsKeepPreview(page,feature.id);
-  return {useCase:true,orderedSteps:true,legend:true,visibleRoles,primaryActions:feature.lesson.actions.length,settingsKeepPreview:true};
+  return {title:true,watch:true,moreClosed:true,useCase:true,orderedSteps:true,legend:true,visibleRoles,primaryActions:feature.lesson.actions.length,settingsKeepPreview:true};
 }
 
 export async function checkLearningControls({page,id,control,snapshot}) {
   const visual=page.locator(`.feature-lesson-visual[data-kind="${id}"]`);
   if(id==='camera') {
+    // The window maps the 640-unit view onto the canvas, so its width carries canvas-size rounding.
+    const initialWidth=await page.evaluate(()=>Number(document.querySelector('.lesson-camera-window').getAttribute('width')));
+    assert(Math.abs(initialWidth-640)<4,`camera window starts at the 640-unit view: ${initialWidth}`);
     await control('zoom').fill('200');await control('zoom').dispatchEvent('input');
     await page.waitForFunction(()=>Number(document.querySelector('.lesson-camera-window').getAttribute('width'))<400);
     await control('reset').click();
-    await page.waitForFunction(()=>Math.abs(Number(document.querySelector('.lesson-camera-window').getAttribute('width'))-640)<1);
+    await page.waitForFunction(width=>Math.abs(Number(document.querySelector('.lesson-camera-window').getAttribute('width'))-width)<0.5,initialWidth);
   }
   if(id==='lighting') {
     // The directional rendering check intentionally leaves the light disabled.
@@ -130,7 +144,7 @@ export async function checkLearningControls({page,id,control,snapshot}) {
 export async function checkLearningNarrow(page,id) {
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await assertRoleBounds(page,id);await assertSceneUiBounds(page,id);
-  assert(await page.locator('.feature-lesson-intro').evaluate(element=>{const r=element.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1;}),`${id}: lesson header overflow`);
+  assert(await page.locator('.demo-toolbar').evaluate(element=>{const r=element.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1;}),`${id}: stage head overflow`);
   await assertSettingsKeepPreview(page,id);
   if(id==='nine-slice') {
     const preview=page.locator('.feature-preview');

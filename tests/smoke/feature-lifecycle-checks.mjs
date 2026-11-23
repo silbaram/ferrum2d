@@ -72,7 +72,7 @@ export async function checkFeatureLifecycle(browser, address, { feature = 'anima
     } catch (error) {
       const state = await page.evaluate(() => ({ ready: !!window.ferrumFeatureLab,
         resources: window.featureGlResources?.map(r => Object.fromEntries(Object.entries(r).map(([k, set]) => [k, set.size]))) })).catch(() => undefined);
-      throw new Error(`Bootstrap ${stage}: ${error.message}; ${JSON.stringify({ state, errors })}`, { cause: error });
+      throw new Error(`Bootstrap ${feature}/${stage}: ${error.message}; ${JSON.stringify({ state, errors })}`, { cause: error });
     }
     finally { release(); await page.close(); }
   }

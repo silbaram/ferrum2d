@@ -956,6 +956,9 @@ export async function probeSpatialEnvironment(scene, canvas) {
       }),
       undefined,
       () => freshRenderer.viewportSize(),
+      // JSON progress restore is compatibility-only; this caster scene has no HD-2D actor
+      // that would select the legacy path on a default Engine.
+      { physicsBackend: "legacy" },
     );
     const result = restoreGameStateSnapshot(fresh, saved);
     fresh.start();

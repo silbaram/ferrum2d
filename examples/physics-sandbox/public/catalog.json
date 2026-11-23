@@ -4,7 +4,6 @@
     {
       "id": "rigid-materials",
       "title": "Rigid Bodies & Materials",
-      "titleKo": "강체와 재질",
       "category": "Rigid Bodies",
       "categoryKo": "강체",
       "summary": "Wood and metal sliders start with the same velocity, the rubber ball bounces, and a resting block demonstrates sleep state.",
@@ -35,7 +34,6 @@
     {
       "id": "collider-gallery",
       "title": "Collider Gallery",
-      "titleKo": "충돌체 모양 모음",
       "category": "Colliders",
       "categoryKo": "충돌체",
       "summary": "The same world shows box, circle, capsule, oriented box, convex polygon, chain, and compound colliders with explicit labels.",
@@ -62,7 +60,6 @@
     {
       "id": "contacts-sensors",
       "title": "Contacts & Sensors",
-      "titleKo": "접촉과 센서",
       "category": "Contacts",
       "categoryKo": "접촉",
       "summary": "Dynamic bodies enter a trigger zone and collide with platforms while contact points, normals, and sensor boundaries stay visible.",
@@ -89,9 +86,8 @@
     {
       "id": "joints-lab",
       "title": "Joints Lab",
-      "titleKo": "조인트 실험실",
       "category": "Joints",
-      "categoryKo": "조인트",
+      "categoryKo": "관절",
       "summary": "Distance, rope, spring, revolute, prismatic, gear, and weld constraints are arranged in one readable lab scene.",
       "summaryKo": "distance, rope, spring, revolute, prismatic, gear, weld 조인트를 한 화면에 배치해 제약이 어떻게 물체를 묶는지 보여주는 데모입니다.",
       "physicsSpec": "demos/joints-lab.physics.json",
@@ -119,7 +115,6 @@
     {
       "id": "ccd-tunnel-test",
       "title": "CCD Tunnel Test",
-      "titleKo": "CCD 관통 방지",
       "category": "CCD",
       "categoryKo": "CCD",
       "summary": "A fast projectile repeatedly crosses a thin wall so CCD markers and collision normals can be inspected directly.",
@@ -145,7 +140,6 @@
     {
       "id": "platformer-physics",
       "title": "Platformer Physics",
-      "titleKo": "플랫폼 물리",
       "category": "Platformer",
       "categoryKo": "플랫폼",
       "summary": "A capsule body, slope, moving platform, step block, and slippery surface are separated so platformer physics authoring is visible.",
@@ -172,7 +166,6 @@
     {
       "id": "scene-queries",
       "title": "Scene Queries",
-      "titleKo": "장면 쿼리",
       "category": "Queries",
       "categoryKo": "쿼리",
       "summary": "Move the pointer over the canvas to steer a raycast and inspect body hits, hit points, and normals.",

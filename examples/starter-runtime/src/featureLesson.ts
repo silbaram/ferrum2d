@@ -35,19 +35,32 @@ export interface LessonSample {
         zoom: number;
     };
 }
-/** Lesson chrome and annotations only; engine owners keep inputs, state and resource lifetime. */
-export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement, id: string, spec: FeatureLessonSpec, observationHint: string) {
+export interface FeatureLessonHosts {
+    /** "해 보기": the experiment's main action buttons move to its top. */
+    actions: HTMLElement;
+    /** "더 보기 › 설명": when to use it, the scene, the steps, how to read the stage and the comparison card. */
+    about: HTMLElement;
+}
+const block = (title: string, ...content: Node[]) => {
+    const section = document.createElement("section");
+    section.className = "example-more-block";
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    section.append(heading, ...content);
+    return section;
+};
+const paragraph = (text: string, className?: string) => {
+    const p = document.createElement("p");
+    if (className)
+        p.className = className;
+    p.textContent = text;
+    return p;
+};
+/** Lesson chrome and annotations only; engine owners keep inputs, state and resource lifetime. The stage keeps
+ * the role labels and any status board drawn over the scene; the rest of the lesson waits in "더 보기". */
+export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement, id: string, spec: FeatureLessonSpec, hosts: FeatureLessonHosts) {
     root.dataset.featureTopic = id;
-    const stage = canvas.parentElement!, panel = root.querySelector<HTMLElement>(".feature-panel")!;
-    const intro = document.createElement("section");
-    intro.className = "feature-lesson-intro";
-    intro.setAttribute("aria-label", "이 기능의 사용 상황");
-    const eyebrow = document.createElement("span"), title = document.createElement("h2"), scenario = document.createElement("p");
-    eyebrow.textContent = "확인할 것";
-    title.textContent = spec.useCase;
-    scenario.textContent = spec.scenario;
-    intro.append(eyebrow, title);
-    canvas.before(intro);
+    const panel = root.querySelector<HTMLElement>(".feature-panel")!;
     const steps = document.createElement("ol");
     steps.className = "feature-lesson-steps";
     for (const text of spec.steps) {
@@ -55,27 +68,36 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
         item.textContent = text;
         steps.append(item);
     }
-    const guide = document.createElement("details"), guideTitle = document.createElement("summary");
-    guide.className = "feature-lesson-guide";
-    guideTitle.textContent = "사용 안내";
-    const hint = document.createElement("p");
-    hint.textContent = observationHint;
-    guide.append(guideTitle, scenario, steps, hint);
-    panel.querySelector("form")!.before(guide);
-    const actions = document.createElement("div");
-    actions.className = "feature-lesson-actions";
-    actions.setAttribute("role", "group");
-    actions.setAttribute("aria-label", "화면에서 바로 해보기");
+    const legend = document.createElement("ul");
+    legend.className = "feature-lesson-legend";
+    legend.setAttribute("aria-label", "화면 읽는 법");
+    for (const text of spec.legend) {
+        const item = document.createElement("li");
+        item.textContent = text;
+        legend.append(item);
+    }
+    const use = block("이럴 때 씁니다", paragraph(spec.useCase, "feature-use-case"), paragraph(spec.scenario, "feature-scenario"));
+    const text = document.createElement("div");
+    text.className = "feature-about-text";
+    text.append(use, block("해 보는 순서", steps), block("화면 읽는 법", legend));
     const moved: Array<{
         node: Element;
         parent: Node;
         next: Node | null;
     }> = [];
+    // Explanations written inside the settings form belong with the description.
     for (const node of panel.querySelectorAll("form > p")) {
         if (node.attributes.length) continue;
         moved.push({ node, parent: node.parentNode!, next: node.nextSibling });
-        guide.append(node);
+        use.append(node);
     }
+    const live = document.createElement("div");
+    live.className = "feature-about-live";
+    hosts.about.append(text, live);
+    const actions = document.createElement("div");
+    actions.className = "feature-lesson-actions example-guide-actions";
+    actions.setAttribute("role", "group");
+    actions.setAttribute("aria-label", "화면에서 바로 해보기");
     for (const selector of spec.actions) {
         const nodes = root.querySelectorAll(selector);
         if (!nodes.length)
@@ -88,7 +110,7 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
         }
     }
     if (actions.childElementCount)
-        intro.append(actions);
+        hosts.actions.querySelector("h2")!.after(actions);
     const scene = document.createElement("div");
     scene.className = "feature-scene";
     canvas.before(scene);
@@ -106,29 +128,13 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
         annotations.append(label);
         return label;
     });
-    const legend = document.createElement("ul");
-    legend.className = "feature-lesson-legend";
-    legend.setAttribute("aria-label", "화면 읽는 법");
-    for (const text of spec.legend) {
-        const item = document.createElement("li");
-        item.textContent = text;
-        legend.append(item);
-    }
-    scene.after(legend);
+    const visual = createLessonVisual(id, root, scene, live);
     const feedback = document.createElement("p");
     feedback.className = "feature-lesson-feedback";
     feedback.setAttribute("aria-live", "off");
     feedback.hidden = true;
-    feedback.textContent = "준비 중 · 위 안내에 따라 같은 장면을 비교해 보세요.";
-    legend.after(feedback);
-    const visual = createLessonVisual(id, root, scene);
-    const stats = stage.querySelector<HTMLElement>(".feature-statistics")!;
-    const diagnostics = document.createElement("details");
-    diagnostics.className = "feature-lesson-diagnostics";
-    const summary = document.createElement("summary");
-    summary.textContent = "엔진 실행 정보";
-    stats.before(diagnostics);
-    diagnostics.append(summary, stats);
+    feedback.textContent = "준비 중입니다.";
+    live.append(feedback);
     // Bound the preview without stretching tall lessons or their canvas-relative overlays.
     const preview = document.createElement("div");
     preview.className = "feature-preview";
@@ -179,11 +185,10 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
             visual.destroy();
             for (const item of moved.reverse())
                 item.parent.insertBefore(item.node, item.next?.parentNode === item.parent ? item.next : null);
-            intro.remove();
+            actions.remove();
             annotations.remove();
-            legend.remove();
-            feedback.remove();
-            diagnostics.replaceWith(stats);
+            text.remove();
+            live.remove();
             preview.replaceWith(canvas);
             delete root.dataset.featureTopic;
         },

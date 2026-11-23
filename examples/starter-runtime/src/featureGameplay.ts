@@ -43,8 +43,14 @@ export function createGameplayFeature(ctx: FeatureContext): FeatureExtra | undef
       if (fade.update(frame.frameTimeMs / 1000).active) return;
       if (phase === "out") {
         room = room === "lab" ? "other" : "lab";
-        scene.transition({ ...source, sceneComposition: { ...source.sceneComposition, initialFragment: room } });
-        ctx.configureView();
+        // Scene replacement is native authoring, which must run outside frame callbacks:
+        // apply it when this frame finishes, before the next frame renders.
+        const next = room;
+        queueMicrotask(() => {
+          if (ctx.signal.aborted) return;
+          scene.transition({ ...source, sceneComposition: { ...source.sceneComposition, initialFragment: next } });
+          ctx.configureView();
+        });
         phase = "in"; fade.reset({ fromOpacity: 1, toOpacity: 0, durationSeconds: .45 });
       } else { phase = "idle"; status(room === "lab" ? "A 공간 · 에너지 표식" : "B 공간 · 공 표식"); }
     };

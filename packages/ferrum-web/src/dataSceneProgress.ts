@@ -9,14 +9,16 @@ import { combatActionsRequired, finalCombatActions } from "./dataSceneCombatActi
 import type { FerrumEngine } from "./engineTypes.js";
 import { combatProjectilePrefabNames, combatProgressValues, decodeCombatProgress, validateDataSceneCombatProgress, type DataSceneCombatProgressSnapshot } from "./dataSceneCombatProgress.js";
 import {
+  dataSceneApplySelectsLegacySpatialPath,
   preflightDataSceneSpatialEnvironment,
+  usesLegacySpatialActorPath,
   type ApplyDataSceneAuthoringDocumentOptions,
 } from "./dataSceneRuntimeTarget.js";
 import {
   bindSceneBehaviorRecipes,
   type GameplayEntityHandle,
 } from "./gameplayAuthoring.js";
-import { resolveSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
+import { resolveSceneAuthoringDocument, type ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import {
   resolveDataSceneNavigationSpec,
   type DataSceneNavigationSpec,
@@ -448,7 +450,7 @@ export function preflightDataSceneProgressRestore(
   progress?: DataSceneProgressSnapshot,
   document?: unknown,
 ): void {
-  assertDataScenePhysicsProgressSupported(document, engine);
+  assertDataScenePhysicsProgressSupported(document, engine, true);
   assertDataSceneCombatSaveSupported(engine, document);
   requireAdapter(engine);
   const unsupported = unsupportedOptions(options);
@@ -957,7 +959,26 @@ export function assertDataSceneCombatSaveSupported(engine: FerrumEngine, documen
 }
 
 /** Do not publish a partial checkpoint while native solver snapshot/replay is unfinished. */
-function assertDataScenePhysicsProgressSupported(document: unknown, engine: FerrumEngine): void {
-  if (engine.physicsBackend?.() === "unified-3d" || (document && typeof document === "object" && "physics" in document && document.physics !== undefined))
-    throw new Error("Data Scene physics capture/restore requires native physics snapshots, which are not yet supported.");
+function assertDataScenePhysicsProgressSupported(document: unknown, engine: FerrumEngine, restore = false): void {
+  const physics = Boolean(document && typeof document === "object" && "physics" in document && document.physics !== undefined);
+  if (!physics && engine.physicsBackend?.() !== "unified-3d") return;
+  if (!physics && restore) {
+    // The restore applies the document before its progress. A physics-omitted
+    // HD-2D actor document leaves native there exactly when the same read-only
+    // admission holds now, so the restored scene never has a native world.
+    const legacyActor = legacySpatialActorDocument(document);
+    if (legacyActor !== undefined) {
+      if (dataSceneApplySelectsLegacySpatialPath(engine, legacyActor)) return;
+      throw new Error("Data Scene progress restore of a physics-omitted HD-2D actor document requires an Engine that applies it on the legacy path: a legacy Engine, or an Engine without physicsBackend \"unified\" whose native defaults are unchanged and that is not in a native Data Scene.");
+    }
+  }
+  throw new Error("Data Scene physics capture/restore requires native physics snapshots, which are not yet supported.");
+}
+/** The resolved document when it takes the legacy HD-2D actor path; invalid
+ * documents keep the native rejection and their later diagnostics. */
+function legacySpatialActorDocument(document: unknown): ResolvedSceneAuthoringDocument | undefined {
+  if (!isRecord(document) || document.spatial === undefined) return undefined;
+  let resolved: ResolvedSceneAuthoringDocument;
+  try { resolved = resolveSceneAuthoringDocument(document); } catch { return undefined; }
+  return usesLegacySpatialActorPath(resolved) ? resolved : undefined;
 }

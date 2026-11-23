@@ -32,10 +32,19 @@ import {
   renderRuntimeDemoError,
   runtimeDemoDiagnosticRows,
 } from "../../shared/runtimeDemoShell";
+import {
+  createTrySection, createWatchSection, fold, hint, iconButton, moreBlock, mountStageColumn,
+} from "../../shared/exampleFrame";
 
 import "./styles.css";
 import { createExampleHeader } from "../../shared/exampleHeader";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
+import sharedScenarios from "../../shared/physicsExamples.json";
+import { createScenarioDetail } from "./scenarioDetail";
+
+// Gallery thumbnails, so the scenario list matches the example gallery and the feature lab.
+const scenarioThumbnails = import.meta.glob<string>("../../shared/thumbnails/physics-*.jpg", { eager: true, query: "?url", import: "default" });
+const knownIssues = new Map<string, string>(sharedScenarios.flatMap((item): [string, string][] => "knownIssue" in item ? [[item.id, String(item.knownIssue)]] : []));
 
 interface PhysicsShowcaseCatalog {
   version: 1;
@@ -45,7 +54,6 @@ interface PhysicsShowcaseCatalog {
 interface PhysicsScenarioEntry {
   id: string;
   title: string;
-  titleKo?: string;
   category: string;
   categoryKo?: string;
   summary: string;
@@ -139,6 +147,8 @@ interface PhysicsSandboxSmokeFrame {
   manifoldCount: number;
   impulseCount: number;
   queryHitCount: number;
+  /** Message of the native step error that stopped the current world, if any. */
+  physicsStepError?: string;
 }
 
 type SandboxStatus = "loading" | "running" | "paused" | "step" | "error";
@@ -194,7 +204,6 @@ interface SandboxShell {
   ready(): void;
   canvas: HTMLCanvasElement;
   debugRoot: HTMLElement;
-  scenarioSelect: HTMLSelectElement;
   setPaused(paused: boolean): void;
   setStatus(status: SandboxStatus): void;
   setScenario(
@@ -324,6 +333,7 @@ function publicAssetUrl(path: string): string {
 
 function createShell(
   scenarios: readonly PhysicsScenarioEntry[],
+  initialScenario: string,
   onScenarioChange: (id: string) => void,
   onReset: () => void,
   onRun: () => void,
@@ -342,48 +352,45 @@ function createShell(
   }
 
   const shell = document.createElement("main");
-  const header = document.createElement("header");
-  const titleBlock = document.createElement("div");
-  const titleRow = document.createElement("div");
+  const header = document.createElement("section");
   const title = document.createElement("h1");
   const statusBadge = document.createElement("span");
-  const summary = document.createElement("p");
   const toolbar = document.createElement("div");
-  const scenarioSelect = document.createElement("select");
-  const runButton = createRuntimeDemoButton("실행", onRun);
-  const pauseButton = createRuntimeDemoButton("일시정지", onPause);
-  const stepButton = createRuntimeDemoButton("한 프레임", onStep);
-  const resetButton = createRuntimeDemoButton("리셋", onReset);
-  const categoryNav = document.createElement("nav");
+  const button = (icon: string, label: string, action: () => void) => {
+    const element = iconButton(icon, label);
+    element.addEventListener("click", action);
+    return element;
+  };
+  const runButton = button("play", "실행", onRun);
+  const pauseButton = button("pause", "일시정지", onPause);
+  const stepButton = button("step-forward", "한 프레임", onStep);
+  const resetButton = button("rotate-ccw", "리셋", onReset);
+  const layout = document.createElement("section");
   const debugControls = document.createElement("div");
-  const stage = document.createElement("section");
   const canvasPanel = document.createElement("section");
+  const canvasFrame = document.createElement("div");
   const canvasStack = document.createElement("div");
   const canvas = document.createElement("canvas");
   const canvasHud = document.createElement("div");
   const canvasTitle = document.createElement("span");
   const canvasSignal = document.createElement("span");
   const sidePanel = document.createElement("aside");
+  const trySection = createTrySection();
+  const actionButtons = document.createElement("div");
+  const watch = createWatchSection();
   const metrics = document.createElement("dl");
   const specPanel = document.createElement("dl");
-  const actionPanel = document.createElement("section");
-  const actionTitle = document.createElement("h2");
-  const actionButtons = document.createElement("div");
-  const materialPanel = document.createElement("section");
-  const materialTitle = document.createElement("h2");
   const materialControls = document.createElement("div");
-  const focusPanel = document.createElement("section");
-  const focusTitle = document.createElement("h2");
-  const focusList = document.createElement("div");
   const selectedPanel = document.createElement("section");
-  const selectedTitle = document.createElement("h2");
+  const selectedTitle = document.createElement("h3");
   const selectedBody = document.createElement("dl");
-  const eventPanel = document.createElement("section");
-  const eventTitle = document.createElement("h2");
   const eventList = document.createElement("ol");
   const warningList = document.createElement("div");
+  const diagnostics = document.createElement("dl");
   const debugRoot = document.createElement("div");
   const errorBox = document.createElement("div");
+  const errorMessage = document.createElement("span");
+  const errorMore = document.createElement("button");
 
   const statusValue = document.createElement("dd");
   const bodyValue = document.createElement("dd");
@@ -406,75 +413,71 @@ function createShell(
   const debugOptions: PhysicsDebugOptions = { ...initialDebugOptions };
   const debugControlInputs = new Map<DebugControlKey, HTMLInputElement>();
   const debugControlLabels = new Map<DebugControlKey, HTMLLabelElement>();
-  const categories = uniqueStrings(scenarios.map((scenario) => scenario.category));
 
-  shell.className = "app-shell";
+  shell.className = "app-shell physics-lab example-detail";
   shell.append(createExampleHeader("physics-sandbox"));
-  header.className = "showcase-header";
-  titleBlock.className = "title-block";
-  titleRow.className = "title-row";
+  header.className = "demo-toolbar";
   statusBadge.className = "status-badge";
-  summary.className = "scenario-summary";
-  toolbar.className = "toolbar";
-  scenarioSelect.className = "scenario-select";
-  categoryNav.className = "category-nav";
+  statusBadge.setAttribute("role", "status");
+  toolbar.className = "toolbar example-run";
+  layout.className = "demo-stage-layout";
   debugControls.className = "debug-controls";
-  stage.className = "stage";
+  debugControls.setAttribute("aria-label", "디버그 표시");
   canvasPanel.className = "canvas-panel";
+  canvasFrame.className = "canvas-frame";
   canvasStack.className = "canvas-stack";
   canvas.className = "physics-canvas";
   canvasHud.className = "canvas-hud";
   canvasTitle.className = "canvas-hud-label";
   canvasSignal.className = "canvas-hud-label";
-  sidePanel.className = "side-panel";
+  sidePanel.className = "side-panel example-panel";
+  sidePanel.setAttribute("aria-label", "해 보기와 볼 것");
+  actionButtons.className = "example-guide-actions action-buttons";
   metrics.className = "metrics";
   specPanel.className = "spec-panel";
-  actionPanel.className = "panel-block action-panel";
-  actionButtons.className = "action-buttons";
-  materialPanel.className = "panel-block material-panel";
   materialControls.className = "material-controls";
-  focusPanel.className = "panel-block";
-  focusList.className = "focus-list";
-  selectedPanel.className = "panel-block selected-panel";
+  selectedPanel.className = "selected-panel";
   selectedBody.className = "selected-body";
-  eventPanel.className = "panel-block event-panel";
   eventList.className = "event-list";
   warningList.className = "warning-list";
+  diagnostics.className = "metrics";
   debugRoot.className = "debug-root";
   errorBox.className = "error-box";
+  errorMessage.className = "error-message";
+  errorMore.type = "button";
+  errorMore.className = "error-more";
 
   title.textContent = "물리 심화 실험실";
   statusBadge.textContent = STATUS_LABELS.loading;
   statusBadge.dataset.status = "loading";
-  actionTitle.textContent = "조작";
-  materialTitle.textContent = "재질 조절";
-  focusTitle.textContent = "관찰 포인트";
   selectedTitle.textContent = "선택한 물체";
-  eventTitle.textContent = "물리 신호";
+  errorMore.textContent = "자세히";
   canvas.width = 800;
   canvas.height = 480;
   canvasTitle.textContent = STATUS_LABELS.loading;
   canvasSignal.textContent = "접촉 0";
   errorBox.hidden = true;
   warningList.hidden = true;
+  selectedPanel.hidden = true;
 
-  for (const scenario of scenarios) {
-    const option = document.createElement("option");
-    option.value = scenario.id;
-    option.textContent = scenarioOptionLabel(scenario);
-    scenarioSelect.append(option);
-  }
-  scenarioSelect.addEventListener("change", () => onScenarioChange(scenarioSelect.value));
+  // "더 보기 › 엔진 수치": run state with warnings, physics settings, signals, and the last error.
+  const engine = document.createElement("div");
+  engine.className = "example-more-grid physics-engine";
+  const errorBlock = moreBlock("오류", diagnostics);
+  errorBlock.hidden = true;
+  engine.append(moreBlock("실행 상태", metrics, warningList), moreBlock("물리 설정", specPanel), moreBlock("물리 신호", eventList), errorBlock);
 
-  for (const category of categories) {
-    const button = createRuntimeDemoButton(categoryLabel(category, scenarios), () => {
-      const firstScenario = scenarios.find((scenario) => scenario.category === category);
-      if (firstScenario) onScenarioChange(firstScenario.id);
-    });
-    button.className = "category-button";
-    button.dataset.category = category;
-    categoryNav.append(button);
-  }
+  const detail = createScenarioDetail(scenarios.map((scenario) => ({
+    id: scenario.id,
+    title: scenarioTitle(scenario),
+    category: categoryLabel(scenario.category, scenarios),
+    summary: scenarioSummary(scenario),
+    issue: knownIssues.get(scenario.id),
+    thumbnail: scenarioThumbnails[`../../shared/thumbnails/physics-${scenario.id}.jpg`],
+    physicsSpec: scenario.physicsSpec,
+    specUrl: publicAssetUrl(scenario.physicsSpec),
+  })), initialScenario, onScenarioChange, engine);
+  errorMore.addEventListener("click", () => detail.open("engine"));
 
   for (const { key, label } of DEBUG_CATEGORIES) {
     const item = document.createElement("label");
@@ -514,30 +517,29 @@ function createShell(
   appendMetric(specPanel, "재질", materialValue);
   appendMetric(specPanel, "레이어", layerValue);
 
-  toolbar.append(scenarioSelect, runButton, pauseButton, stepButton, resetButton);
-  titleRow.append(title, statusBadge);
-  titleBlock.append(titleRow, summary);
-  header.append(titleBlock, toolbar);
+  toolbar.append(statusBadge, runButton, pauseButton, stepButton, resetButton);
+  header.append(title, toolbar);
   canvasHud.append(canvasTitle, canvasSignal);
   canvasStack.append(canvas, canvasHud);
-  canvasPanel.append(canvasStack, debugControls, materialPanel, actionPanel, selectedPanel);
-  actionPanel.append(actionTitle, actionButtons);
-  materialPanel.append(materialTitle, materialControls);
-  focusPanel.append(focusTitle, focusList);
+  canvasFrame.append(canvasStack, debugControls);
+  errorBox.append(errorMessage, errorMore);
+  canvasPanel.append(canvasFrame, errorBox);
   selectedPanel.append(selectedTitle, selectedBody);
-  eventPanel.append(eventTitle, eventList);
-  sidePanel.append(debugRoot, metrics, specPanel, focusPanel, eventPanel, warningList);
-  stage.append(canvasPanel, sidePanel);
-  shell.append(header, categoryNav, stage, errorBox);
+  trySection.append(actionButtons, hint("캔버스에서 물체를 누르면 그 물체의 상태가 여기에 나옵니다."), selectedPanel,
+    fold("재질 값 바꾸기", materialControls));
+  sidePanel.append(trySection, watch.element, debugRoot);
+  layout.append(detail.sidebar, canvasPanel, sidePanel);
+  shell.append(layout, detail.code);
+  mountStageColumn(canvasPanel, header, detail.pager);
+  detail.attachHead(header);
   app.replaceChildren(shell);
   shell.inert = true;
 
   return {
-    destroy: () => shell.remove(),
+    destroy: () => { detail.destroy(); shell.remove(); },
     ready: () => { shell.inert = false; },
     canvas,
     debugRoot,
-    scenarioSelect,
     setPaused(paused) {
       pauseButton.disabled = paused;
       runButton.disabled = !paused;
@@ -550,12 +552,11 @@ function createShell(
       statusBadge.textContent = label;
       statusBadge.dataset.status = status;
       errorBox.hidden = true;
-      errorBox.replaceChildren();
+      errorMessage.textContent = "";
     },
     setScenario(scenario, spec, world, nextDebugOptions) {
       Object.assign(debugOptions, nextDebugOptions);
-      scenarioSelect.value = scenario.id;
-      summary.textContent = scenarioSummary(scenario);
+      detail.select(scenario.id);
       canvasTitle.textContent = scenarioTitle(scenario);
       fixtureValue.textContent = scenario.physicsSpec;
       gravityValue.textContent = formatVector(spec.gravityX, spec.gravityY);
@@ -565,10 +566,7 @@ function createShell(
       layerValue.textContent = formatCount(Object.keys(spec.layers).length);
       bodyValue.textContent = formatCount(world.bodyCount);
       jointValue.textContent = formatCount(world.jointCount);
-      focusList.replaceChildren(...scenarioFocus(scenario).map(createFocusChip));
-      for (const button of categoryNav.querySelectorAll<HTMLButtonElement>(".category-button")) {
-        button.classList.toggle("is-active", button.dataset.category === scenario.category);
-      }
+      watch.set(scenarioFocus(scenario));
       applyDebugControlAvailability(scenario, spec, debugOptions, debugControlInputs, debugControlLabels);
     },
     setRuntimeMetrics(metrics) {
@@ -611,6 +609,7 @@ function createShell(
     },
     setSelectedBody(report) {
       selectedBody.replaceChildren();
+      selectedPanel.hidden = !report;
       if (!report) {
         appendMetric(selectedBody, "물체", createTextValue("선택 없음"));
         return;
@@ -624,15 +623,16 @@ function createShell(
       appendMetric(selectedBody, "휴면", createTextValue(report.sleeping));
     },
     setError(error) {
+      // One line under the stage; the code and message are in "더 보기 › 엔진 수치".
       const report = diagnosticReport(error);
-      const titleElement = document.createElement("strong");
-      const list = document.createElement("dl");
-      titleElement.textContent = "오류";
+      diagnostics.replaceChildren();
       for (const [label, value] of runtimeDemoDiagnosticRows(report)) {
-        appendMetric(list, label, createTextValue(value));
+        appendMetric(diagnostics, label, createTextValue(value));
       }
+      errorBlock.hidden = false;
+      errorMessage.textContent = `실행이 멈췄습니다 · ${report.message}`;
+      errorMessage.title = report.message;
       errorBox.hidden = false;
-      errorBox.replaceChildren(titleElement, list);
       statusValue.textContent = STATUS_LABELS.error;
       statusBadge.textContent = STATUS_LABELS.error;
       statusBadge.dataset.status = "error";
@@ -922,6 +922,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
   let paused = false;
   let stepQueued = false;
   let frameCount = 0;
+  let physicsStepError: string | undefined;
   let selectedBodyId: string | undefined;
   let queryTarget: Point2 | undefined = queryTargetFromScenario(initialScenario);
   const debugGizmoWriter = new DebugGizmoLineBufferWriter();
@@ -931,7 +932,12 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
 
   const shell = createShell(
     catalog.scenarios,
+    initialScenario.id,
     (id) => {
+      // Keep the address shareable: ?demo= follows the chosen scenario.
+      const url = new URL(location.href);
+      url.searchParams.set("demo", id);
+      history.replaceState(history.state, "", url);
       void loadScenario(id).catch(() => {}); // loadScenario presents current-request errors.
     },
     () => {
@@ -1047,6 +1053,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
       shell.setWarnings(currentWorld.warnings);
       shell.setEvents([]);
       shell.setSelectedBody(undefined);
+      physicsStepError = undefined;
       paused = false;
       shell.setPaused(false);
       shell.setStatus("running");
@@ -1137,10 +1144,20 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
       frameCount += 1;
       const consumedStep = stepQueued;
       if (currentWorld && (!paused || stepQueued)) {
-        runtime?.engine.stepRigidBodies(currentWorld.stepSeconds, currentWorld.stepOptions);
-        stepQueued = false;
-        if (consumedStep && paused) {
-          shell.setStatus("paused");
+        try {
+          runtime?.engine.stepRigidBodies(currentWorld.stepSeconds, currentWorld.stepOptions);
+          stepQueued = false;
+          if (consumedStep && paused) {
+            shell.setStatus("paused");
+          }
+        } catch (error) {
+          // A rejected native step stops this world. Show the error instead of a stale
+          // "running" state; reset or another scenario rebuilds the world.
+          paused = true;
+          stepQueued = false;
+          shell.setPaused(true);
+          shell.setError(error);
+          physicsStepError = error instanceof Error ? error.message : String(error);
         }
       }
 
@@ -1153,6 +1170,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
       if (runtime && currentWorld && currentSpec) {
         updateSleepingWorldTexts(
           runtime.engine,
+          currentScenario,
           currentSpec,
           currentWorld,
           currentFramePhysicsState,
@@ -1204,6 +1222,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
         manifoldCount: metrics.manifoldCount,
         impulseCount: metrics.impulseCount,
         queryHitCount: metrics.queryHitCount,
+        ...(physicsStepError === undefined ? {} : { physicsStepError }),
       };
     },
   });
@@ -1364,7 +1383,7 @@ function syncScenarioWorldTexts(
         fontId: DEBUG_FONT_ID,
         text: debugBodyLabel(scenario, body, isSelected),
         x: 0,
-        y: -36,
+        y: debugBodyLabelOffsetY(scenario, body),
         scale: 0.75,
         color: debugBodyLabelColor(body, isSelected),
         alignment: "center",
@@ -1374,13 +1393,15 @@ function syncScenarioWorldTexts(
     }
     const state = frameState.bodyStatesById.get(body.id);
     if (debugOptions.sleeping && body.type !== "static" && body.canSleep && state) {
-      setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels);
+      setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels,
+        debugStatusLabelOffsetY(scenario, body));
     }
   }
 }
 
 function updateSleepingWorldTexts(
   engine: FerrumEngine,
+  scenario: PhysicsScenarioEntry | undefined,
   spec: ResolvedPhysicsSpec,
   world: PhysicsWorldApplyResult,
   frameState: FramePhysicsState,
@@ -1393,7 +1414,8 @@ function updateSleepingWorldTexts(
     const handle = world.bodies[body.id];
     const state = frameState.bodyStatesById.get(body.id);
     if (!handle || !state) continue;
-    setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels);
+    setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels,
+      debugStatusLabelOffsetY(scenario, body));
   }
 }
 
@@ -1404,6 +1426,7 @@ function setSleepingWorldText(
   handle: PhysicsEntityHandle,
   state: PhysicsEntitySnapshot,
   sleepingLabels: Map<string, string>,
+  offsetY: number,
 ): void {
   const status = sleepingWorldTextStatus(state);
   if (sleepingLabels.get(bodyId) === status.text) return;
@@ -1411,7 +1434,7 @@ function setSleepingWorldText(
     fontId: DEBUG_FONT_ID,
     text: status.text,
     x: 0,
-    y: 12,
+    y: offsetY,
     scale: 0.65,
     color: status.color,
     alignment: "center",
@@ -1524,6 +1547,20 @@ function bodySortWeight(body: ResolvedPhysicsBodySpec): number {
   return 2;
 }
 
+/** Alternate label heights by focus order; neighbouring focus bodies otherwise overlap. */
+function staggeredFocus(scenario: PhysicsScenarioEntry | undefined, body: ResolvedPhysicsBodySpec): boolean {
+  const order = scenario?.focusBodies?.indexOf(body.id) ?? -1;
+  return order % 2 === 1;
+}
+
+function debugBodyLabelOffsetY(scenario: PhysicsScenarioEntry, body: ResolvedPhysicsBodySpec): number {
+  return staggeredFocus(scenario, body) ? -52 : -36;
+}
+
+function debugStatusLabelOffsetY(scenario: PhysicsScenarioEntry | undefined, body: ResolvedPhysicsBodySpec): number {
+  return staggeredFocus(scenario, body) ? 26 : 12;
+}
+
 function shouldLabelBody(scenario: PhysicsScenarioEntry, body: ResolvedPhysicsBodySpec, selected: boolean): boolean {
   return selected || scenario.focusBodies?.includes(body.id) === true;
 }
@@ -1568,12 +1605,13 @@ function cameraForScenario(scenario: PhysicsScenarioEntry): PhysicsScenarioCamer
   return scenario.camera ?? DEFAULT_CAMERA;
 }
 
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values)];
-}
+
+// Display names come from the catalog shared with the feature lab's physics topic,
+// so a scenario has one name everywhere. The local catalog keeps specs and details.
+const SHARED_SCENARIO_TITLES: ReadonlyMap<string, string> = new Map(sharedScenarios.map((entry) => [entry.id, entry.title]));
 
 function scenarioTitle(scenario: PhysicsScenarioEntry): string {
-  return scenario.titleKo ? `${scenario.titleKo} (${scenario.title})` : scenario.title;
+  return SHARED_SCENARIO_TITLES.get(scenario.id) ?? scenario.title;
 }
 
 function scenarioSummary(scenario: PhysicsScenarioEntry): string {
@@ -1582,12 +1620,6 @@ function scenarioSummary(scenario: PhysicsScenarioEntry): string {
 
 function scenarioFocus(scenario: PhysicsScenarioEntry): readonly string[] {
   return scenario.focusKo ?? scenario.focus;
-}
-
-function scenarioOptionLabel(scenario: PhysicsScenarioEntry): string {
-  const category = scenario.categoryKo ?? scenario.category;
-  const title = scenario.titleKo ?? scenario.title;
-  return scenario.titleKo ? `${category} / ${title} (${scenario.title})` : `${category} / ${title}`;
 }
 
 function categoryLabel(category: string, scenarios: readonly PhysicsScenarioEntry[]): string {
@@ -1618,13 +1650,6 @@ function materialReportLabel(
 
 function materialFieldLabel(field: MaterialControlField): string {
   return field === "friction" ? "마찰" : "탄성";
-}
-
-function createFocusChip(label: string): HTMLElement {
-  const chip = document.createElement("span");
-  chip.className = "focus-chip";
-  chip.textContent = label;
-  return chip;
 }
 
 function createWarningRow(warning: PhysicsWorldApplyWarning): HTMLElement {

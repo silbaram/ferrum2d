@@ -1,0 +1,183 @@
+/* Detail frame shared by the feature lab, the physics lab and the game demos. On the first screen a page
+   shows three things: what it is (a title and one sentence over the stage), what to try and what to watch
+   (the panel beside the stage). Everything else waits, closed, in "더 보기" under the layout. A list sits
+   beside the stage on wide screens (a picker above it otherwise). Colors are the Pixelforge tokens in
+   exampleTheme.css. A page tunes the frame with --detail-max and --detail-columns on `.example-detail`. */
+.example-detail { --detail-max: 1240px; --detail-columns: minmax(0, 1fr) 304px; }
+.example-detail :is(.example-header, .demo-stage-layout, .example-code) { max-width: var(--detail-max); margin-left: auto; margin-right: auto; }
+/* A 16px gap keeps each stage at the width the pixel and shadow checks were measured at. */
+.example-detail .demo-stage-layout { display: grid; grid-template-columns: var(--detail-columns); gap: 16px; align-items: start; }
+
+/* Stage column: the head over the stage and the previous/next line under it. */
+.example-stage-column { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.example-detail .demo-toolbar { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px;
+  max-width: none; margin: 0; }
+.example-heading { flex: 1 1 320px; min-width: 0; }
+.example-detail .demo-toolbar h1 { margin: 0; color: var(--example-text); font-size: 20px; font-weight: 650; line-height: 1.4; letter-spacing: normal; }
+.example-subtitle { margin: 2px 0 0; color: var(--example-muted); font-size: 14px; line-height: 1.6; }
+.example-subtitle:empty { display: none; }
+.example-issue { display: inline-block; vertical-align: 3px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--example-danger) 50%, transparent);
+  border-radius: var(--example-radius); color: var(--example-danger); font-size: 11px; font-weight: 500; line-height: 18px; cursor: help; }
+.example-issue[hidden] { display: none; }
+.example-run { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.example-detail .example-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; min-width: 32px; height: 32px; padding: 0;
+  border: 1px solid var(--example-border); border-radius: var(--example-radius); background: var(--example-raised); color: var(--example-text); cursor: pointer; }
+.example-detail .example-icon-button:hover { background: var(--example-hover); }
+.example-detail .example-icon-button[aria-pressed=true] { border-color: var(--example-accent); color: var(--example-accent); }
+.example-icon-button:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+.example-icon-button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* List beside the stage (1280px and wider) and the compact picker that replaces it. */
+.example-sidebar { grid-column: 1 / -1; min-width: 0; }
+.example-sidebar-label, .example-sidebar-list { display: none; }
+.example-picker { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--example-muted); }
+.example-detail .example-picker select { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--example-border);
+  border-radius: var(--example-radius); background: var(--example-raised); color: var(--example-text); font: inherit; }
+.example-sidebar-label { margin: 0; padding: 0 12px 6px; font-size: 12px; color: var(--example-subtle); }
+.example-sidebar-label span { font-variant-numeric: tabular-nums; }
+.example-detail .example-group > button { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 32px; padding: 0 12px; border: 0;
+  border-left: 2px solid transparent; border-radius: 0; background: none; color: var(--example-muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.example-detail .example-group > button:hover { background: var(--example-hover); color: var(--example-text); }
+.example-detail .example-group > button[aria-expanded=true] { color: var(--example-text); }
+.example-group-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.example-group-count { font-size: 11px; color: var(--example-subtle); font-variant-numeric: tabular-nums; }
+.example-icon { width: 16px; height: 16px; flex: none; }
+.example-dot { width: 8px; height: 8px; border-radius: 999px; flex: none; background: var(--example-subtle); }
+.example-dot[data-domain=render] { background: var(--example-render); }
+.example-dot[data-domain=physics] { background: var(--example-physics); }
+.example-dot[data-domain=runtime] { background: var(--example-runtime); }
+.example-dot[data-domain=behavior] { background: var(--example-behavior); }
+.example-dot[data-domain=collision] { background: var(--example-collision); }
+.example-dot[data-domain=audio] { background: var(--example-audio); }
+.example-group-items { padding-bottom: 4px; }
+.example-item { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; min-height: 40px;
+  padding: 4px 12px; border-left: 2px solid transparent; color: var(--example-muted); text-decoration: none; font-size: 13px; }
+.example-group-items .example-item { padding-left: 22px; }
+.example-item:hover { background: var(--example-hover); color: var(--example-text); }
+.example-item[aria-current] { background: var(--example-selection); border-left-color: var(--example-accent); color: var(--example-text); }
+.example-item:focus-visible, .example-subitem:focus-visible { outline: 2px solid var(--example-accent); outline-offset: -2px; }
+.example-item img { grid-row: span 2; width: 48px; height: 30px; object-fit: cover; border: 1px solid var(--example-border);
+  border-radius: var(--example-radius); background: var(--example-bg); }
+.example-item-title { grid-column: 2; line-height: 1.35; }
+.example-item-note { grid-column: 2; font-size: 11px; color: var(--example-subtle); }
+/* A known issue is a red dot at the end of the row; its text is the row's tooltip and accessible name. */
+.example-item-issue { grid-column: 3; grid-row: 1 / span 2; width: 6px; height: 6px; border-radius: 999px; background: var(--example-danger); }
+.example-item-external { margin-top: 4px; border-top: 1px solid var(--example-hairline); }
+.example-item-external .example-icon { grid-row: span 2; justify-self: center; color: var(--example-subtle); }
+/* Game list: the current game is the parent row and its features are the selectable rows. */
+.example-item-parent[aria-current] { background: none; border-left-color: transparent; }
+.example-item-parent[aria-current] .example-item-title { font-weight: 650; }
+.example-subitems { padding: 0 0 6px; }
+.example-subitem { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 12px 4px 34px; border-left: 2px solid transparent;
+  color: var(--example-muted); text-decoration: none; font-size: 13px; line-height: 1.35; }
+.example-subitem::before { content: ""; flex: none; width: 4px; height: 4px; border-radius: 999px; background: var(--example-subtle); }
+.example-subitem:hover { background: var(--example-hover); color: var(--example-text); }
+.example-subitem[aria-current] { background: var(--example-selection); border-left-color: var(--example-accent); color: var(--example-text); }
+.example-subitem[aria-current]::before { background: var(--example-accent); }
+
+/* Panel beside the stage: "해 보기" and "볼 것", without a box around them. */
+.example-detail .example-panel { position: sticky; top: 12px; align-self: start; max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior-y: contain;
+  scrollbar-width: thin; padding: 0 4px 4px 0; border: 0; border-radius: 0; background: none; color: var(--example-text); font-size: 13px; line-height: 1.6; }
+.example-panel > section + section, .example-panel > * + .example-watch { margin-top: 28px; }
+.example-panel h2 { margin: 0 0 10px; color: var(--example-subtle); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.example-try { display: grid; gap: 10px; align-content: start; }
+.example-try > p { margin: 0; color: var(--example-muted); }
+.example-hint { margin: 0; color: var(--example-subtle); font-size: 12px; line-height: 1.6; }
+.example-watch ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.example-watch li { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 4px; color: var(--example-text); font-size: 14px; line-height: 1.6; }
+.example-watch li::before { content: ""; width: 6px; height: 6px; margin-top: 9px; border-radius: 999px; background: var(--example-accent); }
+.example-fold { border-top: 1px solid var(--example-hairline); padding-top: 10px; color: var(--example-muted); }
+.example-fold > summary { display: flex; align-items: center; gap: 6px; width: fit-content; cursor: pointer; list-style: none; }
+.example-fold > summary::-webkit-details-marker { display: none; }
+.example-fold > summary .example-icon { transition: transform .15s; }
+.example-fold[open] > summary { margin-bottom: 10px; color: var(--example-text); }
+.example-fold[open] > summary .example-icon { transform: rotate(90deg); }
+.example-fold > summary:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+.example-guide-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.example-detail .example-guide-actions button { width: auto; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--example-accent);
+  border-radius: var(--example-radius); background: var(--example-raised); color: var(--example-text); font: inherit; font-size: 13px; cursor: pointer; }
+.example-detail .example-guide-actions button:hover { background: var(--example-hover); }
+.example-guide-actions [hidden] { display: none; }
+.example-guide-actions a { color: var(--example-render); text-decoration: none; font-size: 13px; }
+.example-guide-actions a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.example-guide-actions :is(a, button):focus-visible, .example-panel:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+/* The runtime shell's metric list, moved into "더 보기 › 엔진 수치". */
+.example-detail .demo-metrics.example-code-panel { max-width: 392px; padding: 16px; border: 0; border-radius: 0; background: none; font-size: 13px; line-height: 1.7; }
+
+/* Previous and next, one line under the stage. */
+.example-pager { display: flex; justify-content: space-between; gap: 16px; min-width: 0; font-size: 13px; }
+.example-pager a { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--example-subtle); text-decoration: none; }
+.example-pager a:hover span { text-decoration: underline; text-underline-offset: 2px; }
+.example-pager a:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+.example-pager small { flex: none; font-size: 12px; }
+.example-pager-prev::before { content: "←"; }
+.example-pager-next::after { content: "→"; }
+.example-pager-next { margin-left: auto; }
+.example-pager span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--example-text); }
+/* A page that updates the links in place hides an end instead of removing it. */
+.example-pager a[hidden] { display: none; }
+
+/* "더 보기": closed at first; a tab or the toggle opens it. */
+.example-code { margin-top: 32px; min-width: 0; border-top: 1px solid var(--example-hairline); color: var(--example-text); }
+.example-code-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 10px 0; }
+.example-detail .example-more-toggle { display: inline-flex; align-items: center; gap: 6px; width: auto; min-width: 0; height: 32px; padding: 0; border: 0;
+  background: none; color: var(--example-text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.example-detail .example-more-toggle:hover { background: none; color: var(--example-text); }
+.example-more-toggle .example-icon { transition: transform .15s; }
+.example-code[data-open=true] .example-more-toggle .example-icon { transform: rotate(180deg); }
+.example-more-toggle:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+.example-code-tabs { display: flex; flex-wrap: wrap; min-width: 0; }
+.example-detail .example-code-tab { min-width: 0; height: 32px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  background: none; color: var(--example-subtle); font: inherit; font-size: 13px; cursor: pointer; }
+.example-detail .example-code-tab:hover { color: var(--example-text); background: none; border-color: transparent; }
+.example-detail .example-code-tab[aria-selected=true] { color: var(--example-text); border-bottom-color: var(--example-accent); }
+.example-code-tab:focus-visible, .example-code-panel:focus-visible { outline: 2px solid var(--example-accent); outline-offset: -2px; }
+.example-more-body { border: 1px solid var(--example-border); border-radius: 4px; background: var(--example-panel); }
+.example-code-panel { padding: 16px; min-width: 0; font-size: 13px; line-height: 1.7; }
+.example-code-panel[hidden] { display: none; }
+.example-code-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; color: var(--example-subtle); }
+.example-code-path { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; color: var(--example-muted); font-size: 12px; }
+.example-code-lines { font-variant-numeric: tabular-nums; }
+.example-detail .example-code-button { display: inline-flex; align-items: center; gap: 4px; width: auto; min-width: 0; height: 28px; margin: 0; padding: 0 8px;
+  border: 1px solid var(--example-border); border-radius: var(--example-radius); background: var(--example-raised); color: var(--example-text);
+  font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+.example-detail .example-code-button:hover { background: var(--example-hover); border-color: var(--example-border); }
+.example-code-button:focus-visible, .example-code-files a:focus-visible, .example-more-block a:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+.example-code-json { margin: 0; max-height: 360px; overflow: auto; padding: 12px; border: 1px solid var(--example-border); border-radius: var(--example-radius);
+  background: var(--example-bg); color: #dde7f2; font: 12px/1.5 ui-monospace, "SFMono-Regular", Menlo, monospace; tab-size: 2; }
+.json-key { color: var(--example-render); } .json-string { color: #9be28f; } .json-number { color: #ff9f6e; } .json-literal { color: var(--example-behavior); }
+.example-code-status:empty { display: none; }
+.example-code-status { margin: 8px 0 0; font-size: 12px; color: var(--example-muted); }
+.example-code-note { margin: 0 0 8px; font-size: 12px; color: var(--example-muted); }
+.example-code-api, .example-code-files { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+.example-code-files { flex-direction: column; }
+.example-code-api code { display: inline-block; padding: 2px 6px; border: 1px solid var(--example-border); border-radius: var(--example-radius);
+  background: var(--example-raised); color: var(--example-render); font-size: 12px; }
+.example-code-files a { display: inline-flex; align-items: center; gap: 8px; color: var(--example-muted); text-decoration: none; overflow-wrap: anywhere; }
+.example-code-files a:hover { color: var(--example-text); }
+.example-code-files code { font-size: 12px; }
+/* Blocks inside the page's own tabs (description, engine numbers). */
+.example-more-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px 32px; }
+.example-more-block { min-width: 0; }
+.example-more-block + .example-more-block { margin-top: 16px; }
+.example-more-grid > .example-more-block + .example-more-block { margin-top: 0; }
+.example-more-block h3 { margin: 0 0 6px; color: var(--example-subtle); font-size: 12px; font-weight: 600; }
+.example-more-block p { margin: 0 0 6px; color: var(--example-muted); }
+.example-more-block :is(ol, ul) { margin: 0; padding-left: 20px; color: var(--example-text); }
+.example-more-block a { color: var(--example-render); text-decoration: none; }
+.example-more-block a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.example-about .example-about-label { margin: 12px 0 4px; color: var(--example-subtle); font-size: 12px; }
+.example-about .example-purpose { margin: 0; }
+
+@media (min-width: 1280px) {
+  .example-detail { --detail-max: 1520px; --detail-columns: 232px minmax(0, 1fr) 304px; }
+  .example-sidebar { grid-column: auto; position: sticky; top: 12px; align-self: start; max-height: calc(100dvh - 24px); overflow-y: auto;
+    overscroll-behavior-y: contain; scrollbar-width: thin; padding: 6px 0 4px; }
+  .example-sidebar-label, .example-sidebar-list { display: block; }
+  .example-picker { display: none; }
+}
+/* Games and the physics lab stack the stage and the panel on narrow screens. */
+@media (max-width: 860px) {
+  .example-detail:is(.example-game, .physics-lab) { --detail-columns: minmax(0, 1fr); }
+  .example-detail:is(.example-game, .physics-lab) .example-panel { position: static; max-height: none; }
+}

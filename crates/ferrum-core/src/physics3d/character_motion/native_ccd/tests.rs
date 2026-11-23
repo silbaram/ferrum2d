@@ -1023,3 +1023,121 @@ fn target_and_clearance_are_not_part_of_cached_moving_geometry_or_results() {
     )
     .unwrap());
 }
+
+/// Captured from the physics-sandbox contacts-sensors scene: a box spinning at
+/// 12.8 rad/s about 42 units inside a fixed sensor ball. Native counts this
+/// pseudo sweep but never clamps at it. Proving its unused existing-overlap
+/// cast previously exhausted the whole tick's proof ledger.
+#[test]
+fn spinning_box_deep_inside_a_sensor_is_counted_without_an_unused_cast() {
+    let mut w = PhysicsWorld3d::new(WorldConfig {
+        space: crate::physics3d::Space::PlanarXy,
+        gravity: [0.; 3],
+        step_seconds: 1. / 60.,
+        length_unit: 1.,
+        ..Default::default()
+    })
+    .unwrap();
+    let start = rp::Pose::from_parts(
+        rp::Vector::new(376.24384, 344.87656, 0.),
+        rp::Rotation::from_xyzw(0., 0., 0.684713, 0.7288128),
+    );
+    let body = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Dynamic,
+                pose: crate::physics3d::Pose {
+                    position: start.translation.to_array(),
+                    rotation: start.rotation.to_array(),
+                },
+                can_sleep: false,
+                ..Default::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [20., 20., 29.284271],
+            }),
+        )
+        .unwrap();
+    let sensor = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                pose: crate::physics3d::Pose {
+                    position: [400., 284., 0.],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ColliderDesc::new(Shape::Sphere { radius: 82. }),
+        )
+        .unwrap();
+    let h = crate::physics3d::world::native_id(body);
+    let target = w.backend.bodies[crate::physics3d::world::native_id(sensor)].colliders()[0];
+    w.backend.colliders[target].set_sensor(true);
+    // Initialize Native mass/CCD metadata with zero motion, as the fixture does.
+    w.backend.step();
+    let d = Time::from(1f32 / 60.);
+    let mut pose = start;
+    let mut tracks = Vec::new();
+    let (linear, angular) = (
+        rp::Vector::new(143.68181, 200.51222, 0.),
+        rp::Vector::new(0., 0., 12.828751),
+    );
+    for i in 0..4 {
+        let from = d * i as Time / 4.;
+        let to = d * (i + 1) as Time / 4.;
+        let k = Kernel::from_velocity(h, Domain::new(from, to).unwrap(), pose, linear, angular)
+            .unwrap();
+        pose = k.native.motion.end;
+        tracks.push(AcceptedCurve {
+            body: h,
+            curve: Curve::Integrated(k),
+            start_time: from,
+            end_time: to,
+        });
+    }
+    let view = View {
+        world: &w,
+        rows: vec![SolverMotionBody {
+            handle: h,
+            end: pose,
+            linear_velocity: linear,
+            angular_velocity: angular,
+            keep_integrated_endpoint: false,
+        }],
+        dt: 1. / 60.,
+    };
+    let mut params = w.backend.integration_parameters;
+    params.dt = 1. / 60.;
+    assert!(rp::solver_ccd_active(
+        &w.backend.bodies[h],
+        &w.backend.colliders,
+        pose,
+        &params
+    ));
+    let mut output = SolverCcdPlan::default();
+    let mut promotions = Vec::new();
+    let mut work = Work {
+        used: 0,
+        limit: 32 * 1024 * 1024,
+    };
+    assert_eq!(
+        plan(
+            &view,
+            &params,
+            &w.contact_policies,
+            &w.characters,
+            &tracks,
+            &[],
+            &[],
+            &mut output,
+            &mut promotions,
+            &mut work,
+            1 << 24
+        ),
+        Ok(PlanStatus::Approved)
+    );
+    assert_eq!(output.checks, 1);
+    assert!(output.clamps.is_empty() && promotions.is_empty());
+    assert!(work.used < 1 << 20, "work={}", work.used);
+}
