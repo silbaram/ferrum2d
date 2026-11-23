@@ -720,6 +720,8 @@ Physics Lab의 `visibleBodyCount`는 조회한 body 수이며 화면 culling 측
 `pnpm smoke:example-suite`는 첫 화면 갤러리의 카드 수·썸네일 로딩·분류·검색·JavaScript 비활성·390/320px 폭과
 카드 링크의 배포 경로 유지, 예제 머리글의 갤러리 복귀 링크도 확인한다.
 기능 실험실은 넓은 화면의 주제 목록(한 번에 한 주제·썸네일 로딩·키보드 이동), 1024/390px의 선택 상자, 주제 순서의 이전·다음을 확인한다.
+게임 데모 4종은 같은 틀에서 게임 목록과 링크, 체험할 기능 전환(`?topic=`·소개 줄·선택 상자), 코드 보기의 데이터 파일과 API 문서 링크, 게임 순서의 이전·다음을 확인한다.
+작은 빛의 정원은 목록 옆에서 1440px 2배, 1600px 3배 정수 배율을 확인한다. `pnpm smoke:feature-examples`는 게임 목록의 기능 전환과 `이 위치에서 실험`, 충돌 영역 다시 시작을 확인한다.
 `pnpm smoke:feature-examples`는 실험마다 코드 보기의 화면 JSON을 다시 해석해 실제 씬 파일과 같은지, API 수와 소스 링크를 확인한다. 썸네일은 `pnpm thumbnails:examples`로 다시 찍는다.
 물리 실험실 smoke(`--mode=physics-sandbox`, `--mode=physics-demo-suite`)는 `physicsExamples.json`의 `knownIssue` 시나리오만
 멈춤을 허용하고, 그 경우에도 화면에 오류가 표시돼야 한다.
