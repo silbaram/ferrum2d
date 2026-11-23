@@ -20,7 +20,7 @@ const ordered = topics.flatMap(topic => catalog.filter(item => item.topic === to
 export interface FeatureNavigation {
   /** Topic list with thumbnails on wide screens; a compact picker on narrow ones. */
   element: HTMLElement;
-  /** Previous and next experiment links, placed under the stage. */
+  /** Previous and next experiment, one line under the stage. */
   pager: HTMLElement;
   destroy(): void;
 }
@@ -108,17 +108,9 @@ export function createFeatureNavigation(selected: string): FeatureNavigation {
   for (const [rel, item, caption] of [["prev", ordered[index - 1], "이전"], ["next", ordered[index + 1], "다음"]] as const) {
     if (!item) { pager.append(document.createElement("span")); continue; }
     const a = document.createElement("a"); a.href = featureUrl(item.id).href; a.rel = rel; a.className = `example-pager-${rel}`;
-    const small = document.createElement("small"); small.textContent = `${caption} · ${topics.find(topic => topic.id === item.topic)!.title}`;
+    const small = document.createElement("small"); small.textContent = caption;
     const title = document.createElement("span"); title.textContent = item.title;
     a.append(small, title); pager.append(a);
   }
   return { element, pager, destroy: () => lifetime.abort() };
-}
-
-/** Place the topic list beside the stage and the pager below the whole layout. The pager and
- * the code view sit outside the stage, so the sticky preview scrolls away before them. */
-export function mountFeatureNavigation(root: HTMLElement, navigation: FeatureNavigation): void {
-  const layout = root.querySelector(".demo-stage-layout")!;
-  layout.prepend(navigation.element);
-  layout.after(navigation.pager);
 }

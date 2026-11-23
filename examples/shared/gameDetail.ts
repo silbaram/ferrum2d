@@ -1,6 +1,7 @@
 import catalog from "./exampleCatalog.json";
-import { exampleSiteRoot } from "./exampleHeader";
-import { createExampleCode, exampleDocsUrl, type ExampleCodeData } from "./exampleCode";
+import { createExampleAbout, exampleSiteRoot } from "./exampleHeader";
+import { createExampleCode, exampleDocsUrl, type ExampleCodeData, type ExampleMoreTab } from "./exampleCode";
+import { createStageHead, createTrySection, createWatchSection, mountStageColumn, sentences, type StageHead } from "./exampleFrame";
 import "./exampleDetail.css";
 
 // Gallery thumbnails are bundled so a standalone game shows the same picture.
@@ -11,6 +12,8 @@ const games = catalog.filter(item => item.kind === "game");
 export interface GameTopic {
   id: string;
   title: string;
+  /** One sentence under the title: what this topic shows. */
+  summary: string;
   action: string;
   observe: string;
   /** Moves the game to where this topic is easiest to see. */
@@ -26,20 +29,26 @@ export interface GameDetailOptions {
   /** Offer the reload link that toggles collision outlines. */
   physicsDebugLink?: boolean;
   code: { data?: ExampleCodeData; api: string; sources: readonly string[] };
+  /** Game-specific text for "더 보기 › 게임 설명", such as a mission briefing. */
+  about?: readonly Node[];
+  /** Live numbers for "더 보기 › 엔진 수치". */
+  engine?: HTMLElement;
 }
 
 export interface GameDetail {
-  /** Catalog title, `<game> · <what it teaches>`, used for the page heading. */
+  /** Catalog title, `<game> · <what it teaches>`. */
   title: string;
   /** Game list with this game's topics on wide screens; a topic picker on narrow ones. */
   sidebar: HTMLElement;
-  /** Topic line over the stage. */
-  intro: HTMLElement;
-  /** How to try the selected topic, at the top of the panel. */
-  guide: HTMLElement;
+  /** "해 보기": how to play the selected topic and its actions. A page adds its own game controls here. */
+  tryHost: HTMLElement;
+  /** "볼 것" for the selected topic. */
+  watch: HTMLElement;
   code: HTMLElement;
   /** Previous and next game; only inside the published suite, where the other games exist. */
   pager: HTMLElement | undefined;
+  /** Show the selected topic in the page's title row; mount calls it once. */
+  attachHead(toolbar: HTMLElement): StageHead;
   destroy(): void;
 }
 
@@ -108,16 +117,11 @@ export function createGameDetail(options: GameDetailOptions): GameDetail {
   picker.append(choice);
   sidebar.append(label, list, picker);
 
-  // Topic line over the stage.
-  const intro = document.createElement("div"); intro.className = "example-intro";
-  const step = document.createElement("span"), heading = document.createElement("h2");
-  intro.append(step, heading);
-
-  // Guide card at the top of the panel.
-  const guide = document.createElement("section");
-  guide.className = "example-guide"; guide.setAttribute("aria-label", "체험 방법");
-  const guideTitle = document.createElement("h2"); guideTitle.textContent = "체험 방법";
-  const action = document.createElement("p"), observe = document.createElement("p");
+  // "해 보기" and "볼 것" for the selected topic.
+  const tryHost = createTrySection();
+  const action = document.createElement("p"); action.className = "example-try-action";
+  const watch = createWatchSection();
+  let head: StageHead | undefined;
   const actions = document.createElement("div"); actions.className = "example-guide-actions";
   const start = document.createElement("button"); start.type = "button"; start.textContent = "이 위치에서 실험";
   start.addEventListener("click", () => topics[current].start?.(), { signal });
@@ -126,7 +130,7 @@ export function createGameDetail(options: GameDetailOptions): GameDetail {
   const debug = document.createElement("a");
   debug.textContent = debugEnabled ? "충돌 영역 끄고 다시 시작" : "충돌 영역 켜고 다시 시작";
   if (options.physicsDebugLink !== false) actions.append(debug);
-  guide.append(guideTitle, action, observe, actions);
+  tryHost.append(action, actions);
 
   let current = Math.max(0, topics.findIndex(topic => topic.id === new URLSearchParams(location.search).get("topic")));
   function select(index: number, fromUser = false): void {
@@ -134,12 +138,9 @@ export function createGameDetail(options: GameDetailOptions): GameDetail {
     const topic = topics[index];
     topicLinks.forEach((link, i) => { if (i === index) link.setAttribute("aria-current", "true"); else link.removeAttribute("aria-current"); });
     choice.selectedIndex = index;
-    step.textContent = `체험할 기능 · ${index + 1} / ${topics.length}`;
-    heading.textContent = topic.title;
-    for (const [element, title, text] of [[action, "조작", topic.action], [observe, "관찰", topic.observe]] as const) {
-      const strong = document.createElement("strong"); strong.textContent = title;
-      element.replaceChildren(strong, text);
-    }
+    head?.set(topic.title, topic.summary);
+    action.textContent = topic.action;
+    watch.set(sentences(topic.observe));
     start.hidden = !topic.start;
     if (fromUser) history.replaceState(history.state, "", topicUrl(topic.id));
     const reload = new URL(location.href); reload.searchParams.set("physicsDebugLines", String(!debugEnabled));
@@ -147,8 +148,13 @@ export function createGameDetail(options: GameDetailOptions): GameDetail {
   }
   select(current);
 
+  const about = createExampleAbout(entry.id);
+  about.classList.add("example-more-block");
+  about.prepend(...(options.about ?? []));
+  const leading: ExampleMoreTab[] = [{ key: "about", label: "게임 설명", content: about }];
+  const trailing: ExampleMoreTab[] = options.engine ? [{ key: "engine", label: "엔진 수치", content: options.engine }] : [];
   const code = createExampleCode({
-    ...options.code,
+    ...options.code, leading, trailing,
     apiNote: "이 게임이 쓰는 공개 API입니다. 인자와 반환값은 API 문서에서 확인하세요.",
     sourcesNote: options.code.data ? "게임을 구성하는 예제 코드와, 처음 불러오는 데이터 파일입니다." : "게임을 구성하는 예제 코드입니다.",
     docsUrl: exampleDocsUrl(entry.path),
@@ -158,15 +164,23 @@ export function createGameDetail(options: GameDetailOptions): GameDetail {
   if (site) {
     pager = document.createElement("nav"); pager.className = "example-pager"; pager.setAttribute("aria-label", "이전·다음 게임");
     const index = games.indexOf(entry);
-    for (const [rel, game, caption] of [["prev", games[index - 1], "이전 게임"], ["next", games[index + 1], "다음 게임"]] as const) {
-      if (!game) { pager.append(document.createElement("span")); continue; }
+    for (const [rel, game, caption] of [["prev", games[index - 1], "이전"], ["next", games[index + 1], "다음"]] as const) {
+      if (!game) continue;
       const a = document.createElement("a"); a.href = new URL(game.path, site).href; a.rel = rel; a.className = `example-pager-${rel}`;
       const small = document.createElement("small"); small.textContent = caption;
-      const title = document.createElement("span"); title.textContent = game.title;
+      const title = document.createElement("span"); title.textContent = game.title.split(" · ")[0];
       a.append(small, title); pager.append(a);
     }
   }
-  return { title: entry.title, sidebar, intro, guide, code: code.element, pager, destroy: () => { lifetime.abort(); code.destroy(); } };
+  return {
+    title: entry.title, sidebar, tryHost, watch: watch.element, code: code.element, pager,
+    attachHead(toolbar) {
+      head = createStageHead(toolbar);
+      head.set(topics[current].title, topics[current].summary);
+      return head;
+    },
+    destroy: () => { lifetime.abort(); code.destroy(); },
+  };
 }
 
 export interface GameDetailParts {
@@ -177,29 +191,29 @@ export interface GameDetailParts {
   panel: HTMLElement;
 }
 
-/** Place the frame around a game page: list first in the layout, topic line over the stage,
- * guide at the top of the panel, and the code view and pager after the layout. */
-export function mountGameDetail(detail: GameDetail, parts: GameDetailParts): void {
+/** Place the frame around a game page: list first in the layout, the topic and one sentence over the
+ * stage with previous/next under it, "해 보기" and "볼 것" leading the panel, and "더 보기" after the layout. */
+export function mountGameDetail(detail: GameDetail, parts: GameDetailParts): StageHead {
   parts.root.classList.add("example-detail", "example-game");
-  parts.heading.textContent = detail.title;
+  const toolbar = parts.heading.closest<HTMLElement>(".demo-toolbar")!;
+  const head = detail.attachHead(toolbar);
   parts.layout.prepend(detail.sidebar);
-  parts.stage.prepend(detail.intro);
+  mountStageColumn(parts.stage, toolbar, detail.pager);
   parts.panel.classList.add("example-panel");
-  parts.panel.prepend(detail.guide);
+  parts.panel.setAttribute("aria-label", "해 보기와 볼 것");
+  parts.panel.prepend(detail.tryHost, detail.watch);
   parts.layout.after(detail.code);
-  if (detail.pager) detail.code.after(detail.pager);
+  return head;
 }
 
-/** runtimeDemoShell pages: the panel wraps the shell's metrics list unless the page brings its own. */
-export function mountShellGameDetail(detail: GameDetail, stage: HTMLElement, panel?: HTMLElement): void {
+/** runtimeDemoShell pages: a new panel beside the stage unless the page brings its own. The shell's
+ * metrics belong in "더 보기 › 엔진 수치" (`options.engine`). */
+export function mountShellGameDetail(detail: GameDetail, stage: HTMLElement, panel?: HTMLElement): StageHead {
   const root = stage.closest<HTMLElement>(".demo-shell")!;
   const layout = root.querySelector<HTMLElement>(".demo-stage-layout")!;
   if (!panel) {
-    const metrics = layout.querySelector(".demo-metrics")!;
     panel = document.createElement("aside");
-    panel.setAttribute("aria-label", "체험 방법과 실행 상태");
-    metrics.replaceWith(panel);
-    panel.append(metrics);
+    layout.append(panel);
   }
-  mountGameDetail(detail, { root, heading: root.querySelector<HTMLElement>(".demo-toolbar h1")!, layout, stage, panel });
+  return mountGameDetail(detail, { root, heading: root.querySelector<HTMLElement>(".demo-toolbar h1")!, layout, stage, panel });
 }

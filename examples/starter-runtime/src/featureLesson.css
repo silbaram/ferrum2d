@@ -1,11 +1,5 @@
-.feature-lesson-intro { border: 1px solid var(--example-border); border-bottom: 0; background: var(--example-panel); padding: 16px; }
-.feature-lesson-intro > span { font-size: 11px; color: var(--example-accent); }
-.feature-lesson-intro h2 { margin: 4px 0 8px; font-size: 17px; line-height: 1.5; }
-.feature-lesson-intro p { margin: 0; color: var(--example-muted); font-size: 13px; line-height: 1.7; }
-.feature-lesson-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.feature-lesson-actions button { border-color: var(--example-accent); }
-.feature-lesson-steps { margin: 0 0 12px; padding-left: 20px; color: var(--example-text); }
-.feature-lesson-steps li { padding-left: 4px; margin-bottom: 8px; }
+/* Lesson text and comparison cards live in "더 보기 › 설명"; the stage keeps role labels and status boards. */
+.feature-lesson-steps li { padding-left: 4px; margin-bottom: 4px; }
 .feature-lesson-steps li::marker { color: var(--example-accent); }
 .feature-buttons:empty { display: none; }
 .feature-preview { position: sticky; top: 12px; z-index: 4; width: 100%; min-width: 0; max-height: calc(100dvh - 24px); overflow: auto; overscroll-behavior: contain; background: var(--example-bg); }
@@ -21,12 +15,11 @@
 .feature-role-labels > span[hidden] { display: none; }
 .feature-role-labels [data-tone="geometry"] { border-left-color: var(--example-physics); }
 .feature-role-labels [data-tone="target"] { border-left-color: var(--example-accent); }
-.feature-lesson-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 8px 12px; background: var(--example-panel); border: 1px solid var(--example-border); border-top: 0; font-size: 12px; line-height: 1.6; color: var(--example-muted); }
+.example-more-block .feature-lesson-legend { list-style: none; padding: 0; color: var(--example-muted); }
 .feature-lesson-legend li::before { content: "· "; color: var(--example-accent); }
-.feature-lesson-feedback { box-sizing: border-box; min-height: 60px; font-size: 13px; line-height: 1.7; color: var(--example-text); border-left: 2px solid var(--example-accent); padding: 8px 12px; margin: 12px 0; }
-.feature-lesson-diagnostics { margin-top: 8px; font-size: 11px; color: var(--example-subtle); }
-.feature-lesson-diagnostics summary { cursor: pointer; }
-.feature-lesson-visual { border: 1px solid var(--example-border); background: var(--example-panel); padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.6; }
+.feature-lesson-feedback { margin: 12px 0 0; padding: 4px 12px; border-left: 2px solid var(--example-accent); color: var(--example-text); font-size: 13px; line-height: 1.7; }
+.feature-about-live { min-width: 0; }
+.feature-lesson-visual { border: 1px solid var(--example-border); background: var(--example-bg); padding: 12px; font-size: 12px; line-height: 1.6; }
 .feature-lesson-visual h3 { margin: 0 0 8px; font-size: 13px; }
 .feature-lesson-visual p { margin: 8px 0 0; color: var(--example-muted); }
 .feature-lesson-cells { display: grid; grid-template-columns: repeat(auto-fit,minmax(100px,1fr)); gap: 8px; }
@@ -54,9 +47,6 @@
 .feature-scene > .feature-content-preview { position: absolute; z-index: 3; inset: 0; min-height: 0; height: auto; width: auto; border: 0; background: transparent; }
 .feature-scene > .feature-system-status { position: absolute; z-index: 3; left: 12px; right: 12px; bottom: 12px; min-height: 0; margin: 0; background: var(--example-panel); }
 @media (max-width:600px) {
-  .feature-lesson-intro { padding: 12px; }
-  .feature-lesson-intro h2 { font-size: 15px; }
-  .feature-lesson-feedback { min-height: 112px; }
   .feature-lesson-cells { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .feature-lesson-dashboard { left: 8px; right: 8px; padding: 12px; }
   .feature-lab[data-feature-topic="streaming"] .demo-canvas { min-height: 320px; }

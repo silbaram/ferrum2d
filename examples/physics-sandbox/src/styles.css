@@ -78,21 +78,6 @@ input:focus-visible {
   padding: 16px;
 }
 
-/* Title row of the shared detail frame: title, subtitle, status and playback controls. */
-.physics-lab .demo-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  margin-bottom: 16px;
-}
-
-.physics-lab .demo-stage-layout {
-  display: grid;
-  gap: 16px;
-  align-items: start;
-}
-
 h1,
 h2,
 p,
@@ -101,94 +86,53 @@ ol {
   margin-top: 0;
 }
 
+/* The frame (title row, list, panel, "더 보기") is shared/exampleDetail.css. */
+
+/* Run state: one colored word beside the playback buttons. */
 .status-badge {
-  display: inline-flex;
-  align-items: center;
-  min-width: 72px;
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid rgba(110, 231, 183, 0.35);
-  border-radius: var(--example-radius);
+  margin-right: 4px;
   color: var(--example-runtime);
-  background: rgba(110, 231, 183, 0.15);
   font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-weight: 600;
 }
 
 .status-badge[data-status="loading"],
 .status-badge[data-status="step"] {
-  border-color: rgba(122, 162, 255, 0.35);
   color: var(--example-render);
-  background: rgba(122, 162, 255, 0.15);
 }
 
 .status-badge[data-status="paused"] {
-  border-color: rgba(245, 167, 66, 0.35);
   color: var(--example-accent);
-  background: var(--example-selection);
 }
 
 .status-badge[data-status="error"] {
-  border-color: rgba(255, 107, 107, 0.35);
   color: var(--example-danger);
-  background: rgba(255, 107, 107, 0.15);
 }
 
-.toolbar,
-.debug-controls,
-.action-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.toolbar {
-  align-items: center;
-}
-
-.physics-lab .toolbar button {
-  min-width: 0;
-  height: 32px;
-  padding: 0 12px;
-  font-size: 13px;
+.physics-lab .example-icon-button.is-active {
+  border-color: var(--example-accent);
+  color: var(--example-accent);
+  background: var(--example-selection);
+  opacity: 1;
 }
 
 .canvas-panel {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
-/* The intro line sits on the canvas like the feature lab's and the game demos'. */
-.canvas-frame .canvas-stack {
-  border-radius: 0 0 4px 4px;
-}
-
-.example-intro .scenario-summary {
-  margin: 4px 0 0;
-  color: var(--example-muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.example-intro .scenario-issue {
-  margin: 4px 0 0;
-  color: var(--example-danger);
-  font-size: 12px;
-}
-
-.example-item-note[data-issue] {
-  color: var(--example-danger);
+.canvas-frame {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--example-bg);
 }
 
 .canvas-stack {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 4px;
   background: var(--example-bg);
-  box-shadow: var(--shadow);
 }
 
 .physics-canvas {
@@ -230,20 +174,25 @@ ol {
   text-align: right;
 }
 
+/* What the debug lines show: one line along the bottom of the stage. */
 .debug-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--example-hairline);
+  background: var(--example-panel);
   color: var(--example-muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .debug-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--example-radius);
-  background: var(--surface);
+  gap: 5px;
+  min-height: 24px;
+  cursor: pointer;
 }
 
 .debug-toggle input {
@@ -254,95 +203,46 @@ ol {
 }
 
 .debug-toggle.is-disabled {
-  color: rgba(196, 210, 202, 0.42);
-  background: rgba(18, 24, 21, 0.54);
+  color: var(--example-subtle);
+  opacity: 0.6;
+  cursor: default;
 }
 
-.debug-toggle.is-disabled input {
-  accent-color: rgba(196, 210, 202, 0.34);
-}
-
-.panel-block,
-.warning-list {
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--example-panel);
-}
-
-.spec-panel,
-.selected-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  margin-bottom: 0;
-  font-size: 14px;
-}
-
-.panel-block h2 {
-  margin-bottom: 8px;
-  color: var(--example-text);
-  font-size: 13px;
-  font-weight: 720;
-  text-transform: uppercase;
-}
-
-.metric-item {
-  min-width: 0;
-  min-height: 64px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-}
-
-.spec-panel .metric-item,
-.selected-body .metric-item,
-.error-box .metric-item,
-.error-shell .metric-item {
-  display: grid;
-  grid-template-columns: minmax(82px, auto) minmax(0, 1fr);
-  gap: 8px;
+/* A stopped run: one line under the stage; the details are in "더 보기 › 엔진 수치". */
+.error-box {
+  display: flex;
   align-items: center;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.metric-item dt {
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
-.metric-item dd {
+  gap: 12px;
   min-width: 0;
-  margin: 0;
-  color: var(--example-text);
-  overflow-wrap: anywhere;
-  font-size: 18px;
-  font-weight: 720;
-  line-height: 1.2;
+  color: var(--example-danger);
+  font-size: 13px;
 }
 
-.spec-panel .metric-item dd,
-.selected-body .metric-item dd,
-.error-box .metric-item dd,
-.error-shell .metric-item dd {
-  color: var(--example-text);
-  font-size: 14px;
-  font-weight: 650;
-  text-align: right;
+.error-box[hidden] {
+  display: none;
 }
 
-.focus-list {
-  display: grid;
-  gap: 4px;
-  margin: 2px 0 0;
-  padding-left: 16px;
-  color: var(--example-muted);
-  line-height: 1.6;
+.error-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.physics-lab .error-more {
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+/* "해 보기": the selected body and the folded material values. */
+.selected-panel h3 {
+  margin: 0 0 4px;
+  color: var(--example-subtle);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .material-controls {
@@ -350,26 +250,14 @@ ol {
   gap: 10px;
 }
 
-.canvas-panel .material-controls {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-}
-
-.canvas-panel .selected-body {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.canvas-panel .selected-body .metric-item {
-  grid-template-columns: minmax(52px, auto) minmax(0, 1fr);
-}
-
 .material-control {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid rgba(196, 210, 202, 0.14);
+  padding: 8px 10px;
+  border: 1px solid var(--example-hairline);
   border-radius: 4px;
-  background: rgba(9, 16, 13, 0.48);
+  background: var(--example-panel);
 }
 
 .material-control-header {
@@ -388,13 +276,13 @@ ol {
 
 .material-control-header span {
   flex: 0 0 auto;
-  color: var(--muted);
+  color: var(--example-subtle);
   font-size: 11px;
 }
 
 .material-slider {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 58px;
+  grid-template-columns: 32px minmax(0, 1fr) 56px;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -409,13 +297,13 @@ ol {
 }
 
 .material-slider input[type="number"] {
-  width: 58px;
+  width: 56px;
   min-width: 0;
-  padding: 5px 6px;
+  padding: 4px 6px;
   border: 1px solid var(--example-border);
   border-radius: var(--example-radius);
   color: var(--example-text);
-  background: rgba(8, 12, 10, 0.62);
+  background: var(--example-bg);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -426,46 +314,67 @@ ol {
   font-size: 13px;
 }
 
+/* Name/value rows: the selected body, and the run state and settings in "더 보기". */
+:is(.metrics, .spec-panel, .selected-body) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  font-size: 13px;
+}
+
+.metric-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.metric-item dt {
+  flex: none;
+  color: var(--example-muted);
+  font-size: 12px;
+}
+
+.metric-item dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--example-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 .event-list {
   display: grid;
-  gap: 6px;
-  margin-bottom: 0;
+  gap: 4px;
+  margin: 0;
   padding-left: 18px;
   color: var(--example-muted);
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .warning-list {
-  margin-bottom: 16px;
-  border-color: rgba(255, 155, 118, 0.48);
-  background: rgba(66, 33, 24, 0.72);
+  margin-top: 8px;
+}
+
+.warning-list[hidden] {
+  display: none;
 }
 
 .warning-list p {
   margin: 0;
   color: var(--example-danger);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
 .warning-list p + p {
-  margin-top: 6px;
-}
-
-.error-box {
-  max-width: var(--detail-max);
-  margin: 16px auto 0;
-  padding: 12px;
-  border: 1px solid rgba(255, 107, 107, 0.35);
-  border-radius: 4px;
-  background: rgba(255, 107, 107, 0.15);
-}
-
-.error-box strong {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--example-danger);
+  margin-top: 4px;
 }
 
 .debug-root {
@@ -480,6 +389,10 @@ ol {
   width: 100% !important;
 }
 
+.side-panel .debug-root:not(:empty) {
+  margin-top: 24px;
+}
+
 .error-shell {
   max-width: 760px;
   margin: 48px auto;
@@ -490,84 +403,9 @@ ol {
   font-size: 22px;
 }
 
-/* One panel beside the stage: guide first, then hairline-separated sections with name/value rows. */
-.side-panel .panel-section h2 {
-  margin: 0 0 6px;
-  color: var(--example-text);
-  font-size: 13px;
-}
-
-.side-panel .panel-section ~ .panel-section {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--example-hairline);
-}
-
-.side-panel :is(.metrics, .spec-panel) {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-  margin: 0;
-  font-size: 13px;
-}
-
-.side-panel .metric-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  min-height: 0;
-  padding: 2px 0;
-  border: 0;
-  background: none;
-}
-
-.side-panel .metric-item dt {
-  flex: none;
-  color: var(--example-muted);
-  font-size: 12px;
-  text-transform: none;
-}
-
-.side-panel .metric-item dd {
-  color: var(--example-text);
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.side-panel .event-list {
-  font-size: 12px;
-}
-
-.side-panel .debug-root:not(:empty) {
-  margin-top: 16px;
-}
-
-@media (max-width: 860px) {
-  .example-detail.physics-lab {
-    --detail-columns: minmax(0, 1fr);
-  }
-
-  .physics-lab .example-panel {
-    position: static;
-    max-height: none;
-  }
-}
-
 @media (max-width: 620px) {
   .app-shell {
     padding: 14px;
-  }
-
-  .physics-lab .toolbar,
-  .debug-controls {
-    width: 100%;
-  }
-
-  .physics-lab .toolbar button {
-    flex: 1 1 72px;
   }
 
   .canvas-hud {

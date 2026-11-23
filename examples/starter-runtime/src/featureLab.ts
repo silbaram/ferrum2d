@@ -4,21 +4,18 @@ import {
 } from "@ferrum2d/ferrum-web/core";
 import { resolveSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
 import catalog from "../../shared/featureCatalog.json";
-import { cleanupRuntimeDemoResources, createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
-import "./featureLab.css";
+import { cleanupRuntimeDemoResources } from "../../shared/runtimeDemoShell";
+import { createFeatureFrame } from "./featureFrame";
 import { createFeatureExtra, extraControls, extraHelp, shooterFeatures, type FeatureExtra, type FeatureContext } from "./featureExtras";
 
 import { createGameplayFeature, gameplayControls, gameplayHelp } from "./featureGameplay";
 import { createContentFeature, contentControls, contentHelp } from "./featureContent";
-import { createFeatureNavigation, mountFeatureNavigation } from "./featureNavigation";
-import { createFeatureCode } from "./featureCode";
 import { createProjectileFeature, projectileControls } from "./featureProjectiles";
 import { createSystemFeature, systemControls } from "./featureSystems";
 import { createTerrainFeature, terrainControls } from "./featureTerrain";
 import { createAnimationFeature, animationControls } from "./featureAnimation";
 import { createNineSliceFeature, nineSliceControls } from "./featureNineSlice";
 import { spatialFeatureIds } from "./featureSpatialScenes";
-import { createFeatureLesson } from "./featureLesson";
 import { sampleLessonPoses } from "./featureLessonGeometry";
 import { createDisplayFeature, displayControls, displayPostProcess, postProcessControls } from "./featureDisplay";
 import { createCameraFeature } from "./featureCamera";
@@ -61,49 +58,15 @@ export async function startFeatureLab(): Promise<void> {
     return startSpatialFeatureLab(id);
   }
   const shooter = shooterFeatures.has(id);
-  const shell = createRuntimeDemoShell({ title: "엔진 기능 실험실", exampleId: "starter-runtime", controls: false, metrics: [] });
-  const { canvas, stage } = shell;
-  const root = stage.closest<HTMLElement>(".demo-shell")!;
-  root.classList.add("feature-lab", "example-detail");
-  document.title = `${feature.title} · Ferrum2D`;
-  canvas.tabIndex = 0;
-  canvas.setAttribute("aria-label", `${feature.title} 실험 화면`);
-  const toolbar = root.querySelector(".demo-toolbar")!;
-  toolbar.querySelector("h1")!.textContent = feature.title;
-  const top = document.createElement("div");
-  top.className = "feature-top-actions";
-  top.innerHTML = `<label>렌더러 <select data-control="renderer"><option value="webgl2">WebGL2</option><option value="webgpu">WebGPU</option></select></label>
-    <span data-value="backend" role="status">준비 중…</span><button data-control="pause">일시정지</button><button data-control="reset">실험 초기화</button>`;
-  toolbar.append(top);
-  const navigation = createFeatureNavigation(id);
-  const panel = document.createElement("aside");
-  panel.className = "feature-panel";
-  panel.setAttribute("aria-label", "실험 설명과 설정");
-  panel.innerHTML = `<h2>설정</h2><form class="feature-controls">${controls[id]}</form>
-    <output class="feature-observation" data-value="observation">엔진 준비 중…</output>`;
-  root.querySelector(".demo-metrics")!.replaceWith(panel);
-  // Buttons in the settings form must never submit/reload the page.
-  for (const button of root.querySelectorAll<HTMLButtonElement>("button")) button.type = "button";
-  const help = document.createElement("p");
-  help.className = "feature-canvas-help";
-  help.textContent = (id === "animation" ? "이동과 대기: 바닥 클릭 · WASD/방향키로 목적지 지정 · 방향 전환은 좌우 반전으로 표현합니다." : undefined) ?? extraHelp[id] ?? gameplayHelp[id] ?? contentHelp[id] ?? (id === "nine-slice" ? "대화창·가방을 고른 뒤 너비를 늘려보세요. 같은 원본에서 모서리와 테두리가 어떻게 달라지는지 비교합니다." :
-    id === "navigation" || id === "camera" ? "바닥 클릭 · 방향키 / WASD: 32 단위 이동 명령" :
-    id === "lighting" ? "화면 위에서 포인터를 움직이거나 광원 위치 버튼을 사용하세요." : "설정을 바꾸며 같은 장면의 변화를 비교하세요.");
-  stage.append(help);
-  const stats = document.createElement("p");
-  stats.className = "feature-statistics";
-  // Reserve the diagnostics row before controls mount; delayed text must not shift touch targets.
-  stats.textContent = "오브젝트 — · 그리기 명령 — · 드로우 콜 —";
-  stage.append(stats);
-  mountFeatureNavigation(root, navigation);
-  const code = createFeatureCode({ id, api: feature.api, sources: featureSources(id) });
-  navigation.pager.before(code.element);
+  const frame = createFeatureFrame(feature, { controls: controls[id], help: canvasHelp(id), sources: featureSources(id),
+    statistics: "오브젝트 — · 그리기 명령 — · 드로우 콜 —" });
+  const { shell, root, panel, lesson, statistics: stats } = frame;
+  const { canvas } = shell;
   const control = <T extends HTMLElement>(key: string) => root.querySelector<T>(`[data-control="${key}"]`)!;
   const choice = (key: string) => control<HTMLSelectElement>(key).value;
   const input = (key: string) => control<HTMLInputElement>(key);
   const output = (key: string, text: string) => { root.querySelector(`[data-value="${key}"]`)!.textContent = text; };
   const lifetime = new AbortController(), { signal } = lifetime;
-  const lesson = createFeatureLesson(root, canvas, id, feature.lesson, feature.observe);
   const requested = params.get("renderer") === "webgpu" ? "webgpu" : "webgl2";
   control<HTMLSelectElement>("renderer").value = requested;
   // The fixed step belongs to the native world. Another rate reopens the page with a
@@ -121,7 +84,7 @@ export async function startFeatureLab(): Promise<void> {
   let physicsPresentation: { sample: number; displayX: number; displayY: number; nativeX: number; nativeY: number; alpha: number } | undefined;
   let physicsObservation: { speed: number; launches: number; contacts: number } | undefined;
   let resources: (() => ReturnType<NonNullable<FerrumRuntime["renderer"]["resourceStats"]>>) | undefined;
-  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => code.destroy(), () => lesson.destroy()];
+  const cleanups: Array<() => void> = [...frame.cleanups];
   // Async initialization may finish after navigation. Adopt late resources by disposing immediately.
   const own = (dispose: () => void) => { if (destroyed) dispose(); else cleanups.push(dispose); };
   const cleanup = () => {
@@ -388,7 +351,7 @@ export async function startFeatureLab(): Promise<void> {
       if (shooter) { shooterPaused = !shooterPaused; if (shooterPaused) runtime!.pause(); else runtime!.resume(); }
       else { const scene = runtime!.dataScene!; if (playing()) scene.pause(); else scene.resume(); }
       extra?.pause(!playing());
-      control("pause").textContent = playing() ? "일시정지" : "계속하기";
+      frame.setPaused(!playing());
     });
     on("reset", "click", () => {
       extra?.beforeReset?.();
@@ -404,7 +367,7 @@ export async function startFeatureLab(): Promise<void> {
       physicsPresentation = undefined;
       configure();
       if (extra) output("observation", extra.observation());
-      control("pause").textContent = "일시정지";
+      frame.setPaused(false);
       if (id === "navigation" || id === "camera") output("destination", "바닥을 클릭해 목적지를 정하세요.");
     });
     on("renderer", "change", () => {
@@ -422,6 +385,15 @@ export async function startFeatureLab(): Promise<void> {
     ready = true;
     runtime.start();
   } catch (error) { const cancelled = signal.aborted; cleanup(); if (!cancelled) throw error; }
+}
+
+/** What the pointer or keys do on the canvas, when the controls do not already say it. */
+function canvasHelp(id: string): string | undefined {
+  if (id === "animation") return "이동과 대기: 바닥 클릭 · WASD/방향키로 목적지 지정 · 방향 전환은 좌우 반전으로 표현합니다.";
+  if (id === "nine-slice") return "대화창·가방을 고른 뒤 너비를 늘려보세요. 같은 원본에서 모서리와 테두리가 어떻게 달라지는지 비교합니다.";
+  if (id === "navigation" || id === "camera") return "바닥 클릭 · 방향키 / WASD: 32 단위 이동 명령";
+  if (id === "lighting") return "캔버스 위에서 포인터를 움직여도 광원이 따라옵니다.";
+  return extraHelp[id] ?? gameplayHelp[id] ?? contentHelp[id];
 }
 
 /** Lab sources that apply each experiment's controls, shown in the code view. */

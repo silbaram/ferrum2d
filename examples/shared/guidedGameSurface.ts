@@ -28,14 +28,10 @@ export function createGuidedGameSurface<T extends { destroy(): void }>(
       { id: "right", label: "오른쪽 →", controls: ["d"] },
       ...(kind === "platformer" ? [{ id: "jump", label: "점프", controls: ["space" as const] }] : []),
   ]);
-  const hint = document.createElement("p");
-  hint.className = "guided-hint";
-  hint.textContent = kind === "platformer"
-    ? "A/D · ←/→ 이동 · Space 점프 · P/Esc 일시정지. 터치 화면은 아래 버튼을 사용하세요."
-    : "A/D · ←/→ 패들 이동 · P/Esc 일시정지. 터치 화면은 아래 버튼을 사용하세요.";
-  stage.append(legend, pad, hint);
+  // The keys are in the page's "해 보기"; the stage keeps the color legend and the touch pad.
+  stage.append(legend, pad);
   const lifetime = new AbortController();
-  const destroy = () => { lifetime.abort(); controls.destroy(); legend.remove(); pad.remove(); hint.remove(); };
+  const destroy = () => { lifetime.abort(); controls.destroy(); legend.remove(); pad.remove(); };
   window.addEventListener("pagehide", event => { if (!event.persisted) destroy(); }, { signal: lifetime.signal });
   return { controls, destroy };
 }

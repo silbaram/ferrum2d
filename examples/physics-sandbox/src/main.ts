@@ -32,6 +32,9 @@ import {
   renderRuntimeDemoError,
   runtimeDemoDiagnosticRows,
 } from "../../shared/runtimeDemoShell";
+import {
+  createTrySection, createWatchSection, fold, hint, iconButton, moreBlock, mountStageColumn,
+} from "../../shared/exampleFrame";
 
 import "./styles.css";
 import { createExampleHeader } from "../../shared/exampleHeader";
@@ -351,13 +354,17 @@ function createShell(
   const shell = document.createElement("main");
   const header = document.createElement("section");
   const title = document.createElement("h1");
-  const subtitle = document.createElement("p");
   const statusBadge = document.createElement("span");
   const toolbar = document.createElement("div");
-  const runButton = createRuntimeDemoButton("실행", onRun);
-  const pauseButton = createRuntimeDemoButton("일시정지", onPause);
-  const stepButton = createRuntimeDemoButton("한 프레임", onStep);
-  const resetButton = createRuntimeDemoButton("리셋", onReset);
+  const button = (icon: string, label: string, action: () => void) => {
+    const element = iconButton(icon, label);
+    element.addEventListener("click", action);
+    return element;
+  };
+  const runButton = button("play", "실행", onRun);
+  const pauseButton = button("pause", "일시정지", onPause);
+  const stepButton = button("step-forward", "한 프레임", onStep);
+  const resetButton = button("rotate-ccw", "리셋", onReset);
   const layout = document.createElement("section");
   const debugControls = document.createElement("div");
   const canvasPanel = document.createElement("section");
@@ -368,30 +375,22 @@ function createShell(
   const canvasTitle = document.createElement("span");
   const canvasSignal = document.createElement("span");
   const sidePanel = document.createElement("aside");
-  const guide = document.createElement("section");
-  const guideTitle = document.createElement("h2");
-  const guideAction = document.createElement("p");
+  const trySection = createTrySection();
   const actionButtons = document.createElement("div");
-  const guideObserve = document.createElement("div");
-  const focusList = document.createElement("ul");
-  const metricsPanel = document.createElement("section");
-  const metricsTitle = document.createElement("h2");
+  const watch = createWatchSection();
   const metrics = document.createElement("dl");
-  const specSection = document.createElement("section");
-  const specTitle = document.createElement("h2");
   const specPanel = document.createElement("dl");
-  const materialPanel = document.createElement("section");
-  const materialTitle = document.createElement("h2");
   const materialControls = document.createElement("div");
   const selectedPanel = document.createElement("section");
-  const selectedTitle = document.createElement("h2");
+  const selectedTitle = document.createElement("h3");
   const selectedBody = document.createElement("dl");
-  const eventPanel = document.createElement("section");
-  const eventTitle = document.createElement("h2");
   const eventList = document.createElement("ol");
   const warningList = document.createElement("div");
+  const diagnostics = document.createElement("dl");
   const debugRoot = document.createElement("div");
   const errorBox = document.createElement("div");
+  const errorMessage = document.createElement("span");
+  const errorMore = document.createElement("button");
 
   const statusValue = document.createElement("dd");
   const bodyValue = document.createElement("dd");
@@ -418,11 +417,12 @@ function createShell(
   shell.className = "app-shell physics-lab example-detail";
   shell.append(createExampleHeader("physics-sandbox"));
   header.className = "demo-toolbar";
-  subtitle.className = "example-subtitle";
   statusBadge.className = "status-badge";
-  toolbar.className = "toolbar";
+  statusBadge.setAttribute("role", "status");
+  toolbar.className = "toolbar example-run";
   layout.className = "demo-stage-layout";
   debugControls.className = "debug-controls";
+  debugControls.setAttribute("aria-label", "디버그 표시");
   canvasPanel.className = "canvas-panel";
   canvasFrame.className = "canvas-frame";
   canvasStack.className = "canvas-stack";
@@ -431,44 +431,41 @@ function createShell(
   canvasTitle.className = "canvas-hud-label";
   canvasSignal.className = "canvas-hud-label";
   sidePanel.className = "side-panel example-panel";
-  sidePanel.setAttribute("aria-label", "체험 방법과 실행 상태");
-  guide.className = "example-guide";
-  guide.setAttribute("aria-label", "체험 방법");
+  sidePanel.setAttribute("aria-label", "해 보기와 볼 것");
   actionButtons.className = "example-guide-actions action-buttons";
-  guideObserve.className = "guide-observe";
-  focusList.className = "focus-list";
-  metricsPanel.className = "panel-section";
   metrics.className = "metrics";
-  specSection.className = "panel-section";
   specPanel.className = "spec-panel";
-  materialPanel.className = "panel-block material-panel";
   materialControls.className = "material-controls";
-  selectedPanel.className = "panel-block selected-panel";
+  selectedPanel.className = "selected-panel";
   selectedBody.className = "selected-body";
-  eventPanel.className = "panel-section event-panel";
   eventList.className = "event-list";
   warningList.className = "warning-list";
+  diagnostics.className = "metrics";
   debugRoot.className = "debug-root";
   errorBox.className = "error-box";
+  errorMessage.className = "error-message";
+  errorMore.type = "button";
+  errorMore.className = "error-more";
 
   title.textContent = "물리 심화 실험실";
-  subtitle.textContent = `Physics Spec 시나리오 ${scenarios.length}개`;
   statusBadge.textContent = STATUS_LABELS.loading;
   statusBadge.dataset.status = "loading";
-  guideTitle.textContent = "체험 방법";
-  guideAction.append(strongText("조작"), "버튼으로 장면의 동작을 다시 실행합니다. 캔버스에서 물체를 누르면 실행 화면 아래에 그 물체의 상태가 나옵니다.");
-  guideObserve.append(strongText("관찰"));
-  metricsTitle.textContent = "실행 상태";
-  specTitle.textContent = "물리 설정";
-  materialTitle.textContent = "재질 조절";
   selectedTitle.textContent = "선택한 물체";
-  eventTitle.textContent = "물리 신호";
+  errorMore.textContent = "자세히";
   canvas.width = 800;
   canvas.height = 480;
   canvasTitle.textContent = STATUS_LABELS.loading;
   canvasSignal.textContent = "접촉 0";
   errorBox.hidden = true;
   warningList.hidden = true;
+  selectedPanel.hidden = true;
+
+  // "더 보기 › 엔진 수치": run state with warnings, physics settings, signals, and the last error.
+  const engine = document.createElement("div");
+  engine.className = "example-more-grid physics-engine";
+  const errorBlock = moreBlock("오류", diagnostics);
+  errorBlock.hidden = true;
+  engine.append(moreBlock("실행 상태", metrics, warningList), moreBlock("물리 설정", specPanel), moreBlock("물리 신호", eventList), errorBlock);
 
   const detail = createScenarioDetail(scenarios.map((scenario) => ({
     id: scenario.id,
@@ -479,7 +476,8 @@ function createShell(
     thumbnail: scenarioThumbnails[`../../shared/thumbnails/physics-${scenario.id}.jpg`],
     physicsSpec: scenario.physicsSpec,
     specUrl: publicAssetUrl(scenario.physicsSpec),
-  })), initialScenario, onScenarioChange);
+  })), initialScenario, onScenarioChange, engine);
+  errorMore.addEventListener("click", () => detail.open("engine"));
 
   for (const { key, label } of DEBUG_CATEGORIES) {
     const item = document.createElement("label");
@@ -520,21 +518,20 @@ function createShell(
   appendMetric(specPanel, "레이어", layerValue);
 
   toolbar.append(statusBadge, runButton, pauseButton, stepButton, resetButton);
-  header.append(title, subtitle, toolbar);
+  header.append(title, toolbar);
   canvasHud.append(canvasTitle, canvasSignal);
   canvasStack.append(canvas, canvasHud);
-  canvasFrame.append(detail.intro, canvasStack);
-  canvasPanel.append(canvasFrame, debugControls, materialPanel, selectedPanel);
-  materialPanel.append(materialTitle, materialControls);
+  canvasFrame.append(canvasStack, debugControls);
+  errorBox.append(errorMessage, errorMore);
+  canvasPanel.append(canvasFrame, errorBox);
   selectedPanel.append(selectedTitle, selectedBody);
-  guideObserve.append(focusList);
-  guide.append(guideTitle, guideAction, actionButtons, guideObserve);
-  metricsPanel.append(metricsTitle, metrics);
-  specSection.append(specTitle, specPanel);
-  eventPanel.append(eventTitle, eventList);
-  sidePanel.append(guide, warningList, metricsPanel, specSection, eventPanel, debugRoot);
+  trySection.append(actionButtons, hint("캔버스에서 물체를 누르면 그 물체의 상태가 여기에 나옵니다."), selectedPanel,
+    fold("재질 값 바꾸기", materialControls));
+  sidePanel.append(trySection, watch.element, debugRoot);
   layout.append(detail.sidebar, canvasPanel, sidePanel);
-  shell.append(header, layout, errorBox, detail.code, detail.pager);
+  shell.append(layout, detail.code);
+  mountStageColumn(canvasPanel, header, detail.pager);
+  detail.attachHead(header);
   app.replaceChildren(shell);
   shell.inert = true;
 
@@ -555,7 +552,7 @@ function createShell(
       statusBadge.textContent = label;
       statusBadge.dataset.status = status;
       errorBox.hidden = true;
-      errorBox.replaceChildren();
+      errorMessage.textContent = "";
     },
     setScenario(scenario, spec, world, nextDebugOptions) {
       Object.assign(debugOptions, nextDebugOptions);
@@ -569,7 +566,7 @@ function createShell(
       layerValue.textContent = formatCount(Object.keys(spec.layers).length);
       bodyValue.textContent = formatCount(world.bodyCount);
       jointValue.textContent = formatCount(world.jointCount);
-      focusList.replaceChildren(...scenarioFocus(scenario).map(createFocusItem));
+      watch.set(scenarioFocus(scenario));
       applyDebugControlAvailability(scenario, spec, debugOptions, debugControlInputs, debugControlLabels);
     },
     setRuntimeMetrics(metrics) {
@@ -612,6 +609,7 @@ function createShell(
     },
     setSelectedBody(report) {
       selectedBody.replaceChildren();
+      selectedPanel.hidden = !report;
       if (!report) {
         appendMetric(selectedBody, "물체", createTextValue("선택 없음"));
         return;
@@ -625,15 +623,16 @@ function createShell(
       appendMetric(selectedBody, "휴면", createTextValue(report.sleeping));
     },
     setError(error) {
+      // One line under the stage; the code and message are in "더 보기 › 엔진 수치".
       const report = diagnosticReport(error);
-      const titleElement = document.createElement("strong");
-      const list = document.createElement("dl");
-      titleElement.textContent = "오류";
+      diagnostics.replaceChildren();
       for (const [label, value] of runtimeDemoDiagnosticRows(report)) {
-        appendMetric(list, label, createTextValue(value));
+        appendMetric(diagnostics, label, createTextValue(value));
       }
+      errorBlock.hidden = false;
+      errorMessage.textContent = `실행이 멈췄습니다 · ${report.message}`;
+      errorMessage.title = report.message;
       errorBox.hidden = false;
-      errorBox.replaceChildren(titleElement, list);
       statusValue.textContent = STATUS_LABELS.error;
       statusBadge.textContent = STATUS_LABELS.error;
       statusBadge.dataset.status = "error";
@@ -1651,18 +1650,6 @@ function materialReportLabel(
 
 function materialFieldLabel(field: MaterialControlField): string {
   return field === "friction" ? "마찰" : "탄성";
-}
-
-function strongText(text: string): HTMLElement {
-  const strong = document.createElement("strong");
-  strong.textContent = text;
-  return strong;
-}
-
-function createFocusItem(label: string): HTMLElement {
-  const item = document.createElement("li");
-  item.textContent = label;
-  return item;
 }
 
 function createWarningRow(warning: PhysicsWorldApplyWarning): HTMLElement {

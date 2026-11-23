@@ -1,10 +1,14 @@
-import { createExampleCode, exampleDocsUrl } from "../../shared/exampleCode";
+import { createExampleCode, exampleDocsUrl, type ExampleMoreTab } from "../../shared/exampleCode";
 
 const LAB_DIR = "examples/starter-runtime/";
 
-/** The lab's code view: the experiment's scene file, its public API and the lab sources. */
-export function createFeatureCode(options: { id: string; api: string; sources: readonly string[] }) {
+/** The lab's "더 보기": the description, the experiment's scene file, its public API, the lab sources and
+ * the live engine numbers. */
+export function createFeatureCode(options: { id: string; api: string; sources: readonly string[]; about: HTMLElement; engine: HTMLElement }) {
+  const leading: ExampleMoreTab[] = [{ key: "about", label: "설명", content: options.about }];
+  const trailing: ExampleMoreTab[] = [{ key: "engine", label: "엔진 수치", content: options.engine }];
   return createExampleCode({
+    leading, trailing,
     data: { label: "씬 JSON", path: `${LAB_DIR}public/features/${options.id}.json`, url: `./features/${options.id}.json` },
     api: options.api,
     apiNote: "이 실험이 쓰는 공개 API입니다. 인자와 반환값은 API 문서에서 확인하세요.",

@@ -137,18 +137,33 @@ try {
     assert.equal(await select.locator('option:checked').textContent(), entry.title);
     assert.equal(await select.locator('option[value*="mode="]').count(), 0);
     assert.equal(await header.locator('[data-example-home]').getAttribute('href'), base);
-    if (entry.parent) {
-      // An app that extends a lab topic links back to that topic in the lab.
-      const parentTitle = catalog.find(item => item.id === entry.parent.id).title;
-      assert.equal((await header.locator('.example-breadcrumb').textContent()).trim(), `${parentTitle} › ${entry.parent.label}`);
-      assert.equal(await header.locator('.example-breadcrumb a').getAttribute('href'), new URL(`${entry.parent.id}/?feature=${entry.parent.feature}`, base).href);
-    } else assert.equal(await header.locator('.example-breadcrumb').count(),0);
+    // Detail pages show their place as a path that leads back to the gallery's groups; the guide
+    // lives in the page itself, so the top bar has no folded "예제 안내".
+    const trail = header.locator('.example-trail > *');
+    const firstTopic = topics.find(topic => topic.id === features[0].topic);
+    const expectedTrail = entry.kind === 'game' ? [['게임 데모', '?group=games#games'], [entry.title.split(' · ')[0], null]]
+      : entry.parent ? [['기능 실험', '?group=features#features'], [entry.parent.label, `${entry.parent.id}/?feature=${entry.parent.feature}`], [entry.title, null]]
+      : [['기능 실험', '?group=features#features'], [firstTopic.title, `?group=${encodeURIComponent(`topic:${firstTopic.id}`)}#topic-${firstTopic.id}`]];
+    assert.deepEqual(await trail.allTextContents(), expectedTrail.map(([text]) => text));
+    assert.deepEqual(await trail.evaluateAll(items => items.map(item => item.getAttribute('href'))), expectedTrail.map(([, link]) => link && new URL(link, base).href));
+    assert.equal(await trail.last().getAttribute('aria-current'), 'page');
+    assert.equal(await header.locator('details, .example-breadcrumb').count(), 0);
     assert.equal(await header.locator('[data-example-docs]').getAttribute('href'),base+'docs/');
     assert.deepEqual(await select.locator('option').evaluateAll(options=>options.map(o=>o.value)),publicExamples.map(e=>new URL(e.path,base).href));
-    await header.locator('summary').focus(); await page.keyboard.press('Enter');
-    assert.match(await header.locator('details').innerText(), /직접 해보기[\s\S]*관찰할 결과/);
-    assert.equal(await header.locator('.example-related a').count(), entry.features.length);
-    await header.locator('summary').click();
+    // "더 보기" starts closed; games and the physics lab list the related lab experiments in its description.
+    assert.equal(await page.locator('.example-code').getAttribute('data-open'), 'false');
+    if (entry.id !== 'starter-runtime') assert.equal(await page.locator('.example-code .example-related a').count(), entry.features.length);
+    // At 1440×900 the first screen shows what this is, the stage, "해 보기" and "볼 것".
+    const viewport = page.viewportSize();
+    await page.setViewportSize({width:1440,height:900}); await page.evaluate(() => window.scrollTo(0, 0));
+    const firstScreen = await page.evaluate(() => {
+      const top = selector => document.querySelector(selector).getBoundingClientRect().top;
+      const stage = [...document.querySelectorAll('canvas')].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0].getBoundingClientRect();
+      return { title: top('.demo-toolbar h1'), stageBottom: stage.bottom, try: top('.example-try'), watch: top('.example-watch'), more: top('.example-code'), height: innerHeight };
+    });
+    assert(firstScreen.title >= 0 && firstScreen.stageBottom <= firstScreen.height && firstScreen.try < firstScreen.height && firstScreen.watch < firstScreen.height,
+      `${entry.id} first screen: ${JSON.stringify(firstScreen)}`);
+    await page.setViewportSize(viewport);
     const theme = await header.evaluate(root => ({font:getComputedStyle(root).fontFamily, background:getComputedStyle(root.querySelector('select')).backgroundColor, radius:getComputedStyle(root.querySelector('select')).borderRadius}));
     assert.match(theme.font, /Ferrum Example UI/); assert.equal(theme.background, 'rgb(17, 24, 33)'); assert.equal(theme.radius, '2px');
     if (entry.kind === 'game') {
@@ -166,13 +181,18 @@ try {
       await topicLinks.last().click();
       const lastTopic = await topicLinks.last().getAttribute('data-topic');
       assert.equal(new URL(page.url()).searchParams.get('topic'), lastTopic);
-      assert.equal(await page.locator('.example-intro h2').textContent(), await topicLinks.last().textContent());
+      assert.equal((await page.locator('.demo-toolbar h1').textContent()).trim(), await topicLinks.last().textContent());
+      assert.notEqual(await page.locator('.demo-toolbar .example-subtitle').textContent(), '');
+      assert(await page.locator('.example-watch li').count() >= 1);
       assert.equal(await page.locator('.example-picker select').inputValue(), lastTopic);
       await topicLinks.first().click();
       const tabs = await page.locator('.example-code [role=tab]').allTextContents();
-      assert.deepEqual(tabs.slice(-2), ['API', '코드 위치']);
-      if (tabs.length === 3) {
+      assert.equal(tabs[0], '게임 설명');
+      assert(tabs.includes('API') && tabs.includes('코드 위치'));
+      const dataTab = tabs.find(tab => tab === 'Game Spec' || tab === '씬 JSON');
+      if (dataTab) {
         // The data tab shows the exact file the game loads.
+        await page.locator('.example-code').getByRole('tab', { name: dataTab, exact: true }).click();
         await page.waitForFunction(() => document.querySelector('.example-code')?.dataset.dataLines);
         const file = JSON.parse(await readFile(await page.locator('.example-code-path').textContent(), 'utf8'));
         assert.deepEqual(JSON.parse(await page.locator('.example-code-json').textContent()), file);
@@ -186,14 +206,17 @@ try {
     let controls;
     if (entry.id === 'breakout' || entry.id === 'platformer') controls = await smokeGuidedExample(page, entry.id);
     if (entry.id === 'physics-sandbox') {
-      // The physics lab shares the frame too: scenarios beside the canvas, a scenario line over it,
-      // the guide leading the panel, then the current Physics Spec and the previous/next scenario.
+      // The physics lab shares the frame too: scenarios beside the canvas, the scenario and one sentence
+      // over it, "해 보기" and "볼 것" beside it, previous/next under it, and the Physics Spec in "더 보기".
       const links = page.locator('.example-sidebar-list .example-item[data-scenario]');
       assert.deepEqual(await links.evaluateAll(items => items.map(item => item.dataset.scenario)), physicsTopics.map(item => item.id));
-      assert.equal(await page.locator('.example-item-note[data-issue]').count(), physicsTopics.filter(item => item.knownIssue).length);
+      assert.equal(await page.locator('.example-item[data-issue] .example-item-issue').count(), physicsTopics.filter(item => item.knownIssue).length);
       await page.waitForFunction(() => [...document.querySelectorAll('.example-sidebar img')].every(image => image.complete && image.naturalWidth > 0));
       assert.equal(await page.locator('.example-picker option').count(), physicsTopics.length);
-      assert.equal(await page.locator('.example-panel .example-guide .action-button').count() > 0, true);
+      assert.equal(await page.locator('.example-panel .example-try .action-button').count() > 0, true);
+      assert(await page.locator('.example-panel .example-watch li').count() >= 1);
+      assert.deepEqual(await page.locator('.example-code [role=tab]').allTextContents(), ['설명', 'Physics Spec', 'API', '코드 위치', '엔진 수치']);
+      await page.locator('.example-code').getByRole('tab', { name: 'Physics Spec', exact: true }).click();
       const initial = await page.evaluate(() => window.ferrumPhysicsSandboxSmokeFrame.demoId), target = physicsTopics.at(-1).id;
       const specPath = id => `examples/physics-sandbox/public/demos/${id}.physics.json`;
       const showsSpec = async id => {
@@ -201,14 +224,14 @@ try {
         assert.deepEqual(JSON.parse(await page.locator('.example-code-json').textContent()), JSON.parse(await readFile(specPath(id), 'utf8')));
       };
       await showsSpec(initial);
-      assert.deepEqual(await page.locator('.example-code [role=tab]').allTextContents(), ['Physics Spec', 'API', '코드 위치']);
       assert.equal(await page.locator('#example-code-api a').getAttribute('href'), new URL('docs/engine/public-api.html', base).href);
       await page.locator(`.example-item[data-scenario="${target}"]`).click();
       await page.waitForFunction(id => window.ferrumPhysicsSandboxSmokeFrame?.demoId === id, target);
       assert.equal(new URL(page.url()).searchParams.get('demo'), target);
       assert.equal(await page.locator('.example-item[aria-current]').getAttribute('data-scenario'), target);
       assert.equal(await page.locator('.example-picker select').inputValue(), target);
-      assert.equal(await page.locator('.example-intro h2').textContent(), physicsTopics.at(-1).title);
+      assert.equal(await page.locator('.demo-toolbar h1').evaluate(h1 => h1.firstChild.textContent), physicsTopics.at(-1).title);
+      assert.equal(await page.locator('.demo-toolbar .example-issue').isVisible(), Boolean(physicsTopics.at(-1).knownIssue));
       await showsSpec(target);
       // The last scenario has no next link; previous switches in place.
       assert.equal(await page.locator('.example-pager a[rel=next]').isHidden(), true);
@@ -224,13 +247,14 @@ try {
     if (entry.id === 'platformer') {
       await page.locator('canvas').focus(); await page.keyboard.down('KeyD');
       assert.equal(await page.evaluate(() => window.ferrumRuntime.input.snapshot().d), true);
-      await header.locator('summary').focus(); await page.keyboard.up('KeyD');
+      const toggle = page.locator('.example-more-toggle');
+      await toggle.focus(); await page.keyboard.up('KeyD');
       assert.equal(await page.evaluate(() => window.ferrumRuntime.input.snapshot().d), false, 'release must reach game input after UI focus');
       await page.keyboard.press('Space');
-      assert.equal(await header.locator('details').getAttribute('open'), '');
+      assert.equal(await page.locator('.example-code').getAttribute('data-open'), 'true');
       assert.equal(await page.evaluate(() => window.ferrumRuntime.input.snapshot().space), false, 'UI activation must not jump');
       await page.keyboard.press('Space');
-      assert.equal(await header.locator('details').getAttribute('open'), null);
+      assert.equal(await page.locator('.example-code').getAttribute('data-open'), 'false');
     }
     if (entry.id === 'physics-sandbox') controls = await smokePhysicsLabViewport(page);
     if (entry.id === 'topdown-shooter') controls = await smokeTopdownShowcase(page, 20000);
@@ -281,7 +305,9 @@ try {
     assert.equal(await page.locator('.example-header a:not([data-example-source]), .example-header select').count(),0,'standalone must not generate broken cross-app links, including matching folder names');
     // The source link is absolute (GitHub), so it stays valid without the suite.
     assert.match(await page.locator('.example-header [data-example-source]').getAttribute('href'), /^https:\/\/github\.com\/silbaram\/ferrum2d\/tree\/main\/examples\/[a-z-]+$/);
-    await page.locator('.example-learning summary').click(); assert.match(await page.locator('.example-standalone').textContent(), /pnpm preview:examples/);
+    // Standalone, the game description says how to open the whole suite.
+    await page.locator('.example-code').getByRole('tab', { name: '게임 설명', exact: true }).click();
+    assert.match(await page.locator('.example-standalone').textContent(), /pnpm preview:examples/);
   }
   for (const entry of catalog.filter(item => item.id === 'engine-playground' || item.id === 'starter-profiles')) {
     await page.goto(new URL(entry.path, base).href); await ready(page);

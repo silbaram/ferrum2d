@@ -3,7 +3,7 @@
 Kinematic platformer controller를 검증하는 장르 예제다. `createFerrumRuntime(...)`과 `FerrumEngine.usePlatformerGame()`이 같은 renderer/input/runtime 경로에서 one-way platform, moving platform, grounded state를 처리하는지 확인한다.
 
 왼쪽 목록(좁은 화면은 실행 화면 위 선택 상자)의 `체험할 기능`에서 점프·착지 / 단방향 발판 / 이동 발판을 고르고,
-오른쪽 패널의 `이 위치에서 실험`을 누르면 해당 구역으로 플레이어를 옮긴다. A/D·방향키와 Space로 조작하며, 터치 화면에서는 왼쪽·오른쪽·점프 버튼을 사용한다.
+오른쪽 해 보기의 `이 위치에서 실험`을 누르면 해당 구역으로 플레이어를 옮긴다. A/D·방향키와 Space로 조작하며, 터치 화면에서는 왼쪽·오른쪽·점프 버튼을 사용한다.
 `충돌 영역 켜고 다시 시작`은 query를 바꿔 충돌 선을 표시하며 씬을 다시 시작한다.
 색상 사각형은 controller 판정을 보여주는 fixture다. 경사면 실험은 Physics Sandbox의 platformer-physics 시나리오에서 확인한다.
 

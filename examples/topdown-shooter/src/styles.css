@@ -10,7 +10,7 @@ kbd { font: 11px "Ferrum Example UI", ui-monospace, monospace; color: var(--exam
 #app { position: relative; padding: 16px; }
 /* Title row, list, stage and panel follow the shared frame in shared/exampleDetail.css. */
 .shooter-shell { width: 100%; }
-.shooter-shell .demo-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 16px; }
+.shooter-shell .example-run button { height: 32px; padding: 0 12px; font-size: 13px; }
 .shooter-eyebrow { color: var(--example-muted); font: 10px ui-monospace, monospace; letter-spacing: .13em; margin: 0 0 9px; }
 .shooter-layout { display: grid; gap: 16px; align-items: start; }
 .shooter-column { min-width: 0; }
@@ -37,37 +37,30 @@ kbd { font: 11px "Ferrum Example UI", ui-monospace, monospace; color: var(--exam
 .shooter-primary:hover:not(:disabled) { color: var(--example-text); }
 .shooter-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px 2px; color: var(--example-muted); font-size: 10px; }
 .shooter-hint { margin: 0; }
+.shooter-hint:empty { display: none; }
 .shooter-touch-hint { display: none; margin: 0; }
-.shooter-telemetry { font-family: ui-monospace, monospace; color: var(--example-subtle); }
-/* One panel: the shared guide card, then the briefing and presentation sections. */
-.shooter-sidebar { display: grid; gap: 16px; }
-.shooter-sidebar .example-guide { margin-bottom: 0; }
-.shooter-card { padding: 0 0 16px; border-bottom: 1px solid var(--example-hairline); }
-.shooter-card:last-child { padding-bottom: 0; border-bottom: 0; }
-.shooter-card h2 { font-size: 14px; margin: 0 0 8px; line-height: 1.5; }
-.shooter-card p { color: var(--example-muted); font-size: 12px; line-height: 1.7; margin: 0 0 8px; }
-.shooter-card .shooter-eyebrow { color: var(--example-accent); font: 11px var(--example-font); letter-spacing: normal; margin: 0 0 4px; }
-.shooter-card ol { margin: 12px 0 0; padding-left: 20px; color: var(--example-subtle); font-size: 11px; }
-.shooter-card li + li { margin-top: 13px; }
-.shooter-card li strong, .shooter-card li span { display: block; }
-.shooter-card li strong { color: var(--example-text); font-size: 12px; margin-bottom: 4px; }
-.shooter-card li span { line-height: 1.6; }
-.shooter-card label { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 0; cursor: pointer; }
-.shooter-card input { accent-color: var(--example-accent); width: 14px; height: 14px; }
-.shooter-card button { width: 100%; margin-top: 12px; font-size: 12px; }
-.shooter-card .shooter-small { font-size: 11px; margin: 8px 0 0; }
+.shooter-telemetry { font-family: ui-monospace, monospace; color: var(--example-text); }
+/* "해 보기" holds the folded screen settings (and the optional game-file card); the briefing is in "더 보기". */
+.shooter-settings label { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--example-text); cursor: pointer; }
+.shooter-settings input { accent-color: var(--example-accent); width: 14px; height: 14px; }
+.shooter-settings .example-hint { margin-top: 6px; }
+.shooter-briefing h3 { margin: 0 0 6px; color: var(--example-subtle); font-size: 12px; font-weight: 600; }
+.shooter-briefing p { margin: 0 0 6px; color: var(--example-muted); }
+.shooter-briefing ol { margin: 0 0 16px; padding-left: 20px; color: var(--example-text); }
+.shooter-briefing strong { margin-right: 6px; }
+.shooter-card h2 { font-size: 13px; margin: 0 0 8px; color: var(--example-text); }
+.shooter-card p { color: var(--example-muted); font-size: 12px; line-height: 1.7; margin: 8px 0 0; }
+.shooter-card .shooter-small { font-size: 11px; }
 .shooter-debug-panel { margin-top: 18px; }
 .shooter-native-files > div { display: flex; gap: 8px; }
-.shooter-native-files > div button { margin: 0; }
+.shooter-native-files > div button { margin: 0; height: 32px; padding: 0 12px; }
 .shooter-native-staging { position: fixed; left: -20000px; top: 0; visibility: hidden; pointer-events: none; }
 .shooter-stage [data-ferrum-virtual-controls] { display: none; }
 /* VirtualControls supplies an inline system font; retain the local Korean glyphs. */
 .shooter-stage [data-ferrum-virtual-button] { font-family: "Ferrum Example UI", system-ui, sans-serif !important; }
 @media (max-width: 1000px) {
   .example-detail.shooter-shell { --detail-columns: minmax(0, 1fr); }
-  .shooter-sidebar.example-panel { position: static; max-height: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .shooter-sidebar .example-guide { grid-column: 1 / -1; }
-  .shooter-card { padding-bottom: 0; border-bottom: 0; }
+  .shooter-sidebar.example-panel { position: static; max-height: none; }
 }
 @media (max-width: 600px) {
   #app { padding: 16px 12px 24px; }
@@ -76,7 +69,6 @@ kbd { font: 11px "Ferrum Example UI", ui-monospace, monospace; color: var(--exam
   .shooter-scoreboard > div:first-child { min-width: 65px; }
   .shooter-scoreboard strong[data-readout=score] { font-size: 25px; }
   .shooter-scoreboard button { padding: 8px; font-size: 10px; }
-  .shooter-sidebar.example-panel { grid-template-columns: minmax(0, 1fr); }
   .shooter-touch-hint { display: block; }
   .shooter-hint { display: none; }
   .shooter-dialog { padding: 12px; gap: 8px; }

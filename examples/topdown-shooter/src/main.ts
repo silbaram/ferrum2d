@@ -1207,9 +1207,13 @@ async function bootstrap(): Promise<void> {
       id: "topdown-shooter",
       canvas,
       topics: [
-        { id: "game-spec", title: "Game Spec · 웨이브", action: "출격하기 또는 Enter로 시작하고 WASD로 이동·마우스로 조준하세요.", observe: "Rust가 추적·중장갑·선회 웨이브, 점수, 충돌을 처리합니다. 점수판은 같은 native 상태를 읽습니다." },
-        { id: "tile-collision", title: "타일 충돌 · 피격 효과", action: "금속 엄폐물을 돌아 이동하고 적을 향해 사격하세요.", observe: "타일 충돌·피격 파티클·오디오·카메라 흔들림을 확인하고 조명·후처리 설정을 비교하세요." },
+        { id: "game-spec", title: "Game Spec · 웨이브", summary: "드론의 종류·속도·등장 순서를 코드 대신 Game Spec JSON으로 정합니다.",
+          action: "출격하기 또는 Enter로 시작하세요. WASD로 이동하고 마우스로 조준해 클릭이나 Space로 쏩니다.", observe: "웨이브마다 움직임이 다른 드론이 나옵니다. 점수판은 게임 안 상태를 그대로 읽습니다." },
+        { id: "tile-collision", title: "타일 충돌 · 피격 효과", summary: "벽 타일이 이동과 탄환을 막고, 맞으면 파티클·소리·화면 흔들림이 납니다.",
+          action: "금속 엄폐물을 돌아 이동하고 적을 향해 사격하세요.", observe: "엄폐물에 막혀 탄환과 드론이 지나가지 못합니다. 맞힐 때마다 파티클과 소리, 화면 흔들림이 납니다." },
       ],
+      about: [showcase.briefing],
+      engine: showcase.telemetry,
       code: {
         data: { label: "Game Spec", path: "examples/topdown-shooter/public/game.json", url: "./game.json" },
         api: "createEngine · WebGL2Renderer · setGameSpec · builtInShooterProgress · setShooterHitParticlePreset · setLighting · renderPostProcess · BrowserPlatformHost · VirtualControls",
@@ -1218,6 +1222,7 @@ async function bootstrap(): Promise<void> {
     });
     own(() => detail.destroy());
     mountGameDetail(detail, { root: showcase.root, heading: showcase.heading, layout: showcase.layout, stage: showcase.column, panel: showcase.sidebar });
+    detail.tryHost.append(showcase.presentation);
     const debugEnabled = searchParams.get("debug") === "true";
     const debugPanel = document.createElement("aside");
     debugPanel.className = "shooter-debug-panel";
@@ -1456,7 +1461,8 @@ async function bootstrap(): Promise<void> {
         (authoredBehaviorVariantApplyId += 1),
       );
     }
-    showcase.hint.textContent = "WASD 이동 · 마우스 조준 · 클릭 / Space 발사 · P / Esc 일시정지";
+    // Loading progress used this line; the keys are in "해 보기".
+    showcase.hint.textContent = "";
 
     lifetime.check();
     const smokeWindow = window as TopdownSmokeWindow;
@@ -1554,7 +1560,7 @@ async function bootstrap(): Promise<void> {
       controls.className = "shooter-card shooter-native-files";
       controls.setAttribute("aria-label", "네이티브 게임 파일");
       controls.innerHTML = `<h2>게임 파일</h2><div><button type="button" data-native-file="save">파일 저장</button><button type="button" data-native-file="open">파일 열기</button></div><input type="file" accept=".f2d" hidden><p role="status" aria-live="polite">파일 기능 준비 중…</p><p class="shooter-small">현재 게임과 에셋을 .f2d 파일로 저장합니다. 이 옵션은 통합 물리 경로를 사용합니다.</p>`;
-      showcase.root.querySelector(".shooter-sidebar")!.append(controls);
+      detail.tryHost.append(controls);
       const saveButton = controls.querySelector<HTMLButtonElement>('[data-native-file="save"]')!;
       const openButton = controls.querySelector<HTMLButtonElement>('[data-native-file="open"]')!;
       const fileInput = controls.querySelector<HTMLInputElement>('input[type="file"]')!;

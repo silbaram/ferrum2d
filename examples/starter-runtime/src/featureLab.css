@@ -1,7 +1,8 @@
 .feature-lab { background: var(--example-bg); font-family: var(--example-font); padding: 16px; color: var(--demo-text); }
-.feature-lab .demo-toolbar h1 { font-size: 17px; }
-.feature-top-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+.feature-top-actions { font-size: 12px; color: var(--example-subtle); }
+.feature-top-actions [data-value=backend] { margin-right: 4px; }
 .feature-top-actions [data-value=backend]:empty { display: none; }
+.example-detail .demo-actions:empty { display: none; }
 .feature-lab :is(button, select) { min-width: 0; height: 32px; border: 1px solid var(--example-border); background: var(--example-raised); color: var(--example-text); border-radius: var(--example-radius); padding: 0 10px; font: inherit; cursor: pointer; }
 .feature-lab :is(a, select, input):focus-visible { outline: 2px solid var(--example-accent); outline-offset: 3px; }
 
@@ -9,10 +10,9 @@
 .feature-export { margin: 12px 0 0; }
 .feature-lab .demo-stage { width: 100%; min-width: 0; }
 .feature-lab .demo-canvas { aspect-ratio: 5 / 3; }
-.feature-panel { position: sticky; top: 12px; align-self: start; max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; border: 1px solid var(--example-border); background: var(--example-panel); padding: 16px; font-size: 13px; line-height: 1.7; }
-.feature-panel h2 { margin: 0 0 12px; font-size: 14px; color: var(--example-text); }
-.feature-panel h3 { margin: 20px 0 4px; font-size: 13px; color: var(--example-text); }
-.feature-panel p { color: var(--example-muted); margin: 0 0 12px; }
+/* The panel frame ("해 보기", "볼 것") is shared/exampleDetail.css; these style the lab's settings. */
+.feature-panel h3 { margin: 12px 0 4px; font-size: 13px; color: var(--example-text); }
+.feature-panel p { color: var(--example-muted); margin: 0; }
 .feature-controls { display: grid; gap: 12px; }
 .feature-effect-combination { margin: 0; padding: 8px; border: 1px solid var(--example-border); min-width: 0; }
 .feature-effect-combination legend { color: var(--example-muted); padding: 0 4px; }
@@ -23,16 +23,13 @@
 .feature-controls output { color: var(--example-accent); font-variant-numeric: tabular-nums; }
 .feature-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .feature-lab button:disabled { opacity: 0.45; cursor: not-allowed; }
-.feature-observation { display: block; padding: 12px; border-left: 2px solid var(--example-accent); background: var(--example-raised); color: var(--example-text); min-height: 48px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.feature-observation { display: block; color: var(--example-text); font-size: 13px; font-variant-numeric: tabular-nums; }
 .feature-control-error:not([hidden]) { display: block; padding: 8px; border-left: 2px solid var(--example-accent); background: var(--example-raised); color: var(--example-text); font-size: 12px; overflow-wrap: anywhere; }
-.feature-panel details { border-top: 1px solid #1b2430; margin-top: 20px; padding-top: 12px; }
-.feature-panel .feature-lesson-guide { margin: 0 0 12px; border: 1px solid var(--example-border); padding: 8px; }
-.feature-panel .feature-lesson-guide[open] summary { margin-bottom: 8px; }
+.feature-panel details { border-top: 1px solid var(--example-hairline); padding-top: 10px; }
 .feature-panel summary { cursor: pointer; color: var(--example-muted); }
 .feature-panel code { display: block; margin: 12px 0; font-size: 11px; color: var(--example-subtle); overflow-wrap: anywhere; }
-.feature-panel a { color: var(--example-render); display: block; margin: 8px 0; }
-.feature-canvas-help, .feature-statistics { font-size: 12px; color: var(--example-muted); margin: 12px 0; line-height: 1.6; }
-.feature-statistics { color: var(--example-subtle); font-variant-numeric: tabular-nums; }
+.feature-panel a { color: var(--example-render); }
+.feature-statistics { margin: 0; color: var(--example-text); font-variant-numeric: tabular-nums; }
 .feature-input-menu { background: var(--example-raised); color: var(--example-text); border: 1px solid var(--example-border); border-radius: 4px; padding: 24px; max-width: min(400px, calc(100vw - 64px)); }
 .feature-input-menu::backdrop { background: #080b0fc0; }
 .feature-input-menu h2 { font-size: 18px; }
@@ -41,16 +38,14 @@
 .feature-lab .demo-canvas { touch-action: none; }
 @media (max-width: 900px) {
   .feature-lab { padding: 12px; }
-  .feature-lab .demo-toolbar { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
+/* Narrow screens stack everything in one column. The stage column joins the layout grid so the pinned
+   preview stays on screen while the settings, which scroll inside their own half-screen box, change it. */
 @media (max-width: 700px) {
-  .feature-lab .demo-stage-layout { display: flex; flex-direction: column; gap: 12px; }
-  .feature-lab .demo-stage { display: contents; }
-  .feature-lab .example-sidebar { order: -3; width: 100%; }
-  .feature-lab .feature-lesson-intro { order: -2; width: 100%; }
-  .feature-lab .feature-preview { order: -1; }
-  .feature-lab .demo-stage > :not(.feature-preview):not(.feature-lesson-intro) { order: 1; }
-  .feature-panel { position: static; width: 100%; max-height: 50dvh; }
+  /* The 45dvh preview and the 50dvh settings fit one screen with 12px gaps. */
+  .feature-lab .demo-stage-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .feature-lab :is(.example-stage-column, .demo-stage) { display: contents; }
+  .feature-lab .example-panel { position: static; max-height: 50dvh; }
 }
 
 .feature-content-preview { position: relative; min-height: 320px; width: 100%; border: 1px solid var(--example-border); box-sizing: border-box; background: var(--example-bg); }

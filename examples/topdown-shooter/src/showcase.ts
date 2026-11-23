@@ -1,4 +1,5 @@
 import { createExampleHeader } from "../../shared/exampleHeader";
+import { fold } from "../../shared/exampleFrame";
 
 /** Presentation and platform controls only; gameplay and wave progression stay in Rust. */
 export interface ShowcaseActions {
@@ -27,7 +28,7 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
   const root = document.createElement('main');
   root.className = 'shooter-shell';
   root.innerHTML = `
-    <section class="demo-toolbar"><h1>Neon Outpost</h1><p class="example-subtitle">전초기지 방어 · Game Spec 쇼케이스</p></section>
+    <section class="demo-toolbar"><h1>Neon Outpost</h1><div class="example-run"><button type="button" data-action="restart" disabled>처음부터 다시 시작</button></div></section>
     <section class="shooter-layout demo-stage-layout">
       <div class="shooter-column">
         <div class="shooter-scoreboard" aria-label="게임 현황">
@@ -44,21 +45,28 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
             <button type="button" class="shooter-primary" data-action="start" disabled>에셋 준비 중…</button>
           </div>
         </div>
-        <div class="shooter-footer"><p class="shooter-hint">Enter / Space로 시작 · P / Esc 일시정지 · 적과 접촉하지 마세요</p><p class="shooter-touch-hint">패드로 이동 · 화면을 터치해 조준 · 발사 버튼으로 사격</p><output class="shooter-telemetry">Rust / Wasm · WebGL2</output></div>
+        <div class="shooter-footer"><p class="shooter-hint"></p><p class="shooter-touch-hint">패드로 이동 · 화면을 터치해 조준 · 발사 버튼으로 사격</p></div>
       </div>
-      <aside class="shooter-sidebar" aria-label="작전과 화면 설정">
-        <section class="shooter-card"><p class="shooter-eyebrow">MISSION BRIEFING</p><h2>움직이고, 조준하고, 생존하세요</h2><p>청록색 수비대와 붉은 드론을 구분하세요. 금속 엄폐물은 이동과 탄환을 막습니다.</p><ol><li><strong>추적 드론</strong><span>가볍고 빠른 적을 먼저 처리하세요.</span></li><li><strong>중장갑 드론</strong><span>모서리에서 진입하며 여러 발을 견딥니다.</span></li><li><strong>선회 드론</strong><span>주변을 맴도는 적을 미리 조준하세요.</span></li></ol></section>
-        <section class="shooter-card"><p class="shooter-eyebrow">PRESENTATION</p><h2>화면과 소리</h2>
-          <label><input type="checkbox" data-setting="lighting" checked> 아레나 조명</label>
-          <label><input type="checkbox" data-setting="effects" checked> 빛 번짐 · 비네트</label>
-          <label><input type="checkbox" data-setting="motion"> 화면 흔들림 줄이기</label>
-          <label><input type="checkbox" data-setting="mute"> 소리 끄기</label>
-          <button type="button" data-action="restart" disabled>처음부터 다시 시작</button>
-          <p class="shooter-small">화면 설정은 게임 속도·충돌·점수에 영향을 주지 않습니다. 소리는 첫 입력 후 활성화됩니다.</p>
-        </section>
-      </aside>
+      <aside class="shooter-sidebar"></aside>
     </section>`;
   root.prepend(createExampleHeader("topdown-shooter"));
+  // Screen and sound settings fold inside "해 보기"; the briefing and the numbers wait in "더 보기".
+  const settingsBox = document.createElement("div");
+  settingsBox.className = "shooter-settings";
+  settingsBox.innerHTML = `<label><input type="checkbox" data-setting="lighting" checked> 아레나 조명</label>
+    <label><input type="checkbox" data-setting="effects" checked> 빛 번짐 · 비네트</label>
+    <label><input type="checkbox" data-setting="motion"> 화면 흔들림 줄이기</label>
+    <label><input type="checkbox" data-setting="mute"> 소리 끄기</label>
+    <p class="example-hint">화면 설정은 게임 속도·충돌·점수에 영향을 주지 않습니다. 소리는 첫 입력 후 활성화됩니다.</p>`;
+  const presentation = fold("화면과 소리 설정", settingsBox);
+  root.querySelector(".shooter-sidebar")!.append(presentation);
+  const briefing = document.createElement("section");
+  briefing.className = "shooter-briefing";
+  briefing.innerHTML = `<h3>작전 브리핑</h3><p>청록색 수비대와 붉은 드론을 구분하세요. 금속 엄폐물은 이동과 탄환을 막습니다.</p>
+    <ol><li><strong>추적 드론</strong> 가볍고 빠른 적을 먼저 처리하세요.</li><li><strong>중장갑 드론</strong> 모서리에서 진입하며 여러 발을 견딥니다.</li><li><strong>선회 드론</strong> 주변을 맴도는 적을 미리 조준하세요.</li></ol>`;
+  const telemetry = document.createElement("output");
+  telemetry.className = "shooter-telemetry";
+  telemetry.textContent = "Rust / Wasm · WebGL2";
   const get = <T extends HTMLElement>(selector: string): T => {
     const element = root.querySelector<T>(selector);
     if (!element) throw new Error(`Missing Shooter UI element: ${selector}`);
@@ -122,7 +130,7 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
   }, { signal: signal.signal });
   document.addEventListener('visibilitychange', () => { if (document.hidden && state === 1 && !paused) togglePause(); }, { signal: signal.signal });
   return {
-    root, stage, hint,
+    root, stage, hint, presentation, briefing, telemetry,
     heading: get<HTMLHeadingElement>('.demo-toolbar h1'), layout: get<HTMLElement>('.shooter-layout'),
     column: get<HTMLDivElement>('.shooter-column'), sidebar: get<HTMLElement>('.shooter-sidebar'),
     setCanvas(next: HTMLCanvasElement) { activeCanvas = next; },
@@ -134,7 +142,7 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
       const previous = state;
       state = frame.gameState; score = frame.score;
       set('score', String(score));
-      get<HTMLOutputElement>('.shooter-telemetry').textContent = `${frame.entityCount} entities · ${frame.drawCalls} draws · ${Math.round(frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0)} fps`;
+      telemetry.textContent = `${frame.entityCount} entities · ${frame.drawCalls} draws · ${Math.round(frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0)} fps`;
       if (previous !== state) { paused = false; updatePhase(); }
       if (wave) {
         set('wave', `WAVE ${String(wave.index + 1).padStart(2, '0')}`);

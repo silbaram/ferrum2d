@@ -12,8 +12,19 @@ export interface ExampleCodeData {
   url: string;
 }
 
+/** A page's own tab in "더 보기", such as its description or live engine numbers. */
+export interface ExampleMoreTab {
+  key: string;
+  label: string;
+  content: HTMLElement;
+}
+
 export interface ExampleCodeOptions {
-  /** The data file this page loads, shown in the first tab when present. */
+  /** Tabs before the code tabs, such as the description. */
+  leading?: readonly ExampleMoreTab[];
+  /** Tabs after the code tabs, such as live engine numbers. */
+  trailing?: readonly ExampleMoreTab[];
+  /** The data file this page loads, shown before the API tab when present. */
   data?: ExampleCodeData;
   /** Public API names separated by `·`. */
   api: string;
@@ -103,6 +114,8 @@ export interface ExampleCode {
   element: HTMLElement;
   /** Show another data file, for pages that switch scenes in place. Ignored without an initial data file. */
   setData(data: ExampleCodeData): void;
+  /** Open "더 보기" on a tab, or on the last one shown. */
+  open(key?: string): void;
   destroy(): void;
 }
 
@@ -113,35 +126,47 @@ function sourceItem(path: string): HTMLLIElement {
   return item;
 }
 
-/** Code view under the stage: the page's data file, its public API and the example sources. */
+/** "더 보기" under the layout: the page's own tabs (description, engine numbers), its data file, its public
+ * API and the example sources. It starts closed, so the stage, "해 보기" and "볼 것" lead the page; a tab or
+ * the toggle opens it. The data file is fetched the first time its tab opens. */
 export function createExampleCode(options: ExampleCodeOptions): ExampleCode {
   const lifetime = new AbortController(), { signal } = lifetime;
-  const root = element("section", "example-code"); root.setAttribute("aria-labelledby", "example-code-title");
+  const root = element("section", "example-code"); root.setAttribute("aria-label", "더 보기");
+  root.dataset.open = "false";
   const head = element("div", "example-code-head");
-  const title = element("h2", undefined, "코드 보기"); title.id = "example-code-title";
-  const tablist = element("div", "example-code-tabs"); tablist.setAttribute("role", "tablist"); tablist.setAttribute("aria-label", "코드 보기");
-  head.append(title, tablist);
-  root.append(head);
+  const toggle = element("button", "example-more-toggle"); toggle.type = "button";
+  toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-controls", "example-more-body");
+  toggle.append(element("span", undefined, "더 보기"), exampleIcon("chevron-down"));
+  const tablist = element("div", "example-code-tabs"); tablist.setAttribute("role", "tablist"); tablist.setAttribute("aria-label", "더 보기");
+  head.append(toggle, tablist);
+  const body = element("div", "example-more-body"); body.id = "example-more-body"; body.hidden = true;
+  root.append(head, body);
 
-  const panels: { tab: HTMLButtonElement; panel: HTMLElement; open?: () => void }[] = [];
+  const panels: { key: string; tab: HTMLButtonElement; panel: HTMLElement; open?: () => void }[] = [];
   const addTab = (key: string, label: string, panel: HTMLElement, open?: () => void) => {
     const tab = element("button", "example-code-tab", label); tab.type = "button";
     tab.id = `example-code-tab-${key}`; tab.setAttribute("role", "tab"); tab.setAttribute("aria-controls", `example-code-${key}`);
     panel.id = `example-code-${key}`; panel.setAttribute("role", "tabpanel"); panel.setAttribute("aria-labelledby", tab.id);
-    panel.className = "example-code-panel"; panel.tabIndex = 0;
-    tablist.append(tab); root.append(panel);
-    panels.push({ tab, panel, open });
+    panel.classList.add("example-code-panel"); panel.tabIndex = 0;
+    tablist.append(tab); body.append(panel);
+    panels.push({ key, tab, panel, open });
   };
-  const select = (index: number, focus = false) => {
+  let current = 0;
+  // Closed, no tab is selected; the last one shown keeps the tab stop.
+  const show = (index: number | undefined, focus = false) => {
+    if (index !== undefined) current = index;
+    const opened = index !== undefined;
+    root.dataset.open = String(opened); body.hidden = !opened;
+    toggle.setAttribute("aria-expanded", String(opened));
     panels.forEach((entry, i) => {
-      const selected = i === index;
-      entry.tab.setAttribute("aria-selected", String(selected));
-      entry.tab.tabIndex = selected ? 0 : -1;
-      entry.panel.hidden = !selected;
+      entry.tab.setAttribute("aria-selected", String(opened && i === current));
+      entry.tab.tabIndex = i === current ? 0 : -1;
+      entry.panel.hidden = !opened || i !== current;
     });
-    panels[index].open?.();
-    if (focus) panels[index].tab.focus();
+    if (opened) panels[current].open?.();
+    if (focus) panels[current].tab.focus();
   };
+  for (const tab of options.leading ?? []) addTab(tab.key, tab.label, tab.content);
 
   // Data file: the scene or Game Spec this page loads, fetched when the tab opens.
   let data = options.data;
@@ -231,10 +256,12 @@ export function createExampleCode(options: ExampleCodeOptions): ExampleCode {
   if (data) { dataSource = sourceItem(data.path); files.append(dataSource); }
   sources.append(files);
   addTab("sources", "코드 위치", sources);
+  for (const tab of options.trailing ?? []) addTab(tab.key, tab.label, tab.content);
 
+  toggle.addEventListener("click", () => show(body.hidden ? current : undefined), { signal });
   tablist.addEventListener("click", event => {
     const index = panels.findIndex(entry => entry.tab === (event.target as Element).closest("[role=tab]"));
-    if (index >= 0) select(index);
+    if (index >= 0) show(index);
   }, { signal });
   // Arrow keys move between tabs (WAI-ARIA tabs pattern).
   tablist.addEventListener("keydown", event => {
@@ -243,8 +270,15 @@ export function createExampleCode(options: ExampleCodeOptions): ExampleCode {
       : event.key === "Home" ? 0 : event.key === "End" ? panels.length - 1 : undefined;
     if (index < 0 || next === undefined) return;
     event.preventDefault();
-    select((next + panels.length) % panels.length, true);
+    show((next + panels.length) % panels.length, true);
   }, { signal });
-  select(0);
-  return { element: root, setData: next => setData(next), destroy: () => lifetime.abort() };
+  show(undefined);
+  // Opened from elsewhere on the page, such as an error line's "자세히": bring it into view.
+  const open = (key?: string) => {
+    const index = key === undefined ? current : panels.findIndex(entry => entry.key === key);
+    if (index < 0) return;
+    show(index);
+    root.scrollIntoView({ block: "start" });
+  };
+  return { element: root, setData: next => setData(next), open, destroy: () => lifetime.abort() };
 }

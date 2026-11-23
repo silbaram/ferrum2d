@@ -40,6 +40,12 @@ a.example-brand:hover { color: var(--example-text); text-decoration: underline; 
 .example-breadcrumb { color: var(--example-accent); border-left: 1px solid var(--example-border); padding-left: 16px; }
 .example-breadcrumb a { color: var(--example-muted); text-decoration: none; }
 .example-breadcrumb a:is(:hover, :focus-visible) { color: var(--example-text); text-decoration: underline; }
+/* Detail pages: the page's place as a path after the brand, such as `› 기능 실험 › 조명·그림자`. */
+.example-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; margin-left: -8px; color: var(--example-subtle); }
+.example-trail > *::before { content: "›"; display: inline-block; margin-right: 8px; color: var(--example-subtle); }
+.example-trail a { color: var(--example-muted); text-decoration: none; }
+.example-trail a:is(:hover, :focus-visible) { color: var(--example-text); text-decoration: underline; text-underline-offset: 2px; }
+.example-trail [aria-current] { color: var(--example-text); }
 .example-switcher { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--example-muted); }
 .example-header :is(select, button) { color: var(--example-text); background: var(--example-raised); border: 1px solid var(--example-border); border-radius: var(--example-radius); font: inherit; height: 32px; min-width: 0; max-width: 100%; padding: 0 8px; }
 .example-header :is(a, select, summary):focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }

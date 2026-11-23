@@ -4,58 +4,33 @@ import {
 } from "@ferrum2d/ferrum-web/core";
 import { applyDataSceneAuthoringDocument, type SceneAuthoringDocumentSpec } from "@ferrum2d/ferrum-web/authoring";
 import catalog from "../../shared/featureCatalog.json";
-import { cleanupRuntimeDemoResources, createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
-import { createFeatureNavigation, mountFeatureNavigation } from "./featureNavigation";
-import { createFeatureCode } from "./featureCode";
+import { cleanupRuntimeDemoResources } from "../../shared/runtimeDemoShell";
+import { createFeatureFrame } from "./featureFrame";
 import { spatialControls, spatialFeatureScene } from "./featureSpatialScenes";
-import "./featureLab.css";
 import { environmentEffects, spatialEnvironmentCamera, spatialEnvironmentSettings } from "./featureSpatialEnvironment";
 import { shadowComparisonSettings, shadowComparisonScene } from "./featureSpatialShadows";
 import shadowAssets from "../public/features/spatial/shadow-assets.json";
-import { createFeatureLesson } from "./featureLesson";
 import { lessonSpatialProjector } from "./featureLessonGeometry";
 
 /** A small native spatial scene per topic; JS owns only controls and presentation. */
 export async function startSpatialFeatureLab(id: string): Promise<void> {
   const feature = catalog.find(item => item.id === id)!;
   const shadowComparison=id==="hd2d-shadow-proxy";
-  const shell = createRuntimeDemoShell({ title: "엔진 기능 실험실", exampleId: "starter-runtime", controls: false, metrics: [] });
-  const { canvas, stage } = shell;
-  const root = stage.closest<HTMLElement>(".demo-shell")!;
-  root.classList.add("feature-lab", "example-detail");
-  document.title = `${feature.title} · Ferrum2D`;
-  canvas.tabIndex = 0;
-  canvas.setAttribute("aria-label", `${feature.title} 실험 화면`);
-  const toolbar = root.querySelector(".demo-toolbar")!;
-  toolbar.querySelector("h1")!.textContent = feature.title;
-  const top = document.createElement("div");
-  top.className = "feature-top-actions";
-  top.innerHTML = `<label>렌더러 <select data-control="renderer"><option value="webgl2">WebGL2</option><option value="webgpu">WebGPU</option></select></label>
-    <span data-value="backend" role="status">준비 중…</span><button data-control="pause">일시정지</button><button data-control="reset">실험 초기화</button>`;
-  toolbar.append(top);
-  const navigation = createFeatureNavigation(id);
-  const panel = document.createElement("aside");
-  panel.className = "feature-panel";
-  panel.setAttribute("aria-label", "실험 설명과 설정");
-  panel.innerHTML = `<h2>설정</h2><form class="feature-controls">${spatialControls[id]}</form>
-    ${shadowComparison?'<output class="feature-control-error" data-value="control-error" role="alert" hidden></output>':""}
-    <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
-    <p class="feature-export"><a data-control="download" download="${id}.json">지금 설정을 JSON으로 내려받기</a></p>`;
-  root.querySelector(".demo-metrics")!.replaceWith(panel);
-  const help = document.createElement("p"); help.className = "feature-canvas-help";
-  help.textContent = shadowComparison ? "그림자 원본을 바꾸고 카메라만 돌려 같은 지면의 그림자를 비교하세요." : id === "hd2d-environment" ? "광원과 그림자·안개 설정을 바꿔 같은 장면을 비교하세요." : id === "attachments" ? "부모 위치·회전을 바꾼 뒤 연결을 해제하고 다시 비교하세요." : "WASD / 방향키 · 아래 조이스틱으로 이동";
-  const statistics = document.createElement("p"); statistics.className = "feature-statistics";
-  statistics.textContent = "오브젝트 — · 공간 그리기 —";
-  stage.append(help, statistics);
-  mountFeatureNavigation(root, navigation);
-  const code = createFeatureCode({ id, api: feature.api, sources: ["src/featureSpatialLab.ts", "src/featureSpatialScenes.ts"] });
-  navigation.pager.before(code.element);
+  const labFrame = createFeatureFrame(feature, {
+    controls: spatialControls[id],
+    after: `${shadowComparison ? '<output class="feature-control-error" data-value="control-error" role="alert" hidden></output>' : ""}
+      <p class="feature-export example-hint"><a data-control="download" download="${id}.json">지금 설정을 JSON으로 내려받기</a></p>`,
+    help: shadowComparison ? "그림자 원본을 바꾸고 카메라만 돌려 같은 지면의 그림자를 비교하세요." : id === "hd2d-environment" ? "광원과 그림자·안개 설정을 바꿔 같은 장면을 비교하세요." : id === "attachments" ? "부모 위치·회전을 바꾼 뒤 연결을 해제하고 다시 비교하세요." : "WASD / 방향키 · 아래 조이스틱으로 이동",
+    sources: ["src/featureSpatialLab.ts", "src/featureSpatialScenes.ts"],
+    statistics: "오브젝트 — · 공간 그리기 —",
+  });
+  const { shell, root, panel, lesson, statistics } = labFrame;
+  const { canvas } = shell;
   for (const button of root.querySelectorAll("button")) button.type = "button";
   const control = <T extends HTMLElement>(name: string) => root.querySelector<T>(`[data-control="${name}"]`)!;
   const output = (name: string, value: string) => { root.querySelector(`[data-value="${name}"]`)!.textContent = value; };
   const lifetime = new AbortController(), { signal } = lifetime;
-  const lesson = createFeatureLesson(root, canvas, id, feature.lesson, feature.observe);
-  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => code.destroy(), () => lesson.destroy()];
+  const cleanups: Array<() => void> = [...labFrame.cleanups];
   let destroyed = false, ready = false, failed: string | undefined, downloadUrl: string | undefined;
   let playbackUrl: string | undefined;
   let engine: FerrumEngine | undefined;
@@ -253,7 +228,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       if (id === "hd2d-environment") {
         root.querySelector<HTMLFormElement>("form")!.reset(); updateEnvironment();
       }
-      control("pause").textContent = paused?"계속하기":"일시정지";
+      labFrame.setPaused(paused);
       if(shadowComparison){output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);output("camera-distance",`${control<HTMLInputElement>("camera-distance").value}%`);output("shadow-extent",String(shadowSettings!.extent));output("shadow-elevation",`${shadowSettings!.elevation}°`);output("shadow-azimuth",`${shadowSettings!.azimuth}°`);control<HTMLInputElement>("actor-frame").disabled=shadowSettings!.animate;}
       if (id === "attachments") {
         control<HTMLInputElement>("attached").checked = true;
@@ -286,7 +261,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       needsRender=true;
       if (e.dataSceneState() === "playing") { e.pauseDataScene(); input.setEnabled(false); }
       else { e.resumeDataScene(); input.setEnabled(true); }
-      control("pause").textContent = e.dataSceneState() === "playing" ? "일시정지" : "계속하기";
+      labFrame.setPaused(e.dataSceneState() !== "playing");
     });
     on("reset", "click", ()=>apply());
     on("renderer", "change", () => { const url = new URL(location.href); url.searchParams.set("renderer", control<HTMLSelectElement>("renderer").value); location.assign(url); });

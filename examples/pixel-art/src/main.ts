@@ -8,6 +8,7 @@ import { diagnosticReport } from "@ferrum2d/ferrum-web/quality";
 import { createRuntimeDemoShell, renderRuntimeDemoError } from "../../shared/runtimeDemoShell";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
 import { createGameDetail, mountShellGameDetail } from "../../shared/gameDetail";
+import { fold } from "../../shared/exampleFrame";
 import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
 
@@ -30,62 +31,69 @@ async function bootstrap(): Promise<void> {
   const { canvas, stage } = shell;
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", "도트 정원. 바닥을 클릭하거나 Tab으로 씨앗 찾아가기 버튼을 선택하세요.");
+  // The garden's own controls lead "해 보기"; the renderer choice is folded, and the pixel-art
+  // workflow and the backend line wait in "더 보기".
   const panel = document.createElement("aside");
   panel.className = "pixel-controls";
-  panel.setAttribute("aria-label", "정원과 화면 설정");
-  panel.innerHTML = `
-    <p class="pixel-eyebrow">FERRUM2D · PIXEL ART</p>
-    <h2>빛의 씨앗을 찾아요</h2>
-    <p>바닥을 클릭하면 정원지기가 걸어갑니다. 연못을 돌아 씨앗 세 개를 모아 보세요.</p>
+  const controls = document.createElement("div");
+  controls.className = "pixel-try";
+  controls.innerHTML = `
     <output class="pixel-progress" aria-live="polite">씨앗 0 / 3</output>
     <div class="pixel-seeds" aria-label="키보드로 씨앗 찾아가기">
       <button data-seed="0">서쪽 씨앗</button><button data-seed="1">동쪽 씨앗</button><button data-seed="2">북쪽 씨앗</button>
     </div>
-    <fieldset><legend>화면 분위기</legend>
-      <label>조명<select id="pixel-light"><option value="night">밤 · 노멀 조명</option><option value="day">낮 · 원본 색상</option></select></label>
-      <p class="pixel-help">정원 위로 포인터를 움직이면 빛의 방향이 바뀝니다.</p>
-      <label>캐릭터 팔레트<select id="pixel-palette"><option value="mint">민트</option><option value="rose">장미</option><option value="sky">하늘</option></select></label>
-      <label>화면 효과<select id="pixel-effect"><option value="clean">원본</option><option value="dusk">은은한 빛</option><option value="pixel">디더 · 스캔라인</option><option value="crt">곡면 CRT</option><option value="glitch">글리치</option></select></label>
-    </fieldset>
-    <div class="pixel-actions"><button id="pixel-pause">일시정지</button><button id="pixel-reset">다시 시작</button></div>
-    <details><summary>도트 제작 과정 보기</summary>
-      <p>24×24 원본 → 4프레임 PNG 시트 → 핑퐁 걷기 → 노멀 조명. 정원지기 원본을 내장 도트 편집기에서 열어 수정할 수 있습니다.</p>
-      <a href="./assets/keeper.pixel.json" download>편집 가능한 도트 원본</a>
-      <a href="./assets/keeper.png" download>색상 PNG 시트</a>
-      <a href="./assets/keeper-normal.png" download>노멀 PNG 시트</a>
-      <a href="./assets/pixel-art.profile.json" download>도트 검증 프로필</a>
-    </details>
-    <label class="pixel-renderer-label">렌더러<select id="pixel-renderer"><option value="webgl2">WebGL2</option><option value="webgpu">WebGPU</option></select></label>
-    <p class="pixel-help">렌더러를 바꾸면 정원을 다시 시작합니다.</p>
-    <output class="pixel-backend" role="status">불러오는 중…</output>`;
+    <label>조명<select id="pixel-light"><option value="night">밤 · 노멀 조명</option><option value="day">낮 · 원본 색상</option></select></label>
+    <label>캐릭터 팔레트<select id="pixel-palette"><option value="mint">민트</option><option value="rose">장미</option><option value="sky">하늘</option></select></label>
+    <label>화면 효과<select id="pixel-effect"><option value="clean">원본</option><option value="dusk">은은한 빛</option><option value="pixel">디더 · 스캔라인</option><option value="crt">곡면 CRT</option><option value="glitch">글리치</option></select></label>
+    <p class="example-hint">정원 위로 포인터를 움직이면 빛의 방향이 바뀝니다.</p>`;
+  const rendererBox = document.createElement("div");
+  rendererBox.className = "pixel-renderer";
+  rendererBox.innerHTML = `<label class="pixel-renderer-label">렌더러<select id="pixel-renderer"><option value="webgl2">WebGL2</option><option value="webgpu">WebGPU</option></select></label>
+    <p class="example-hint">렌더러를 바꾸면 정원을 다시 시작합니다.</p>`;
+  controls.append(fold("렌더러 바꾸기", rendererBox));
+  const making = document.createElement("section");
+  making.className = "pixel-making";
+  making.innerHTML = `<h3>도트 제작 과정</h3>
+    <p>24×24 원본 → 4프레임 PNG 시트 → 핑퐁 걷기 → 노멀 조명. 정원지기 원본을 내장 도트 편집기에서 열어 수정할 수 있습니다.</p>
+    <p class="pixel-downloads"><a href="./assets/keeper.pixel.json" download>편집 가능한 도트 원본</a><a href="./assets/keeper.png" download>색상 PNG 시트</a>
+      <a href="./assets/keeper-normal.png" download>노멀 PNG 시트</a><a href="./assets/pixel-art.profile.json" download>도트 검증 프로필</a></p>`;
+  const engine = document.createElement("output");
+  engine.className = "pixel-backend"; engine.setAttribute("role", "status"); engine.textContent = "불러오는 중…";
   stage.parentElement!.querySelector(".demo-metrics")!.replaceWith(panel);
-  const subtitle = document.createElement("p");
-  subtitle.className = "example-subtitle";
-  subtitle.textContent = "도트 원본에서 플레이까지 · 320 × 192 픽셀의 작은 정원";
-  document.querySelector(".demo-toolbar")!.append(subtitle);
+  const run = document.createElement("div");
+  run.className = "example-run";
+  run.innerHTML = `<button id="pixel-pause">일시정지</button><button id="pixel-reset">다시 시작</button>`;
+  document.querySelector(".demo-toolbar")!.append(run);
   stage.closest(".demo-shell")!.classList.add("pixel-garden");
   const detail = createGameDetail({
     id: "pixel-art",
     physicsDebugLink: false,
     topics: [
-      { id: "navigation", title: "길찾기 · 걷기 애니메이션", action: "바닥을 클릭하거나 씨앗 버튼으로 정원지기를 보내세요.", observe: "정원지기가 연못을 돌아가는 길로 걷고, 걷는 동안 4프레임 걷기 애니메이션이 재생됩니다." },
-      { id: "lighting", title: "노멀 조명", action: "조명을 '밤 · 노멀 조명'으로 두고 정원 위로 포인터를 움직이세요.", observe: "포인터 쪽에서 오는 빛에 따라 도트의 밝은 면이 바뀝니다. '낮 · 원본 색상'과 비교하세요." },
-      { id: "palette-effects", title: "팔레트 · 화면 효과", action: "캐릭터 팔레트와 화면 효과를 바꿔 보세요.", observe: "같은 도트 원본이 색상 교체와 후처리만으로 달라집니다. 걷기와 씨앗 수는 그대로입니다." },
+      { id: "navigation", title: "길찾기 · 걷기 애니메이션", summary: "엔진이 연못을 피해 길을 찾고, 걷는 동안 걷기 애니메이션을 재생합니다.",
+        action: "바닥을 클릭하거나 씨앗 버튼으로 정원지기를 보내세요.", observe: "정원지기가 연못을 돌아가는 길로 걷고, 걷는 동안 4프레임 걷기 애니메이션이 재생됩니다." },
+      { id: "lighting", title: "노멀 조명", summary: "도트 그림에 노멀맵을 더해, 빛이 오는 방향에 따라 명암이 바뀝니다.",
+        action: "조명을 '밤 · 노멀 조명'으로 두고 정원 위로 포인터를 움직이세요.", observe: "포인터 쪽에서 오는 빛에 따라 도트의 밝은 면이 바뀝니다. '낮 · 원본 색상'과 비교하세요." },
+      { id: "palette-effects", title: "팔레트 · 화면 효과", summary: "같은 도트 원본을 색 교체와 후처리만으로 다르게 보이게 합니다.",
+        action: "캐릭터 팔레트와 화면 효과를 바꿔 보세요.", observe: "같은 도트 원본이 색상 교체와 후처리만으로 달라집니다. 걷기와 씨앗 수는 그대로입니다." },
     ],
     code: {
       data: { label: "씬 JSON", path: "examples/pixel-art/public/scene.json", url: "./scene.json" },
       api: "createRenderer · AssetLoader · resolveSceneAuthoringDocument · createFerrumRuntime({ dataScene, lighting, postProcess, spriteMaterial }) · createDataSceneView · configureDataSceneMovementAnimation · moveDataSceneActorTo",
       sources: ["examples/pixel-art/src/main.ts"],
     },
+    about: [making],
+    engine,
   });
   mountShellGameDetail(detail, stage, panel);
-  const progress = panel.querySelector<HTMLOutputElement>(".pixel-progress")!;
-  const backendStatus = panel.querySelector<HTMLOutputElement>(".pixel-backend")!;
-  const lightChoice = panel.querySelector<HTMLSelectElement>("#pixel-light")!;
-  const paletteChoice = panel.querySelector<HTMLSelectElement>("#pixel-palette")!;
-  const effectChoice = panel.querySelector<HTMLSelectElement>("#pixel-effect")!;
-  const rendererChoice = panel.querySelector<HTMLSelectElement>("#pixel-renderer")!;
-  const pause = panel.querySelector<HTMLButtonElement>("#pixel-pause")!;
+  detail.tryHost.append(controls);
+  const root = stage.closest<HTMLElement>(".demo-shell")!;
+  const progress = root.querySelector<HTMLOutputElement>(".pixel-progress")!;
+  const backendStatus = engine;
+  const lightChoice = root.querySelector<HTMLSelectElement>("#pixel-light")!;
+  const paletteChoice = root.querySelector<HTMLSelectElement>("#pixel-palette")!;
+  const effectChoice = root.querySelector<HTMLSelectElement>("#pixel-effect")!;
+  const rendererChoice = root.querySelector<HTMLSelectElement>("#pixel-renderer")!;
+  const pause = root.querySelector<HTMLButtonElement>("#pixel-pause")!;
   const requested = new URL(location.href).searchParams.get("renderer") === "webgpu" ? "webgpu" : "webgl2";
   rendererChoice.value = requested;
   const lifetime = createExampleLifetime();
@@ -163,7 +171,7 @@ async function bootstrap(): Promise<void> {
       if (target.x >= 16 && target.x < 304 && target.y >= 16 && target.y < 176) move(target);
     }, { signal });
     canvas.addEventListener("pointermove", event => { light = view!.pointerToWorld({ x: event.clientX, y: event.clientY }); }, { signal });
-    for (const button of panel.querySelectorAll<HTMLButtonElement>("[data-seed]")) button.addEventListener("click", () => move(seeds[Number(button.dataset.seed)]), { signal });
+    for (const button of root.querySelectorAll<HTMLButtonElement>("[data-seed]")) button.addEventListener("click", () => move(seeds[Number(button.dataset.seed)]), { signal });
     paletteChoice.addEventListener("change", () => {
       material = paletteChoice.value === "mint" ? false : { paletteSwap: [{ textureId: runtime!.engine.textureId("keeper"),
         colors: colors.mint.map((from, i) => ({ from, to: colors[paletteChoice.value][i] })) }] };
@@ -173,7 +181,7 @@ async function bootstrap(): Promise<void> {
       if (scene.state() === "playing") { scene.pause(); pause.textContent = "계속하기"; }
       else { scene.resume(); pause.textContent = "일시정지"; }
     }, { signal });
-    panel.querySelector("#pixel-reset")!.addEventListener("click", () => { runtime!.dataScene!.reapply(scene); configure(); }, { signal });
+    root.querySelector("#pixel-reset")!.addEventListener("click", () => { runtime!.dataScene!.reapply(scene); configure(); }, { signal });
     rendererChoice.addEventListener("change", () => { const url = new URL(location.href); url.searchParams.set("renderer", rendererChoice.value); location.assign(url); }, { signal });
     // Read-only evidence for the example browser smoke; simulation remains in Rust.
     const diagnostics = { snapshot: () => {
