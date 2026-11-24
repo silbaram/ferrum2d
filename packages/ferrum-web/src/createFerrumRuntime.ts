@@ -1,4 +1,5 @@
 import type { ShaderPreparationOptions } from "./shaderPreparation";
+import type { AssetLoadOptions, AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "./assetLoader.js";
 import { BrowserPlatformHost } from "./browserPlatformHost.js";
 import { createEngineWithFramePipeline } from "./createEngine.js";
 import { initializeFerrumWasm } from "./initializeFerrumWasm.js";
@@ -30,6 +31,7 @@ import type {
 } from "./levelStreamingRuntime.js";
 import { LevelChunkStreamer } from "./levelStreamingStreamer.js";
 import { createRenderer, resolveRendererColorManagement, resolveRendererPixelPerfect } from "./createRenderer.js";
+import type { RendererFallbackInfo } from "./createRenderer.js";
 import { pixelPerfectPointToViewport, type PixelPerfectOptions } from "./pixelPerfect.js";
 import { resolveSceneDisplay } from "./sceneDisplay.js";
 import type { RendererStats } from "./renderer.js";
@@ -81,9 +83,9 @@ import { createHudOverlayState } from "./hudToolkit.js";
 import type { CreateHudOverlayStateOptions, HudComponentSpec } from "./hudToolkit.js";
 import { UiOverlay } from "./uiOverlay.js";
 import type { UiOverlayActionEvent, UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
-import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
+import { WebGL2Renderer, type WebGL2RendererOptions } from "./webgl2Renderer.js";
 import type { ColorManagementMode } from "./colorManagement.js";
-import type { WebGPURendererOptions } from "./webgpuRenderer.js";
+import { WebGPURenderer, type WebGPURendererOptions } from "./webgpuRenderer.js";
 import type { PhysicsDebugLineBufferView } from "./wasmBridge.js";
 import { RuntimeFrameRenderer } from "./runtimeFrameRenderer.js";
 import { playRuntimeCutsceneAudio } from "./runtimeCutsceneAudio.js";
@@ -281,10 +283,20 @@ export interface FerrumRuntimeOptions {
   webgpu?: WebGPURendererOptions;
   shaderPreparation?: ShaderPreparationOptions;
   rendererPreference?: "webgl2" | "webgpu";
+  /** Reports WebGPU fallback when the runtime creates its renderer. */
+  onRendererFallback?: (info: RendererFallbackInfo) => void;
   renderer?: FerrumRuntimeRenderer;
   input?: InputManager;
   inputOptions?: InputManagerOptions;
   assetHost?: AssetHost;
+  /** Loaded into this runtime's asset host before the initial Data Scene is applied. */
+  assets?: AssetManifest;
+  /** Options for the startup manifest. Cancellation uses the startup signal. */
+  assetLoadOptions?: Omit<AssetLoadOptions, "signal">;
+  /** Reports progress for the startup manifest. */
+  onAssetProgress?: AssetLoadProgressCallback;
+  /** Cancels startup only. A successfully created runtime is destroyed by its caller. */
+  signal?: AbortSignal;
   debugParent?: HTMLElement;
   debug?: boolean | DebugOverlayOptions;
   uiParent?: HTMLElement;
@@ -325,8 +337,12 @@ export interface FerrumRuntimeOptions {
 export interface FerrumRuntime {
   engine: FerrumEngine;
   renderer: FerrumRuntimeRenderer;
+  /** The active renderer backend, or "custom" for an unrecognized injected renderer. */
+  readonly rendererBackend: "webgl2" | "webgpu" | "custom";
   input: InputManager;
   assetHost: AssetHost;
+  /** The loaded startup manifest, present when assets were requested. */
+  readonly assets?: LoadedAssets;
   profiler?: RuntimeProfiler;
   physicsScene?: PhysicsSceneProfileApplyResult;
   hud?: FerrumRuntimeHud;
@@ -347,6 +363,8 @@ export interface FerrumRuntime {
 }
 
 export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promise<FerrumRuntime> {
+  const { signal } = options;
+  throwIfRuntimeStartupAborted(signal);
   const ownsRenderer = options.renderer === undefined;
   const ownsInput = options.input === undefined;
   const ownsAssetHost = options.assetHost === undefined;
@@ -384,6 +402,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const initialPixel = scenePixel(initialDocument);
     renderer ??= await createRenderer(options.canvas, {
       preferred: options.rendererPreference ?? "webgl2",
+      onFallback: options.onRendererFallback,
       colorManagement: options.colorManagement,
       pixelPerfect: initialPixel,
       webgl2: {...options.webgl2,pixelPerfect:initialPixel},
@@ -391,7 +410,10 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       webgpu: {...webGpuOptionsWithStaticPostProcess(options),pixelPerfect:initialPixel},
       spatial: options.dataScene ? normalizeRuntimeDataSceneOptions(options.dataScene).document.spatial : undefined,
     });
+    throwIfRuntimeStartupAborted(signal);
     const runtimeRenderer = renderer;
+    const rendererBackend = runtimeRenderer instanceof WebGPURenderer ? "webgpu"
+      : ownsRenderer || runtimeRenderer instanceof WebGL2Renderer ? "webgl2" : "custom";
     if(initialPixel || explicitPixelDefault || initialDocument?.display?.pixelPerfect!==undefined) {
       if(!runtimeRenderer.setPixelPerfect || !runtimeRenderer.pixelPerfectPresentation)throw Error("Renderer does not support pixelPerfect presentation");
       if(!ownsRenderer) {
@@ -410,7 +432,10 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const hud = createRuntimeHud(options.hud);
     const animationTimeline = createRuntimeAnimationTimeline(options.animationTimeline);
     const localization = createRuntimeLocalization(options.localization);
-    if (dialogueOptions) await initializeFerrumWasm();
+    if (dialogueOptions) {
+      await initializeFerrumWasm();
+      throwIfRuntimeStartupAborted(signal);
+    }
     dialogue = createRuntimeDialogue(dialogueOptions);
     if (dialogueOptions && dialogueOptions.session === undefined) ownedDialogueSession = dialogue?.session;
     const cutscene = createRuntimeCutscene(options.cutscene, localization, assetHost);
@@ -454,11 +479,14 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
 
     const runtimeInput = input;
     const runtimeAssetHost = assetHost;
+    const { canvas } = options;
+    const initialWidth = canvas.clientWidth;
+    const initialHeight = canvas.clientHeight;
+    const initialDpr = globalThis.devicePixelRatio;
     runtimeRenderer.resize();
     configureStaticLighting(runtimeRenderer, options.lighting);
     configureStaticPostProcess(runtimeRenderer, options.postProcess);
     configureStaticSpriteMaterial(runtimeRenderer, options.spriteMaterial);
-    detachRendererResize = observeRendererResize(options.canvas, runtimeRenderer);
 
     const inputProvider: InputProvider = () => {
       let snapshot = runtimeInput.snapshot();
@@ -495,11 +523,46 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       onFrame: options.onFrame,
     });
 
-    engine ??= await createEngineWithFramePipeline({
+    const createRuntimeEngine = () => createEngineWithFramePipeline({
       needsFrameState: needsFullFrame,
       needsPhysicsDebugLineBuffer: shouldRenderPhysicsDebugLines,
       onRenderFrame: (renderFrame) => runtimeFrameRenderer.renderFrame(renderFrame),
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
+    throwIfRuntimeStartupAborted(signal);
+    const manifest = options.assets;
+    let assets: LoadedAssets | undefined;
+    if (manifest === undefined) {
+      engine ??= await createRuntimeEngine();
+    } else {
+      const loadStartupAssets = async () => {
+        const loaded = await runtimeAssetHost.loadAssets(manifest, (progress) => {
+          if (destroyed || signal?.aborted) return;
+          profiler?.recordAssetProgress(progress);
+          options.onAssetProgress?.(progress);
+        }, { ...options.assetLoadOptions, signal });
+        throwIfRuntimeStartupAborted(signal);
+        return loaded;
+      };
+      const startEngine = async () => {
+        if (engine !== undefined) return engine;
+        const created = await createRuntimeEngine();
+        // An asset failure can settle startup before Wasm finishes initializing.
+        if (destroyed) {
+          disposeRuntimeResources([() => created.destroy()], false);
+        } else {
+          engine = created;
+          throwIfRuntimeStartupAborted(signal);
+        }
+        return created;
+      };
+      [assets, engine] = await Promise.all([loadStartupAssets(), startEngine()]);
+    }
+    throwIfRuntimeStartupAborted(signal);
+    // Startup does not observe resize events. Catch up if the canvas changed while awaiting work.
+    if (canvas.clientWidth !== initialWidth || canvas.clientHeight !== initialHeight || globalThis.devicePixelRatio !== initialDpr) {
+      runtimeRenderer.resize();
+      throwIfRuntimeStartupAborted(signal);
+    }
     const configureDisplay = (doc: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument) => {
       const next=scenePixel(doc), previous=runtimeRenderer.pixelPerfectPresentation?.()?.settings;
       if(!next && !previous)return undefined;
@@ -536,8 +599,10 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const runtime: FerrumRuntime = {
       engine: runtimeEngine,
       renderer: runtimeRenderer,
+      rendererBackend,
       input: runtimeInput,
       assetHost: runtimeAssetHost,
+      ...(assets === undefined ? {} : { assets }),
       ...(profiler === undefined ? {} : { profiler }),
       ...(physicsScene === undefined ? {} : { physicsScene }),
       ...(hud === undefined ? {} : { hud }),
@@ -576,12 +641,19 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       },
     };
 
+    throwIfRuntimeStartupAborted(signal);
     if (options.autostart) {
       runtime.start();
     }
 
+    throwIfRuntimeStartupAborted(signal);
+    detachRendererResize = observeRendererResize(canvas, runtimeRenderer);
     return runtime;
   } catch (error) {
+    const startupError = signal?.aborted && !(error instanceof DOMException && error.name === "AbortError")
+      ? runtimeStartupAbortError()
+      : error;
+    destroyed = true;
     // Preserve the startup error after attempting every owned resource cleanup.
     disposeRuntimeResources([
       () => detachRendererResize?.(),
@@ -596,8 +668,16 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       () => { if (ownsRenderer) renderer?.destroy(); },
       () => { if (ownsEngine) engine?.destroy(); },
     ], false);
-    throw error;
+    throw startupError;
   }
+}
+
+function runtimeStartupAbortError(): DOMException {
+  return new DOMException("Runtime startup was aborted.", "AbortError");
+}
+
+function throwIfRuntimeStartupAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw runtimeStartupAbortError();
 }
 
 function disposeRuntimeResources(disposers: readonly (() => void)[], rethrow = true): void {
@@ -1275,27 +1355,31 @@ function createRuntimeProfiler(option: FerrumRuntimeOptions["profiler"]): Runtim
 }
 
 function observeRendererResize(canvas: HTMLCanvasElement, renderer: FerrumRuntimeRenderer): () => void {
+  let active = true;
   const resize = (): void => {
-    renderer.resize();
+    if (active) renderer.resize();
   };
   const cleanup: Array<() => void> = [];
-
-  if (typeof ResizeObserver !== "undefined") {
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-    cleanup.push(() => observer.disconnect());
-  }
-
-  if (typeof window !== "undefined") {
-    window.addEventListener("resize", resize);
-    cleanup.push(() => window.removeEventListener("resize", resize));
-  }
-
-  return () => {
-    for (const dispose of cleanup.splice(0).reverse()) {
-      dispose();
-    }
+  const detach = (rethrow = true) => {
+    active = false;
+    disposeRuntimeResources(cleanup.splice(0).reverse(), rethrow);
   };
+  try {
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(resize);
+      cleanup.push(() => observer.disconnect());
+      observer.observe(canvas);
+    }
+    if (typeof window !== "undefined") {
+      const eventTarget = window;
+      cleanup.push(() => eventTarget.removeEventListener("resize", resize));
+      eventTarget.addEventListener("resize", resize);
+    }
+  } catch (error) {
+    detach(false);
+    throw error;
+  }
+  return detach;
 }
 
 function destroyAssetHost(assetHost: AssetHost): void {

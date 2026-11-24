@@ -14,13 +14,26 @@ await runReleaseCommand("pnpm", ["pack", "--pack-destination", output], { cwd: r
 const tgz = (await readdir(output)).find((name) => name.endsWith(".tgz"));
 assert(tgz);
 await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
-const html = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;width:100%;height:100%}canvas{display:block;width:100%;height:100%}</style>
+const html = (startRecipe) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;width:100%;height:100%}canvas{display:block;width:100%;height:100%}</style>
 <script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js"}}</script></head>
-<body><canvas id="game"></canvas><script type="module">import { startNativeScene } from '/recipe.mjs';
-window.nativeScene = await startNativeScene(document.querySelector('canvas'));</script></body></html>`;
+<body><canvas id="game"></canvas>${startRecipe ? `<script type="module">import { startNativeScene } from '/recipe.mjs';
+window.nativeScene = await startNativeScene(document.querySelector('canvas'));</script>` : ""}</body></html>`;
+const texture = await readFile(resolve(root, "examples/shared/solid-white.png"));
 const server = createServer((request, response) => { void (async () => {
   const url = new URL(request.url, "http://localhost");
-  if (url.pathname === "/") { response.setHeader("Content-Type", "text/html"); response.end(html); return; }
+  if (url.pathname === "/") {
+    response.setHeader("Content-Type", "text/html");
+    response.end(html(!url.searchParams.has("runtime-startup")));
+    return;
+  }
+  if (url.pathname === "/startup-texture.png") {
+    if (url.searchParams.has("slow")) await new Promise((done) => {
+      const timer = setTimeout(done, 5000);
+      response.once("close", () => { clearTimeout(timer); done(); });
+    });
+    if (!response.destroyed) response.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" }).end(texture);
+    return;
+  }
   let file;
   if (url.pathname === "/recipe.mjs") file = resolve(root, "examples/data-scene-native/main.mjs");
   else {
@@ -32,6 +45,109 @@ const server = createServer((request, response) => { void (async () => {
 })().catch(() => response.writeHead(404).end()); });
 let browser;
 const report = { format: "ferrum2d.data-scene.consumer-smoke", version: 1, status: "running", tarball: tgz, cases: [] };
+
+async function checkRuntimeStartup(browser, address) {
+  const page = await browser.newPage({ viewport: { width: 320, height: 240 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  // Deterministically exercise the WebGL2 fallback on all smoke machines.
+  await page.addInitScript(() => Object.defineProperty(navigator, "gpu", { value: undefined }));
+  try {
+    await page.goto(`${address}?runtime-startup`);
+    const rendered = await page.evaluate(async () => {
+      const { createFerrumRuntime, WebGL2Renderer } = await import("@ferrum2d/ferrum-web/core");
+      const canvas = document.querySelector("canvas");
+      const dataScene = {
+        format: "ferrum2d.consumer.scene-authoring", version: 1,
+        sceneComposition: {
+          initialFragment: "main", prefabs: { sprite: {} },
+          fragments: { main: { instances: [{
+            id: "hero", prefab: "sprite", x: 160, y: 120,
+            props: { components: {
+              visual: { kind: "sprite", texture: "hero", width: 32, height: 32, tint: "#00ff00" },
+              collider: "none", layer: "player",
+            } },
+          }] } },
+        },
+        behaviorRecipes: { entities: {} },
+      };
+      let fallback;
+      const progress = [];
+      let firstFrame;
+      const options = { canvas, dataScene, ui: false, rendererPreference: "webgpu" };
+      const runtime = await createFerrumRuntime({
+        ...options, assets: { textures: { hero: "/startup-texture.png" } },
+        webgl2: { preserveDrawingBuffer: true, clearColor: [0, 0, 0, 1] },
+        onRendererFallback: (info) => { fallback = { preferred: info.preferred, fallback: info.fallback }; },
+        onAssetProgress: ({ loaded }) => progress.push(loaded),
+        onFrame: ({ frame, rendererStats }) => {
+          firstFrame ??= { entities: frame.entityCount, commands: rendererStats.renderCommandCount, draws: rendererStats.drawCalls };
+        },
+      });
+      try {
+        if (!runtime.engine.setDataSceneCamera({ x: 160, y: 120 })) throw new Error("Startup scene has no active camera");
+        runtime.start();
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        const gl = canvas.getContext("webgl2");
+        const pixel = new Uint8Array(4);
+        gl.readPixels(canvas.width / 2, canvas.height / 2, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        window.abortStartup = async (signal) => {
+          const abortCanvas = document.createElement("canvas");
+          document.body.append(abortCanvas);
+          let frames = 0, errorName, abortError = false;
+          try {
+            const unexpected = await createFerrumRuntime({
+              ...options, canvas: abortCanvas, assets: { textures: { hero: "/startup-texture.png?slow" } },
+              signal, autostart: true, onFrame: () => { frames++; },
+            });
+            unexpected.destroy();
+          } catch (error) {
+            errorName = error.name;
+            abortError = error instanceof DOMException && error.name === "AbortError";
+          }
+          await new Promise(requestAnimationFrame);
+          await new Promise(requestAnimationFrame);
+          abortCanvas.remove();
+          return { errorName, abortError, frames };
+        };
+        return {
+          backend: runtime.rendererBackend, webgl2: runtime.renderer instanceof WebGL2Renderer,
+          fallback, firstFrame, pixel: [...pixel], progress,
+          textureId: runtime.assets?.textures.textureId("hero"),
+        };
+      } finally {
+        runtime.destroy();
+      }
+    });
+    assert.equal(rendered.backend, "webgl2");
+    assert.equal(rendered.webgl2, true);
+    assert.deepEqual(rendered.fallback, { preferred: "webgpu", fallback: "webgl2" });
+    assert.deepEqual(rendered.firstFrame, { entities: 1, commands: 1, draws: 1 });
+    assert(rendered.pixel[1] > 240 && rendered.pixel[0] < 10 && rendered.pixel[2] < 10, "startup texture should draw green");
+    assert.deepEqual(rendered.progress, [0, 1]);
+    assert(rendered.textureId > 0);
+
+    const isSlowTexture = (request) => request.url().endsWith("/startup-texture.png?slow");
+    const requested = page.waitForRequest(isSlowTexture);
+    const failed = page.waitForEvent("requestfailed", { predicate: isSlowTexture });
+    const cancelled = page.evaluate(() => {
+      window.startupAbortController = new AbortController();
+      return window.abortStartup(window.startupAbortController.signal);
+    });
+    const [, abort, request] = await Promise.all([
+      requested.then(() => page.evaluate(() => window.startupAbortController.abort())),
+      cancelled, failed,
+    ]);
+    assert.match(request.failure()?.errorText ?? "", /ERR_ABORTED/);
+    assert.deepEqual(abort, { errorName: "AbortError", abortError: true, frames: 0 });
+    assert.deepEqual(errors, []);
+    return { rendered, abort, failedRequest: request.failure()?.errorText };
+  } finally {
+    await page.close();
+  }
+}
+
 try {
   await new Promise((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
   const address = `http://127.0.0.1:${server.address().port}/`;
@@ -39,6 +155,7 @@ try {
   if (process.env.FERRUM_BROWSER_EXECUTABLE) browser = await chromium.launch({ ...options, executablePath: process.env.FERRUM_BROWSER_EXECUTABLE });
   else { try { browser = await chromium.launch({ ...options, channel: process.env.FERRUM_BROWSER_CHANNEL ?? "chrome" }); }
     catch (error) { if (process.env.FERRUM_BROWSER_CHANNEL) throw error; browser = await chromium.launch(options); } }
+  report.runtimeStartup = await checkRuntimeStartup(browser, address);
   for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) for (const deviceScaleFactor of [1, 2]) {
     const page = await browser.newPage({ viewport, deviceScaleFactor }); const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));

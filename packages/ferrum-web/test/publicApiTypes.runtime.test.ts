@@ -835,6 +835,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   const runtimeCreate: typeof createFerrumRuntime = async () => ({
     engine: {} as FerrumEngine,
     renderer: {} as FerrumRuntime["renderer"],
+    rendererBackend: "custom",
     input: {} as FerrumRuntime["input"],
     assetHost: {} as AssetHost,
     start: () => undefined,

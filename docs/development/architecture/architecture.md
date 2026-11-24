@@ -113,6 +113,8 @@ WebGL2가 기본이며 WebGPU는 capability에 따라 선택한다. 선택 rende
 
 runtime은 구조적 renderer capability를 사용한다. custom renderer를 구체적인 WebGL2/WebGPU class의 private 상태로
 단언하지 않는다. 미지원 debug/render 요청은 target 변경 전에 거절하고, timer 종료와 외부 소유 자원의 수명을 보존한다.
+런타임은 렌더러 준비 뒤 에셋 선행 로딩과 엔진 생성을 함께 진행하고, 둘 다 완료되면 Data Scene과 물리 프로필을 적용한다.
+시작 취소는 런타임 소유 자원을 정리하며, 성공한 런타임은 호출자가 해제한다. 크기 감시는 시작이 끝난 뒤 연결한다.
 
 에셋 CPU 데이터·GPU 준비·장면 활성화는 구분한다. 비동기 취소, 늦은 결과, 실패 rollback,
 참조 수명, resize·context/device loss·destroy의 해제를 다룬다. 개별 모델 GPU 준비의 rollback을

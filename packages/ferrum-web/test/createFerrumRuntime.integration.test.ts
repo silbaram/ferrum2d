@@ -1,6 +1,9 @@
 import "./nativeRuntimeTestHelper.js";
+import { BrowserPlatformHost } from "../src/browserPlatformHost.js";
 import { DialogueSession } from "../src/dialogueQuest.js";
+import { WasmBridge } from "../src/wasmBridge.js";
 import { deepEqual, equal, throws, rejects } from "node:assert/strict";
+import process from "node:process";
 import { test } from "node:test";
 import {
   createFerrumRuntime,
@@ -12,7 +15,7 @@ import type {
 import type { AssetHost, FerrumEngine } from "../src/engineTypes.js";
 import type { InputManager } from "../src/inputManager.js";
 import { VirtualControls } from "../src/virtualControls.js";
-import type { AssetReleasePayload, LoadedAssets } from "../src/assetLoader.js";
+import type { AssetLoadProgress, AssetReleasePayload, LoadedAssets } from "../src/assetLoader.js";
 import type { PlayBgmOptions } from "../src/audioManager.js";
 import type { DataSceneGameState } from "../src/gameState.js";
 import { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, type PixelPerfectPresentation } from "../src/pixelPerfect.js";
@@ -772,4 +775,213 @@ test("owned createFerrumRuntime without physics options selects the same native 
     runtime.engine.usePlatformerGame();
     equal(runtime.engine.physicsBackend(), "unified-3d");
   } finally { runtime.destroy(); }
+});
+
+function startupOptions(renderer = fakeRuntimeRenderer()) {
+  return { canvas: {} as HTMLCanvasElement, renderer, input: {} as InputManager, ui: false as const };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((accept, fail) => { resolve = accept; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+function isStartupAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+test("runtime loads its manifest alongside engine creation before applying a named-texture scene", async (t) => {
+  const renderer = fakeRuntimeRenderer();
+  const options = {
+    ...startupOptions(renderer), dataScene: runtimeDataSceneDocument("hero", 40, 30), profiler: true,
+  };
+  await rejects(createFerrumRuntime(options), /Texture is not registered/);
+
+  const texture = deferred<void>();
+  const textureStarted = deferred<void>();
+  const engineStarted = deferred<void>();
+  const originalInit = WasmBridge.init.bind(WasmBridge);
+  t.mock.method(WasmBridge, "init", async () => {
+    engineStarted.resolve();
+    return originalInit();
+  });
+  renderer.loadTexture = async () => {
+    textureStarted.resolve();
+    await texture.promise;
+    return undefined;
+  };
+  const progress: AssetLoadProgress[] = [];
+  const pending = createFerrumRuntime({
+    ...options,
+    assets: { textures: { hero: "/hero.png" } },
+    onAssetProgress: (sample) => progress.push(sample),
+  });
+  await Promise.all([textureStarted.promise, engineStarted.promise]);
+  texture.resolve();
+  const runtime = await pending;
+  try {
+    equal(runtime.dataScene?.state(), "playing");
+    equal(runtime.rendererBackend, "custom");
+    equal(runtime.assets?.textures.textureId("hero"), runtime.assetHost.textureId("hero"));
+    deepEqual(progress.map((sample) => sample.loaded), [0, 1]);
+    equal(runtime.profiler?.snapshot().assetSampleCount, 2);
+    equal(runtime.profiler?.snapshot().latestAsset?.loaded, 1);
+  } finally {
+    runtime.destroy();
+  }
+});
+
+test("an engine finishing after a startup asset failure is freed exactly once", async (t) => {
+  const bridge = await WasmBridge.init();
+  const free = t.mock.method(bridge.engine(), "free");
+  const init = deferred<WasmBridge>();
+  t.mock.method(WasmBridge, "init", () => init.promise);
+  const failure = new Error("asset unavailable");
+  t.mock.method(BrowserPlatformHost.prototype, "loadAssets", async () => { throw failure; });
+  await rejects(createFerrumRuntime({
+    ...startupOptions(), assets: { textures: { hero: "/hero.png" } },
+  }), (error) => error === failure);
+  init.resolve(bridge);
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  equal(free.mock.callCount(), 1);
+});
+
+test("a pre-aborted runtime startup creates no renderer, host or engine", async (t) => {
+  const controller = new AbortController();
+  controller.abort(new Error("custom reason"));
+  const getContext = t.mock.fn();
+  const createEngine = t.mock.method(WasmBridge, "init");
+  const load = t.mock.method(BrowserPlatformHost.prototype, "loadAssets");
+  await rejects(createFerrumRuntime({
+    canvas: { getContext } as unknown as HTMLCanvasElement,
+    assets: { textures: { hero: "/hero.png" } },
+    signal: controller.signal,
+  }), isStartupAbort);
+  equal(getContext.mock.callCount(), 0);
+  equal(createEngine.mock.callCount(), 0);
+  equal(load.mock.callCount(), 0);
+});
+
+test("abort during startup texture loading destroys the owned host without applying the scene", async (t) => {
+  const previousWindow = globalThis.window;
+  const windowSurface = new RuntimeInputSurface();
+  globalThis.window = windowSurface as unknown as Window & typeof globalThis;
+  try {
+    const renderer = fakeRuntimeRenderer();
+    const resize = t.mock.method(renderer, "resize");
+    const destroyRenderer = t.mock.method(renderer, "destroy");
+    const load = t.mock.method(BrowserPlatformHost.prototype, "loadAssets");
+    const destroyHost = t.mock.method(BrowserPlatformHost.prototype, "destroy");
+    const started = deferred<void>();
+    renderer.loadTexture = async (_id, _url, options) => new Promise((_, reject) => {
+      options!.signal!.addEventListener("abort", () => reject(options!.signal!.reason), { once: true });
+      started.resolve();
+    });
+    const controller = new AbortController();
+    const calls: string[] = [];
+    const engine = fakeEngine(calls);
+    const adapter = new RuntimeDataSceneAdapter();
+    attachDataSceneRuntimeEngineAdapter(engine, adapter);
+    const pending = createFerrumRuntime({
+      ...startupOptions(renderer), engineInstance: engine,
+      assets: { textures: { hero: "/hero.png" } },
+      dataScene: runtimeDataSceneDocument("hero", 40, 30), autostart: true, signal: controller.signal,
+    });
+    await started.promise;
+    windowSurface.dispatchEvent(new Event("resize"));
+    equal(resize.mock.callCount(), 1);
+    const rejection = rejects(pending, isStartupAbort);
+    controller.abort(new Error("custom reason"));
+    await rejection;
+    windowSurface.dispatchEvent(new Event("resize"));
+    equal(resize.mock.callCount(), 1);
+    equal(load.mock.calls[0].arguments[2]?.signal, controller.signal);
+    equal(destroyHost.mock.callCount(), 1);
+    equal(destroyRenderer.mock.callCount(), 0);
+    equal(adapter.useDataSceneCalls, 0);
+    deepEqual(calls, []);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
+
+test("the first startup failure releases owned resources and observes a later engine rejection", async (t) => {
+  const previousWindow = globalThis.window;
+  const windowSurface = new RuntimeInputSurface();
+  globalThis.window = windowSurface as unknown as Window & typeof globalThis;
+  const unhandled: unknown[] = [];
+  const recordUnhandled = (error: unknown) => unhandled.push(error);
+  process.on("unhandledRejection", recordUnhandled);
+  try {
+    const renderer = fakeRuntimeRenderer();
+    const resize = t.mock.method(renderer, "resize");
+    const asset = deferred<LoadedAssets>();
+    const init = deferred<WasmBridge>();
+    t.mock.method(WasmBridge, "init", () => init.promise);
+    t.mock.method(BrowserPlatformHost.prototype, "loadAssets", () => asset.promise);
+    const destroyHost = t.mock.method(BrowserPlatformHost.prototype, "destroy");
+    const pending = createFerrumRuntime({
+      ...startupOptions(renderer), assets: { textures: { hero: "/hero.png" } },
+    });
+    const first = new Error("asset failed first");
+    const rejection = rejects(pending, (error) => error === first);
+    asset.reject(first);
+    await rejection;
+    init.reject(new Error("engine failed second"));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    windowSurface.dispatchEvent(new Event("resize"));
+    equal(resize.mock.callCount(), 1);
+    equal(destroyHost.mock.callCount(), 1);
+    deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", recordUnhandled);
+    globalThis.window = previousWindow;
+  }
+});
+
+test("startup catches up canvas size and leaves injected assets alive after a late abort", async (t) => {
+  const previousWindow = globalThis.window;
+  const windowSurface = new RuntimeInputSurface();
+  globalThis.window = windowSurface as unknown as Window & typeof globalThis;
+  try {
+    const renderer = fakeRuntimeRenderer();
+    const resize = t.mock.method(renderer, "resize");
+    const destroy = t.mock.fn();
+    const assetHost = { ...fakeAssetHost([]), destroy };
+    const loaded = await assetHost.loadAssets({});
+    const asset = deferred<LoadedAssets>();
+    const load = t.mock.method(assetHost, "loadAssets", () => asset.promise);
+    const canvas = { clientWidth: 640, clientHeight: 360 };
+    const controller = new AbortController();
+    const calls: string[] = [];
+    const pending = createFerrumRuntime({
+      ...startupOptions(renderer), canvas: canvas as HTMLCanvasElement, engineInstance: fakeEngine(calls),
+      assetHost, assets: {}, signal: controller.signal, assetLoadOptions: { concurrency: 2 }, autostart: true,
+    });
+    canvas.clientWidth = 800;
+    windowSurface.dispatchEvent(new Event("resize"));
+    equal(resize.mock.callCount(), 1);
+    asset.resolve(loaded);
+    const runtime = await pending;
+    try {
+      deepEqual(load.mock.calls[0].arguments[2], { signal: controller.signal, concurrency: 2 });
+      equal(runtime.assetHost, assetHost);
+      equal(runtime.assets, loaded);
+      equal(resize.mock.callCount(), 2);
+      controller.abort();
+      windowSurface.dispatchEvent(new Event("resize"));
+      equal(resize.mock.callCount(), 3);
+      runtime.pause();
+    } finally {
+      runtime.destroy();
+    }
+    deepEqual(calls, ["start", "pause"]);
+    windowSurface.dispatchEvent(new Event("resize"));
+    equal(resize.mock.callCount(), 3);
+    equal(destroy.mock.callCount(), 0);
+  } finally {
+    globalThis.window = previousWindow;
+  }
 });
