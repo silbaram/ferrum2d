@@ -4,8 +4,9 @@ import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
 import {extname, resolve, sep} from 'node:path';
 import {chromium} from 'playwright-core';
 
-// The example site shell on the built Pages artifact, served under a nested path like GitHub Pages
-// (docs/planning/example-site-rebuild-plan.md). Run `pnpm build:pages` first; `pnpm smoke:example-site` does.
+// The example site on the built Pages artifact, served under a nested path like GitHub Pages
+// (docs/planning/example-site-rebuild-plan.md): the shell, then each example's screen, controls and lifecycle.
+// Run `pnpm build:pages` first; `pnpm smoke:example-site` does.
 const root = resolve('dist-pages'), prefix = '/ferrum2d/';
 const formerRoutes = ['starter-runtime', 'physics-sandbox', 'breakout', 'platformer', 'topdown-shooter', 'pixel-art'];
 const types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -25,6 +26,30 @@ const parent = resolve('artifacts/example-site');
 await mkdir(parent, {recursive: true});
 const run = await mkdtemp(resolve(parent, 'run-'));
 const browser = await chromium.launch();
+// Every WebGL2 context a page creates and every draw it issues, so a test can see that leaving an example
+// released its context and stopped its frame loop.
+const trackContexts = () => {
+  const contexts = window.__webgl2Contexts = [];
+  window.__draws = 0;
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+    const context = getContext.call(this, type, ...rest);
+    if (type === 'webgl2' && context && !contexts.includes(context)) contexts.push(context);
+    return context;
+  };
+  for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced']) {
+    const draw = WebGL2RenderingContext.prototype[name];
+    WebGL2RenderingContext.prototype[name] = function (...args) { window.__draws++; return draw.apply(this, args); };
+  }
+};
+const liveContexts = page => page.evaluate(() => window.__webgl2Contexts.filter(context => !context.isContextLost()).length);
+/** Leaving released the WebGL2 context and no frame draws afterwards. */
+async function released(page, label) {
+  assert.equal(await liveContexts(page), 0, `${label}: the WebGL2 context is released`);
+  const draws = await page.evaluate(() => window.__draws);
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__draws), draws, `${label}: the frame loop stopped`);
+}
 const errors = [];
 const watch = page => {
   page.on('pageerror', error => errors.push(`${page.url()}: ${error.message}`));
@@ -35,11 +60,16 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
 const status = async url => (await fetch(url)).status;
 let activePage;
 try {
-  const page = await browser.newPage({viewport: {width: 1440, height: 900}}); activePage = page; watch(page);
+  const page = await browser.newPage({locale: 'ko-KR', viewport: {width: 1440, height: 900}}); activePage = page; watch(page);
+  await page.addInitScript(trackContexts);
   await page.goto(base); await page.waitForSelector('.home');
   await page.evaluate(() => document.fonts.ready);
   assert(await page.evaluate(() => document.fonts.check('13px "Ferrum Example UI"')), 'the bundled Korean font must load');
   assert.equal(await page.title(), 'Ferrum2D 예제');
+  assert.equal(await page.locator('html').getAttribute('lang'), 'ko');
+  const language = page.locator('.tb-language');
+  assert.equal(await language.inputValue(), 'ko');
+  assert.deepEqual(await language.locator('option').allTextContents(), ['한국어', 'English']);
 
   // Top bar: brand to the entry, the place, docs and source.
   assert.equal(await page.locator('.brand').getAttribute('href'), './');
@@ -52,11 +82,11 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight), true, 'the shell fits the window');
   assert.equal(await overflow(page), false);
 
-  // List: four groups; examples arrive one at a time, tools link to their own apps.
+  // List: the essential-feature groups, then games and tools. Examples arrive one at a time.
   const groups = page.locator('.group-row');
-  assert.deepEqual(await groups.locator('.t').allTextContents(), ['게임 데모', '기능 실험', '물리', '도구']);
-  assert.deepEqual(await groups.locator('.n').allTextContents(), ['0', '0', '0', '2']);
-  assert.equal(await page.locator('.empty-row').count(), 3);
+  assert.deepEqual(await groups.locator('.t').allTextContents(), ['그리기', '움직임과 화면', '충돌과 물리', '효과와 소리', '게임 구성', '게임 데모', '도구']);
+  assert.deepEqual(await groups.locator('.n').allTextContents(), ['1', '0', '0', '0', '0', '0', '2']);
+  assert.equal(await page.locator('.empty-row').count(), 5);
   // Tools are their own apps: they open in a new window and say so.
   const studioRow = page.getByRole('link', {name: 'Ferrum2D Studio (새 창)', exact: true});
   const studio = await studioRow.evaluate(a => a.href);
@@ -67,18 +97,19 @@ try {
   }
   await groups.first().click();
   assert.equal(await groups.first().getAttribute('aria-expanded'), 'false');
-  assert.equal(await page.locator('#group-games').isHidden(), true);
+  assert.equal(await page.locator('#group-drawing').isHidden(), true);
   await groups.first().click();
 
-  // First screen without examples: say so and point to what works now.
-  const empty = page.locator('.empty');
-  assert.equal(await empty.locator('h2').textContent(), '예제를 하나씩 다시 만들고 있습니다.');
-  assert.deepEqual(await empty.locator('.btn').allTextContents(), ['문서 열기', 'Studio 열기 (새 창)', '이전 예제 코드 (새 창)']);
-  assert.equal(await empty.locator('.btn', {hasText: 'Studio 열기'}).getAttribute('target'), '_blank');
-  assert.equal(await empty.locator('.btn', {hasText: '문서 열기'}).getAttribute('target'), null);
+  // First screen: cards per group, and one quiet line while examples arrive.
+  assert.equal(await page.locator('.empty').count(), 0);
+  assert.deepEqual(await page.locator('.home-group h2').allTextContents(), ['그리기', '도구']);
+  const spriteCard = page.locator('.card', {hasText: '스프라이트 그리기'});
+  assert.equal(await spriteCard.getAttribute('href'), '?example=sprite');
+  assert.equal(await spriteCard.getAttribute('target'), null);
+  assert.equal(await spriteCard.locator('img').evaluate(img => img.complete && img.naturalWidth > 0), true, 'the example thumbnail loads');
   assert.equal(await page.locator('.card', {hasText: 'Ferrum2D Studio'}).getAttribute('target'), '_blank');
-  assert.match(await empty.locator('.btn', {hasText: '이전 예제 코드'}).getAttribute('href'), /^https:\/\/github\.com\/silbaram\/ferrum2d\/tree\/[0-9a-f]{40}\/examples$/);
-  assert.match(await page.locator('.sb').textContent(), /예제 0/);
+  assert.match(await page.locator('.home-note a').getAttribute('href'), /^https:\/\/github\.com\/silbaram\/ferrum2d\/tree\/[0-9a-f]{40}\/examples$/);
+  assert.match(await page.locator('.sb').textContent(), /예제 1/);
   await page.screenshot({path: resolve(run, 'home-1440.png')});
 
   // Search filters the list and the first screen; "/" focuses it.
@@ -91,8 +122,29 @@ try {
   await page.locator('.search input').fill('없는 예제 이름');
   assert.equal(await page.locator('.tree-empty').textContent(), '찾는 예제가 없습니다.');
   assert.equal(await page.locator('.home-none').textContent(), '찾는 예제가 없습니다.');
+  await page.locator('.search input').fill('스프라이트');
+  assert.deepEqual(await page.locator('.item-row .t').allTextContents(), ['스프라이트 그리기']);
+  await page.locator('.search input').fill('drawing a sprite');
+  assert.deepEqual(await page.locator('.card b').allTextContents(), ['스프라이트 그리기']);
   await page.locator('.search input').fill('');
-  assert.equal(await page.locator('.group-row').count(), 4);
+  assert.equal(await page.locator('.group-row').count(), 7);
+
+  // A fresh English browser opens the English home. A manual choice beats the browser on reload.
+  const english = await browser.newPage({locale: 'en-US'}); activePage = english; watch(english);
+  await english.goto(base); await english.waitForSelector('.home');
+  assert.equal(await english.locator('html').getAttribute('lang'), 'en');
+  assert.equal(await english.title(), 'Ferrum2D Examples');
+  assert.equal(await english.locator('.home h1').textContent(), 'Ferrum2D Examples');
+  const englishDocs = await english.getByRole('link', {name: 'Docs', exact: true}).evaluate(a => a.href);
+  assert.equal(englishDocs, base + 'docs/en/'); assert.equal(await status(englishDocs), 200);
+  await english.getByRole('searchbox', {name: 'Search Examples'}).fill('스프라이트');
+  assert.deepEqual(await english.locator('.card b').allTextContents(), ['Drawing a Sprite']);
+  await english.getByRole('combobox', {name: 'Language'}).selectOption('ko');
+  assert.deepEqual(await english.locator('.card b').allTextContents(), ['스프라이트 그리기']);
+  await english.reload(); await english.waitForSelector('.home');
+  assert.equal(await english.locator('html').getAttribute('lang'), 'ko');
+  assert.equal(await english.getByRole('combobox', {name: '언어'}).inputValue(), 'ko');
+  await english.close(); activePage = page;
 
   // An example that is not here yet.
   await page.goto(base + '?example=breakout'); await page.waitForSelector('.missing');
@@ -100,6 +152,122 @@ try {
   assert.deepEqual(await page.locator('.crumbs .crumb').allTextContents(), ['예제', 'breakout']);
   await page.locator('.missing .btn').click(); await page.waitForSelector('.home');
   assert.equal(page.url(), base);
+
+  // Sprite drawing: opened from its card inside the site, without reloading the page.
+  await page.evaluate(() => { window.__sameDocument = true; });
+  await page.locator('.card', {hasText: '스프라이트 그리기'}).click();
+  await page.waitForURL(base + '?example=sprite');
+  await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+  assert.equal(await page.evaluate(() => window.__sameDocument), true, 'moving to an example keeps the page');
+  assert.equal(await page.title(), '스프라이트 그리기 · Ferrum2D 예제');
+  assert.deepEqual(await page.locator('.crumbs .crumb').allTextContents(), ['예제', '그리기', '스프라이트 그리기']);
+  assert.equal(await page.locator('.item-row[aria-current=page] .t').textContent(), '스프라이트 그리기');
+  assert.equal(await page.locator('.insp-name').textContent(), '스프라이트 그리기');
+  assert.deepEqual(await page.locator('.field-k').allTextContents(), ['위치 X', '위치 Y', '회전', '크기', '기준점', '색', '불투명도', '처음 자리']);
+  assert.equal(await page.locator('.observe li').count(), 3);
+  assert.equal(await page.getByRole('button', {name: '이전 예제 없음'}).isDisabled(), true);
+  // The canvas keeps the world's 5:3 ratio and the status bar shows engine numbers.
+  const stage = await page.locator('.stage').boundingBox();
+  assert(Math.abs(stage.width / stage.height - 640 / 384) < 0.02, `canvas ratio ${stage.width}x${stage.height}`);
+  await page.waitForFunction(() => /오브젝트 3/.test(document.querySelector('.sb').textContent));
+  assert.match(await page.locator('.sb').textContent(), /WebGL2.*FPS.*오브젝트 3.*그리기 명령 11.*드로우 콜 2.*텍스처 \d+/);
+  assert.equal(await page.locator('.dock-panel').isHidden(), true, 'the dock starts closed');
+  assert.equal(await overflow(page), false);
+  await page.screenshot({path: resolve(run, 'sprite-1440.png')});
+
+  // Settings change the picture and the scene document; the canvas drags the robot.
+  const picture = () => page.locator('.stage').screenshot();
+  const before = await picture();
+  const setNumber = async (label, value) => { const field = page.getByLabel(`${label} 값`); await field.fill(String(value)); await field.press('Enter'); };
+  await setNumber('회전', 30);
+  await page.getByRole('button', {name: '발밑'}).click();
+  await page.getByRole('button', {name: '빨강'}).click();
+  await setNumber('불투명도', 60);
+  await page.getByRole('tab', {name: '씬 파일'}).click();
+  await page.waitForFunction(() => /"rotationRadians": 0\.5236/.test(document.querySelector('.dock-panel').textContent));
+  const marked = await page.locator('.dock-panel .ln.hl').allTextContents();
+  assert(marked.some(line => line.includes('"id": "robot"')) && marked.some(line => line.includes('"tint": "#ff8a8099"')) && marked.some(line => line.includes('"originY": 1')), 'the scene tab marks the edited robot');
+  assert.notDeepEqual(await picture(), before, 'the settings change the picture');
+  const pivot = await page.locator('.pivot').boundingBox();
+  await page.mouse.move(pivot.x, pivot.y - 60); await page.mouse.down();
+  await page.mouse.move(pivot.x - 160, pivot.y - 40, {steps: 6}); await page.mouse.up();
+  const position = await page.getByLabel('위치 X 값').inputValue();
+  assert(Number(position) < 320, 'dragging moves the robot');
+
+  // Translate the active example without replacing the live canvas or touching edited scene data.
+  const canvas = await page.locator('.ex-canvas').elementHandle();
+  await page.waitForFunction(x => [...document.querySelectorAll('.dock-panel .ln.hl')]
+    .some(line => line.textContent.trim() === `"x": ${x},`), position);
+  const sceneJson = await page.locator('.dock-scene pre').textContent();
+  const draws = await page.evaluate(() => window.__draws);
+  await language.selectOption('en');
+  assert.equal(page.url(), base + '?example=sprite');
+  assert.equal(await page.locator('html').getAttribute('lang'), 'en');
+  assert.equal(await page.title(), 'Drawing a Sprite · Ferrum2D Examples');
+  assert.equal(await canvas.evaluate(node => node === document.querySelector('.ex-canvas')), true);
+  assert.equal(await liveContexts(page), 1);
+  await page.waitForFunction(previous => window.__draws > previous, draws);
+  assert.equal(await page.getByRole('combobox', {name: 'Renderer'}).inputValue(), 'webgl2');
+  assert.equal(await page.getByLabel('Position X Value').inputValue(), position);
+  assert.equal(await page.getByLabel('Rotation Value').inputValue(), '30');
+  assert.equal(await page.getByRole('button', {name: 'Red'}).getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.getByRole('tab', {name: 'Scene File'}).getAttribute('aria-selected'), 'true');
+  assert.equal(await page.locator('.dock-scene pre').textContent(), sceneJson);
+  assert.equal(await page.getByRole('button', {name: 'Copy', exact: true}).isVisible(), true);
+  assert.match(await page.locator('.sb').textContent(), /WebGL2.*Entities 3.*Draw Commands 11.*Draw Calls 2/);
+  await page.getByRole('tab', {name: 'About', exact: true}).click();
+  assert.match(await page.locator('.dock-text').textContent(), /When to Use It.*drag the robot in the live view/);
+  await page.screenshot({path: resolve(run, 'sprite-en-1440.png')});
+  await page.getByRole('tab', {name: 'API', exact: true}).click();
+  assert.match(await page.locator('.dock-api').textContent(), /AssetLoader\.loadAssetsLoads the robot sprite sheet/);
+  await page.getByRole('tab', {name: 'Source', exact: true}).click();
+  await page.waitForFunction(() => document.querySelector('.dock-source pre')?.textContent.includes('export default async function start'));
+  assert.equal(await page.getByRole('link', {name: /scene\.json \(opens in a new window\)/}).count(), 1);
+  await page.getByRole('tab', {name: 'Engine', exact: true}).click();
+  assert.match(await page.locator('.dock-engine').textContent(), /StatusRunning.*RendererWebGL2.*World640 × 384/);
+  await language.selectOption('ko');
+  assert.equal(await page.getByRole('tab', {name: '엔진'}).getAttribute('aria-selected'), 'true');
+  assert.match(await page.locator('.dock-engine').textContent(), /상태실행 중.*렌더러WebGL2.*월드640 × 384/);
+  await page.screenshot({path: resolve(run, 'sprite-changed-1440.png')});
+  await page.getByRole('button', {name: '처음 값으로'}).click();
+  await page.waitForTimeout(100);
+  assert.deepEqual(await Promise.all(['위치 X', '회전', '불투명도'].map(label => page.getByLabel(`${label} 값`).inputValue())), ['320', '0', '100']);
+  assert.equal(await page.getByRole('button', {name: '가운데'}).getAttribute('aria-pressed'), 'true');
+  await page.getByRole('tab', {name: '엔진'}).click();
+  assert.equal(await page.locator('.dock-panel').isHidden(), true, 'the chosen tab closes the dock again');
+
+
+  // Another renderer restarts the example on a new canvas.
+  const webgpu = page.locator('.pb-select option[value=webgpu]');
+  let rendererSwitch = 'unavailable';
+  if (!await webgpu.isDisabled()) {
+    const first = await page.locator('.ex-canvas').elementHandle();
+    await page.locator('.pb-select').selectOption('webgpu');
+    await page.waitForURL(base + '?example=sprite&renderer=webgpu');
+    await page.waitForSelector('.dot[data-state=running], .dot[data-state=error]', {timeout: 30000});
+    assert.equal(await page.locator('.dot').getAttribute('data-state'), 'running');
+    assert.equal(await first.evaluate(canvas => canvas.isConnected), false, 'a renderer switch uses a new canvas');
+    await page.waitForFunction(() => /FPS/.test(document.querySelector('.sb').textContent));
+    rendererSwitch = (await page.locator('.sb').textContent()).match(/WebGPU|WebGL2/)[0];
+    await page.locator('.pb-select').selectOption('webgl2');
+    await page.waitForURL(base + '?example=sprite');
+    await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+  }
+
+  // Leaving releases the renderer; so does leaving while the example is still starting.
+  await page.goBack(); await page.waitForSelector('.home');
+  assert.equal(page.url(), base);
+  await released(page, 'leaving an example');
+  assert.match(await page.locator('.sb').textContent(), /예제 1/);
+  await page.goForward(); await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+  for (const wait of [0, 50, 250]) {
+    await page.locator('.brand').click(); await page.waitForSelector('.home');
+    await page.locator('.item-row', {hasText: '스프라이트 그리기'}).click();
+    await page.waitForTimeout(wait);
+    await page.locator('.brand').click(); await page.waitForSelector('.home');
+    await page.waitForTimeout(1500);
+    await released(page, `leaving ${wait}ms into startup`);
+  }
 
   // Former example addresses lead to the site.
   for (const route of formerRoutes) {
@@ -111,7 +279,28 @@ try {
   for (const width of [1024, 390, 320]) {
     await page.setViewportSize({width, height: 844}); await page.goto(base); await page.waitForSelector('.home');
     assert.equal(await overflow(page), false, `overflow at ${width}`);
-    if (width === 1024) { assert.equal(await page.locator('.browser').isVisible(), true); continue; }
+    if (width === 1024) { assert.equal(await page.locator('.browser').isVisible(), true); }
+    // The example screen: run first, then what to try and look at, then the dock.
+    await page.goto(base + '?example=sprite'); await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+    assert.equal(await overflow(page), false, `example overflow at ${width}`);
+    if (width < 900) {
+      const top = async selector => (await page.locator(selector).boundingBox()).y;
+      assert(await top('.viewport') < await top('.inspector') && await top('.inspector') < await top('.dock'), `example order at ${width}`);
+    }
+    await page.screenshot({path: resolve(run, `sprite-${width}.png`), fullPage: true});
+    if (width === 320) {
+      await language.selectOption('en');
+      const bounds = await language.boundingBox();
+      assert(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, 'the language selector fits at 320px');
+      assert((await page.getByRole('searchbox', {name: 'Search Examples'}).boundingBox()).width >= 64, 'search has room at 320px');
+      await page.getByRole('tab', {name: 'About', exact: true}).click();
+      assert.equal(await overflow(page), false, 'the English example fits at 320px');
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({path: resolve(run, 'sprite-en-320.png'), fullPage: true});
+      await language.selectOption('ko');
+    }
+    await page.goto(base); await page.waitForSelector('.home');
+    if (width === 1024) continue;
     const menu = page.locator('.tb-menu');
     assert.equal(await menu.isVisible(), true); assert.equal(await page.locator('.browser').isVisible(), false);
     await menu.click();
@@ -128,10 +317,10 @@ try {
   }
 
   assert.deepEqual(errors, []);
-  const report = {ok: true, run, base, groups: 4, formerRoutes: formerRoutes.length, widths: [1440, 1024, 390, 320], browser: browser.version()};
+  const report = {ok: true, run, base, groups: 7, examples: ['sprite'], locales: ['ko', 'en'], rendererSwitch, formerRoutes: formerRoutes.length, widths: [1440, 1024, 390, 320], browser: browser.version()};
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
-  console.log(`Example site passed: shell, list, search, missing example, ${formerRoutes.length} former routes, drawer. ${run}`);
+  console.log(`Example site passed: shell, list, bilingual search, language selection, sprite example (controls, drag, scene, reset, renderer ${rendererSwitch}, release), missing example, ${formerRoutes.length} former routes, drawer. ${run}`);
 } catch (error) {
   await activePage?.screenshot({path: resolve(run, 'failure.png'), fullPage: true}).catch(() => {});
   throw error;

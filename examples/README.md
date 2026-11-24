@@ -1,7 +1,13 @@
 # Ferrum2D 예제 안내
 
-Pages 첫 화면은 새 예제 사이트(`site/`)다. Pixelforge 편집기형 틀(상단 막대·예제 목록·가운데 화면·상태 막대)에 예제를 하나씩 다시 추가한다
-([예제 사이트 다시 만들기](../docs/planning/example-site-rebuild-plan.md)). 아직 예제가 없어 첫 화면은 준비 중 안내와 Studio·문서·이전 예제 코드 링크다.
+Pages 첫 화면은 새 예제 사이트(`site/`)다. Pixelforge 편집기형 틀(상단 막대·예제 목록·가운데 화면·상태 막대)에
+2D 게임의 필수 기능을 하나씩 눈으로 확인하는 예제를 차례로 추가한다([예제 사이트 다시 만들기](../docs/planning/example-site-rebuild-plan.md)).
+목록은 그리기·움직임과 화면·충돌과 물리·효과와 소리·게임 구성·게임 데모·도구로 나뉘고, 지금은 '스프라이트 그리기'(`?example=sprite`) 하나가 있다.
+예제 화면은 재생 막대·실행 화면·아래 패널(설명·씬 파일·API·소스·엔진)·오른쪽 인스펙터(해 보기·볼 것)와 상태 막대의 엔진 수치로 이뤄진다.
+상단 언어 선택에서 **한국어** 또는 **English**를 고른다. 처음 방문할 때는 브라우저의 기본 언어가 한국어면 한국어, 그 외에는 영어를 표시한다.
+선택한 언어는 새로고침 뒤에도 적용된다. 실행 중에 바꿔도 예제의 조작값과 열린 탭을 유지한다.
+검색은 두 언어의 예제 이름과 설명을 찾으며, 상단 문서는 화면 언어에 맞는 문서로 연결된다.
+예제 코드는 `site/src/examples/<id>/`에 있고, 틀과 주고받는 계약은 `site/src/example.ts`에 있다.
 
 아래의 이전 예제(기능 실험실·물리 심화 실험실·게임 데모 4개)는 공개 사이트에서 빠졌다. 폴더는 그대로 두고 단독 실행할 수 있으며,
 엔진 검사 데이터로 쓰인다(`topdown-shooter`의 Game Spec·골든 데이터, `minimal-game` 렌더 smoke, `physics-sandbox`의 Physics Spec 등).
@@ -85,7 +91,8 @@ Breakout·Platformer는 `P/Esc`, 터치 이동·점프와 색상 안내를 제�
 - `shared/exampleHeader.ts`, `exampleTheme.css`: 공개 예제 공통 탐색과 화면 토큰.
 - `pnpm validate:example-catalog`: 중복 ID/경로·없는 명령·관련 기능·씬 파일 검사. Pages 빌드에도 포함된다.
 - `pnpm test:pages-build`: 사이트·Studio 빌드가 없거나 HTML이 잘못되면 기존 Pages를 지우기 전에 거절하는지, 사이트가 첫 화면이고 옛 예제 주소가 안내 페이지인지 검사한다.
-- `pnpm smoke:example-site`: 빌드된 Pages에서 새 사이트 틀·예제 목록·검색·없는 예제 안내·옛 주소 이동·좁은 화면 서랍·넘침을 검사한다.
+- `pnpm smoke:example-site`: 빌드된 Pages에서 새 사이트 틀·예제 목록·검색·언어 전환·없는 예제 안내·옛 주소 이동·좁은 화면 서랍·넘침과,
+  예제마다 화면·조작·씬 파일·리셋·렌더러 전환·떠날 때 자원 해제(시작 중 이동 포함)를 검사한다.
 - `pnpm smoke:feature-examples`: 기능별 native 상태·픽셀·상호작용·자원 회귀.
 
 게임 규칙은 Rust, 입력·렌더링·메뉴는 TypeScript 플랫폼 계층이 담당한다. 공통 UI가 시뮬레이션 상태를 소유하지 않는다.

@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "pnpm --filter @ferrum2d/ferrum-web build && vite",
     "build": "vite build --base=./",
     "lint": "tsc -p tsconfig.json",
     "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ferrum2d/ferrum-web": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

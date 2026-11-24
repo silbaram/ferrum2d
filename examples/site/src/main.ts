@@ -1,21 +1,18 @@
 import { examples, groups, links, tools, type GroupId, type SiteExample, type SiteLink } from "./catalog";
+import { mountExample } from "./frame";
 import { icon } from "./icons";
+import { el, setSiteLocale, siteLocale, translate, uiAttribute, uiText, type LocalizedText } from "./locale";
+import { siteText } from "./messages";
 import "./tokens.css";
 import "./site.css";
 
-/** The site shell: top bar, example list, the main area and the status bar. Examples run inside the
- * main area and are added one at a time; until then the main area shows the home page. */
+/** The site shell: top bar, example list, the main area and the status bar. The main area shows the
+ * home page or one running example; moving between them changes the address, not the shell. */
 
-const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] => {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-};
 /** Opens in a new window: other sites, and tools that are their own apps. Says so to assistive technology. */
 const newWindow = (a: HTMLAnchorElement) => {
   a.target = "_blank"; a.rel = "noreferrer";
-  a.append(el("span", "sr-only", " (새 창)"));
+  a.append(el("span", "sr-only", siteText.newWindow));
   return a;
 };
 const link = (href: string, className: string, ...content: (Node | string)[]) => {
@@ -30,26 +27,48 @@ const toolLink = (tool: SiteLink, className: string, ...content: (Node | string)
 
 const app = document.querySelector<HTMLElement>("#app")!;
 app.className = "app";
+uiAttribute(document.querySelector('meta[name="description"]')!, "content", siteText.description);
 
 // Top bar: brand, where you are, search, docs and source.
 const bar = el("header", "tb");
 const menu = el("button", "tb-menu"); menu.type = "button";
-menu.setAttribute("aria-label", "예제 목록"); menu.setAttribute("aria-controls", "site-browser"); menu.setAttribute("aria-expanded", "false");
+uiAttribute(menu, "aria-label", siteText.exampleList);
+menu.setAttribute("aria-controls", "site-browser"); menu.setAttribute("aria-expanded", "false");
 menu.append(icon("menu"));
-const brand = link("./", "brand", el("i", "brand-mark"), "FERRUM2D", el("span", undefined, "예제"));
-brand.setAttribute("aria-label", "Ferrum2D 예제 첫 화면");
-const crumbs = el("nav", "crumbs"); crumbs.setAttribute("aria-label", "현재 위치");
+const brand = link("./", "brand", el("i", "brand-mark"), el("b", undefined, "FERRUM2D"), el("span", undefined, siteText.examples));
+uiAttribute(brand, "aria-label", siteText.homeLink);
+brand.dataset.route = "";
+const crumbs = el("nav", "crumbs"); uiAttribute(crumbs, "aria-label", siteText.breadcrumbs);
 const search = el("label", "search");
-const query = el("input"); query.type = "search"; query.placeholder = "예제 검색"; query.setAttribute("aria-label", "예제 검색");
+const query = el("input"); query.type = "search";
+uiAttribute(query, "placeholder", siteText.searchPlaceholder); uiAttribute(query, "aria-label", siteText.search);
 search.append(icon("search"), query, el("kbd", undefined, "/"));
-const docs = link(links.docs, "tb-link", icon("book-open"), el("span", undefined, "문서"));
+const docs = docsLink("tb-link", siteText.docs);
 const github = link(links.repository, "tb-link", icon("github"), el("span", undefined, "GitHub"));
-bar.append(menu, brand, crumbs, search, docs, github);
+uiAttribute(github, "aria-label", { ko: "GitHub (새 창)", en: "GitHub (opens in a new window)" });
+const language = el("select", "tb-language");
+uiAttribute(language, "aria-label", siteText.language);
+for (const [value, name] of [["ko", "한국어"], ["en", "English"]]) {
+  const option = new Option(name, value); option.lang = value;
+  language.add(option);
+}
+language.value = siteLocale();
+bar.append(menu, brand, crumbs, search, docs, github, language);
+
+function docsLink(className: string, label: LocalizedText): HTMLAnchorElement {
+  const a = el("a", className);
+  a.append(icon("book-open"), el("span", undefined, label));
+  uiAttribute(a, "href", siteText.docsHref);
+  uiAttribute(a, "hreflang", { ko: "ko", en: "en" });
+  uiAttribute(a, "aria-label", label);
+  return a;
+}
 
 // Body: example list beside the main area.
 const body = el("div", "body");
-const browser = el("nav", "panel browser"); browser.id = "site-browser"; browser.setAttribute("aria-label", "예제 목록");
-const browserHead = el("div", "panel-head", "예제");
+const browser = el("nav", "panel browser"); browser.id = "site-browser";
+uiAttribute(browser, "aria-label", siteText.exampleList);
+const browserHead = el("div", "panel-head", siteText.examples);
 const browserCount = el("span", "count", String(examples.length));
 browserHead.append(browserCount);
 const tree = el("div", "tree");
@@ -66,10 +85,15 @@ app.append(bar, body, status);
 type Entry = { kind: "example"; item: SiteExample } | { kind: "tool"; item: SiteLink };
 const entries: Entry[] = [...examples.map(item => ({ kind: "example" as const, item })), ...tools.map(item => ({ kind: "tool" as const, item }))];
 const groupOf = (entry: Entry): GroupId => entry.kind === "tool" ? "tools" : entry.item.group;
-const matches = (entry: Entry, text: string) => !text || `${entry.item.title} ${entry.item.summary}`.toLocaleLowerCase("ko").includes(text);
+const matches = ({ item }: Entry, query: string) => !query || (["ko", "en"] as const).some(
+  locale => `${item.title[locale]} ${item.summary[locale]}`.toLocaleLowerCase(locale).includes(query),
+);
 const exampleHref = (id: string) => `?example=${encodeURIComponent(id)}`;
+/** A link inside the site: it changes the address and the main area, not the page. */
+const routeLink = (a: HTMLAnchorElement) => { a.dataset.route = ""; return a; };
 
-const selected = new URLSearchParams(location.search).get("example");
+let selected = new URLSearchParams(location.search).get("example");
+let running: ReturnType<typeof mountExample> | undefined;
 
 function renderTree(text: string): void {
   tree.replaceChildren();
@@ -89,37 +113,42 @@ function renderTree(text: string): void {
     for (const entry of shown) {
       const item = el("li");
       const a = entry.kind === "example"
-        ? link(exampleHref(entry.item.id), "row item-row", el("span", "t", entry.item.title))
+        ? routeLink(link(exampleHref(entry.item.id), "row item-row", el("span", "t", entry.item.title)))
         : toolLink(entry.item, "row item-row", el("span", "t", entry.item.title), icon("external-link", "i ext"));
-      a.title = entry.item.summary;
+      uiAttribute(a, "title", entry.item.summary);
       if (entry.kind === "example" && entry.item.id === selected) a.setAttribute("aria-current", "page");
       item.append(a); list.append(item);
     }
-    if (!items.length) list.append(el("li", "row empty-row", "준비 중"));
+    if (!items.length) list.append(el("li", "row empty-row", siteText.comingSoon));
     section.append(head, list);
     tree.append(section);
   }
-  if (!tree.childElementCount) tree.append(el("p", "tree-empty", "찾는 예제가 없습니다."));
+  if (!tree.childElementCount) tree.append(el("p", "tree-empty", siteText.noMatches));
 }
 
-function setCrumbs(items: readonly { text: string; href?: string }[]): void {
+function setCrumbs(items: readonly { text: string | LocalizedText; href?: string }[]): void {
   crumbs.replaceChildren();
   items.forEach((item, index) => {
     if (index) crumbs.append(icon("chevron-right"));
-    const node = item.href ? link(item.href, "crumb", item.text) : el("span", "crumb", item.text);
+    const node = item.href
+      ? routeLink(link(item.href, "crumb", typeof item.text === "string" ? item.text : uiText(item.text)))
+      : el("span", "crumb", item.text);
     if (index === items.length - 1) node.setAttribute("aria-current", "page");
     crumbs.append(node);
   });
 }
 
 function card(entry: Entry): HTMLElement {
-  const thumb = entry.kind === "tool" && entry.item.thumbnail
+  const thumb = entry.item.thumbnail
     ? Object.assign(el("img"), { src: entry.item.thumbnail, alt: "", loading: "lazy", decoding: "async" })
     : el("span", "card-code");
-  if (thumb.classList.contains("card-code")) thumb.append(icon("file-code", "i card-code-icon"));
+  if (thumb.classList.contains("card-code")) {
+    const group = groups.find(item => item.id === groupOf(entry))!;
+    thumb.append(icon(entry.kind === "example" ? group.icon : "file-code", "i card-code-icon"));
+  }
   const text = el("span", "card-text");
   text.append(el("b", undefined, entry.item.title), el("span", undefined, entry.item.summary));
-  if (entry.kind === "example") return link(exampleHref(entry.item.id), "card", thumb, text);
+  if (entry.kind === "example") return routeLink(link(exampleHref(entry.item.id), "card", thumb, text));
   return toolLink(entry.item, "card", thumb, text, icon("external-link", "i card-ext"));
 }
 
@@ -129,16 +158,25 @@ function renderHome(text: string): void {
   const page = el("div", "home");
   const head = el("header", "home-head");
   const title = el("div");
-  title.append(el("h1", undefined, "Ferrum2D 예제"), el("p", undefined, "엔진 기능을 하나씩 바꿔 보는 실험과 게임 데모를 이 화면에서 실행합니다."));
+  title.append(el("h1", undefined, siteText.title), el("p", undefined, siteText.homeIntro));
   head.append(title);
   page.append(head);
+  if (examples.length && !text) {
+    // Examples arrive one at a time; say so once, quietly.
+    const note = el("p", "home-note");
+    const sentence = el("span");
+    sentence.append(uiText(siteText.progress(examples.length)),
+      link(links.previousExamples, "inline-link", "GitHub"), uiText(siteText.progressEnd));
+    note.append(icon("construction"), sentence);
+    page.append(note);
+  }
   const shown = entries.filter(entry => matches(entry, text));
   for (const group of groups) {
     const items = shown.filter(entry => groupOf(entry) === group.id);
     if (group.id !== "tools" && !examples.length) continue;
     if (!items.length) continue;
     const section = el("section", "home-group");
-    const h2 = el("h2"); h2.append(icon(group.icon), group.title);
+    const h2 = el("h2"); h2.append(icon(group.icon), uiText(group.title));
     const grid = el("div", "cards"); grid.append(...items.map(card));
     section.append(h2, grid);
     page.append(section);
@@ -147,44 +185,72 @@ function renderHome(text: string): void {
     // Until the first example lands, say so and point to what already works.
     const empty = el("section", "empty");
     empty.setAttribute("aria-labelledby", "empty-title");
-    const h2 = el("h2", undefined, "예제를 하나씩 다시 만들고 있습니다."); h2.id = "empty-title";
-    const p = el("p", undefined, "새 화면에 맞춰 예제를 차례로 추가합니다. 엔진 문서와 Studio는 지금 열 수 있고, 이전 예제 코드는 GitHub에 남아 있습니다.");
+    const h2 = el("h2", undefined, siteText.emptyTitle); h2.id = "empty-title";
+    const p = el("p", undefined, siteText.emptyIntro);
     const actions = el("div", "empty-actions");
     actions.append(
-      link(links.docs, "btn primary", icon("book-open"), "문서 열기"),
-      toolLink(tools[0], "btn", icon("wrench"), "Studio 열기"),
-      link(links.previousExamples, "btn", icon("github"), "이전 예제 코드"),
+      docsLink("btn primary", siteText.openDocs),
+      toolLink(tools[0], "btn", icon("wrench"), uiText(siteText.openStudio)),
+      link(links.previousExamples, "btn", icon("github"), uiText(siteText.previousCode)),
     );
     empty.append(icon("construction", "i empty-icon"), h2, p, actions);
     page.insertBefore(empty, page.children[1] ?? null);
   }
-  if (text && !shown.length) page.append(el("p", "home-none", "찾는 예제가 없습니다."));
+  if (text && !shown.length) page.append(el("p", "home-none", siteText.noMatches));
   main.replaceChildren(page);
 }
 
 function renderMissing(id: string): void {
-  setCrumbs([{ text: "예제", href: "./" }, { text: id }]);
+  setCrumbs([{ text: siteText.examples, href: "./" }, { text: id }]);
   const page = el("div", "missing");
-  const h1 = el("h1", undefined, "예제를 찾을 수 없습니다.");
-  const p = el("p"); p.append(el("code", undefined, id), " 예제는 아직 없거나 이름이 바뀌었습니다.");
-  page.append(h1, p, link("./", "btn", "첫 화면으로"));
+  const h1 = el("h1", undefined, siteText.missingTitle);
+  const p = el("p"); p.append(el("code", undefined, id), uiText(siteText.missingDetail));
+  page.append(h1, p, routeLink(link("./", "btn", uiText(siteText.backHome))));
   main.replaceChildren(page);
 }
 
+function renderExample(example: SiteExample): void {
+  const group = groups.find(item => item.id === example.group)!;
+  setCrumbs([{ text: siteText.examples, href: "./" }, { text: group.title }, { text: example.title }]);
+  const index = examples.indexOf(example);
+  running = mountExample(main, { example, previous: examples[index - 1], next: examples[index + 1], status, open: id => navigate(exampleHref(id)) });
+}
+
 function renderStatus(): void {
-  const count = (group: GroupId) => examples.filter(item => item.group === group).length;
+  // An example writes its own engine numbers here while it is on screen.
+  if (app.dataset.view === "example") return;
   status.replaceChildren(
-    el("span", undefined, `예제 ${examples.length}`),
-    el("span", undefined, `게임 ${count("games")} · 기능 ${count("features")} · 물리 ${count("physics")} · 도구 ${tools.length}`),
-    el("span", "sb-right", "Ferrum2D 개발 소스"),
+    el("span", undefined, siteText.exampleCount(examples.length)),
+    el("span", undefined, siteText.groupCount(groups.length - 1, tools.length)),
+    el("span", "sb-right", siteText.build),
   );
 }
 
-function render(): void {
-  const text = query.value.trim().toLocaleLowerCase("ko");
-  renderTree(text);
-  if (selected && !examples.some(item => item.id === selected)) renderMissing(selected);
-  else renderHome(text);
+const searchText = () => query.value.trim().toLowerCase();
+const selectedExample = () => examples.find(item => item.id === selected);
+function renderTitle(example: SiteExample | undefined): void {
+  const title = translate(siteText.title);
+  document.title = example ? `${translate(example.title)} · ${title}` : title;
+}
+
+/** Shows what the address names. The running example stops before anything else takes the main area. */
+function route(): void {
+  running?.destroy(); running = undefined;
+  selected = new URLSearchParams(location.search).get("example");
+  const example = selectedExample();
+  renderTitle(example);
+  app.dataset.view = example ? "example" : "page";
+  renderTree(searchText());
+  renderStatus();
+  if (example) renderExample(example);
+  else if (selected) renderMissing(selected);
+  else renderHome(searchText());
+}
+function navigate(href: string): void {
+  const url = new URL(href, location.href);
+  if (url.href !== location.href) history.pushState(null, "", url);
+  route();
+  main.scrollTop = 0;
 }
 
 // Narrow screens: the list is a drawer.
@@ -201,8 +267,29 @@ document.addEventListener("keydown", event => {
   const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable=true]");
   if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); query.focus(); }
 });
-query.addEventListener("input", render);
+query.addEventListener("input", () => {
+  renderTree(searchText());
+  if (!selected) renderHome(searchText());
+});
+// Links inside the site move without reloading the page; other links and modified clicks behave as usual.
+document.addEventListener("click", event => {
+  const a = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[data-route]") : null;
+  if (!a || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  if (app.dataset.drawer === "open") setDrawer(false);
+  navigate(a.href);
+});
+addEventListener("popstate", route);
+language.addEventListener("change", () => {
+  const next = language.value;
+  if (next !== "en" && next !== "ko") return;
+  setSiteLocale(next);
+  renderTitle(selectedExample());
+  running?.refreshLanguage();
+});
 
 setDrawer(false);
-renderStatus();
-render();
+route();
+// Fixed-width text lists system fonts before the bundled Korean font, so Hangul drawn before that font
+// arrives can keep a fallback. Load it for that text and draw the status bar again.
+void document.fonts?.load('11px "Ferrum Example UI"', "예제").then(renderStatus, () => {});

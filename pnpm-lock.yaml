@@ -104,6 +104,10 @@ importers:
         version: 5.4.21
 
   examples/site:
+    dependencies:
+      '@ferrum2d/ferrum-web':
+        specifier: workspace:*
+        version: link:../../packages/ferrum-web
     devDependencies:
       typescript:
         specifier: ^5.8.3
