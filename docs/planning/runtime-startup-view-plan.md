@@ -1,8 +1,11 @@
 # 런타임 시작·화면 맞춤 개선
 
-상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→R2a→R2b→R3)마다 Codex가 구현하고 통합 담당이 검증한다.
-R1 완료(`77f94fa`, 2026-11-25 통합 검증: SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과).
-[선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패)과 R2a(SDK 화면 맞춤·view) 완료(2026-11-25). 다음은 R2b다.
+상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→F1→R2a→F2→R2b→R3)마다 Codex가 구현하고 통합 담당이 검증한다.
+- R1 완료(`77f94fa`): 통합 검증에서 SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과.
+- [선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패) 완료(`e09767d`): Data Scene smoke 전체 통과.
+- R2a 완료(`fd200dd`, 2026-11-25): 통합 검증에서 SDK 테스트 2,061개, Data Scene smoke 전체(화면 맞춤 사례 포함), 예제 사이트 smoke 통과.
+- 다음은 [선행 수정 F2](#선행-수정-f2-픽셀-퍼펙트-smoke의-shooter-스냅샷-실패), 그다음 R2b다.
+
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
 새 API로 예제를 옮기는 일부터 다시 시작한다.
 
@@ -138,6 +141,23 @@ R1 통합 검증에서 찾은 결함이다. 기존 소비자 smoke가 첫 이동
 - **검증:** 준비된 Wasm으로 SDK를 빌드했다. SDK 테스트 2,053개, 브라우저 소비자 4개 조합과 R1 시작 사례,
   `pnpm validate:docs-links`, `pnpm validate:public-api-surface`가 통과했다.
 
+## 선행 수정 F2: 픽셀 퍼펙트 smoke의 Shooter 스냅샷 실패
+
+R2a 통합 검증에서 찾은 기존 결함이다. R2b의 검증 명령(`pnpm smoke:flat-pixel-perfect`)이 이 smoke 뒤에 Studio viewer smoke를 이어 실행하므로
+R2b보다 먼저 고친다.
+
+- **증상:** `node tests/smoke/flat-pixel-perfect-smoke.mjs`가 `native tile snap: missing native snapshot`으로 멈춘다.
+  `tests/smoke/pixel-snap-native-tiles-fixture.mjs`가 `createFerrumRuntime`의 기본 엔진에 `setGameSpec`(내장 Shooter)을 넣고
+  `runtime.engine.captureShooterStateSnapshot()`으로 카메라 위상을 바꾸려 하는데, 결과가 `undefined`다.
+- **R2a와 무관함:** R2a 이전 커밋 `e09767d`와 R2a `fd200dd`에서 같은 오류로 실패한다(같은 Wasm).
+- **추정 원인(확인 필요):** 이 조각은 2026-11-02(`6de0e11`)에 만들어졌고, 그 뒤 엔진 기본 물리가 native로 바뀌었다.
+  [Core API](../engine/public-api/core.md)는 "Native Shooter에서는 legacy Shooter snapshot capture/restore를 상태 변경 전에 거절한다"고 적는다.
+  즉 엔진 결함이 아니라 낡은 검사일 가능성이 높다. 이 조각이 확인하려는 것은 물리가 아니라 native 타일 렌더링의 픽셀 맞춤이다.
+- **고칠 범위 판단:** (a) 이 조각만 legacy 물리로 엔진을 만들게 한다(`engine: { physicsBackend: "legacy" }` 등).
+  (b) 스냅샷 없이 카메라 위상을 정하는 다른 공개 경로가 있으면 그것으로 바꾼다. 엔진의 Shooter 스냅샷 계약은 바꾸지 않는다.
+- **완료 조건:** `pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/flat-pixel-perfect-smoke.mjs` 통과(WebGL2·WebGPU 요청 모두, 배율 1·2).
+  원인과 선택한 수정을 커밋 메시지와 이 절에 기록한다. Rust 변경이 필요하면 구현 전에 보고한다.
+
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
 ### 문서 형식
@@ -217,8 +237,7 @@ R2b는 Studio viewer smoke(`flat-pixel-perfect-viewer-smoke.mjs`)에 fit 문서 
 
 R2a 검증에서 SDK 테스트 2,061개와 Data Scene 브라우저 스모크 전체가 통과했다. fit 사례는 DPR 2의
 1000×500 및 390×844 캔버스에서 네 모서리 픽셀, 사각형 배율, 포인터 변환과 같은 view의 재사용을 확인했다.
-기존 SDK 픽셀 퍼펙트 스모크는 동일 Wasm을 쓰는 변경 전 커밋에서도 Shooter 스냅샷 단계에서 실패한다.
-기본 통합 물리에서는 기존 Shooter 스냅샷을 캡처할 수 있어야 한다고 가정한 테스트 사례다. 이 검증은 별도로 정리한다.
+기존 SDK 픽셀 퍼펙트 스모크는 변경 전 커밋에서도 Shooter 스냅샷 단계에서 실패한다. 선행 수정 F2에서 다룬다.
 
 ### 문서
 
@@ -260,6 +279,9 @@ interface FerrumRuntimeOptions {
 | 고정 속도 body | 벽돌 깨기 공처럼 속도를 일정하게 유지하려면 매 프레임 코드로 맞춰야 한다. | dynamic body의 최대·고정 속도 옵션 검토. |
 | 전투 모드 없는 충돌 시 제거 | `collisionDespawn` 레시피는 씬 문서에서 HD-2D 전투 모드(`gameplay.combat`)가 필요하다. | 탐험 모드에서도 쓸 수 있게 할지 검토. |
 | 입력의 편집 대상 판정 | `InputManager`는 `input·textarea·select·button`만 제외한다. 키로 조작하는 `role="separator"`·슬라이더 등에 초점이 있어도 게임 키로 받는다. | 제외 규칙 확장 또는 옵션 검토. |
+| 충돌체 기본값이 트리거인 함정 | Data Scene 충돌체는 `isTrigger`를 생략하면 트리거다. body를 붙이고 `isTrigger: false`를 잊으면 막지도 않고 HD-2D 이동도 거절된다(F1의 원인). | body가 있는 충돌체의 기본값을 solid로 바꿀지(기존 문서 동작이 바뀌므로 제품 결정) 또는 body+트리거 조합에 진단을 낼지 검토. |
+| 이동 실패 이유 | `moveHd2dKinematicBodyWithTilemap`은 actor가 조건(단일 solid AABB kinematic, 높이 정보)에 맞지 않으면 이유 없이 결과 없음으로 돌아온다. | 거절 이유를 돌려주거나 개발 모드 진단을 낸다. |
+| WebGPU 복구 중 화면 맞춤 크기 변화 | R2a 뒤 화면 맞춤이 켜지면 캔버스 크기 변화에서 `renderer.resize()` 대신 `setViewportZoom`을 부른다. `WebGPURenderer.setViewportZoom`은 준비 상태가 아니면 오류를 던지므로, 장치 손실 복구 중 크기가 바뀌면 크기 감시 콜백에서 오류가 날 수 있다(맞춤이 꺼진 경로는 준비 전이면 건너뜀). | 작다. R2b 또는 R3 때 준비 전이면 미뤘다가 복구 뒤 맞추도록 함께 고친다. |
 
 ## Codex 작업 지시
 
@@ -267,7 +289,7 @@ interface FerrumRuntimeOptions {
 `docs/engine/data-scene-authoring.md`("기본 2D 표시 설정"), `packages/ferrum-web/src/`의 `createFerrumRuntime.ts`·`createRenderer.ts`·
 `browserPlatformHost.ts`·`assetLoader.ts`·`sceneDisplay.ts`·`dataSceneView.ts`, `packages/ferrum-web/test/createFerrumRuntime.integration.test.ts`·`dataSceneView.test.ts`.
 
-**작업 단위:** R1, F1(선행 수정), R2a(SDK), R2b(Studio), R3을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
+**작업 단위:** R1, F1·F2(선행 수정), R2a(SDK), R2b(Studio), R3을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
 앞 단계가 검증을 통과한 뒤 다음 단계로 간다.
 
 **지킬 것:**
