@@ -1,8 +1,8 @@
 # 런타임 시작·화면 맞춤 개선
 
 상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→R2a→R2b→R3)마다 Codex가 구현하고 통합 담당이 검증한다.
-R1을 구현했다. SDK 테스트, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례는 통과했다.
-준비된 동일 Wasm으로 변경 전 SDK를 검증해도 기존 HD-2D 이동 사례에서 실패했다. 해당 사례는 통합에서 재확인한다.
+R1 완료(`77f94fa`, 2026-11-25 통합 검증: SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과).
+다음은 [선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패)이고, 그다음 R2a다.
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
 새 API로 예제를 옮기는 일부터 다시 시작한다.
 
@@ -121,6 +121,27 @@ interface FerrumRuntime {
 - `docs/engine/public-api-surface.json`: 새로 export하는 타입이 있으면 등록(`pnpm validate:public-api-surface`).
 - `docs/development/architecture/architecture.md`: 런타임 시작 순서(에셋 → 씬)와 취소 규칙 한 줄.
 - `CHANGELOG.md` `Unreleased`.
+
+## 선행 수정 F1: Data Scene smoke의 HD-2D 이동 실패
+
+R1 통합 검증에서 찾은 기존 결함이다. R2의 브라우저 검증도 이 smoke를 쓰므로 R2a보다 먼저 고친다.
+
+- **증상:** `node tests/smoke/data-scene-browser-smoke.mjs`가 첫 소비자 사례에서
+  `Expected a current kinematic actor with a height span`(`examples/data-scene-native/main.mjs`의 `move`)으로 멈춘다.
+  `engine.moveHd2dKinematicBodyWithTilemap(actor, …)`가 결과 없이 돌아온다. smoke의 `s.move(0, 50)` 단계다.
+- **R1과 무관함:** R1 이전 커밋 `13715b6`과 R1 `77f94fa`에서 같은 오류로 실패한다(같은 Wasm, 마지막 Rust 변경 `da9491f` 이후 빌드).
+  이 브랜치는 엔진을 바꾸지 않았으므로 `main`에도 있는 결함으로 본다.
+- **영향:** 이 사례에서 멈추므로 뒤의 Data Scene 소비자 사례가 실행되지 않는다(보고서 `cases: []`). `smoke:data-scene`과 이를 포함한
+  `smoke:check`가 항상 실패한다.
+- **추정 원인(확인 필요):** 레시피의 actor 충돌체 `{ type: "aabb", halfWidth: 8, halfHeight: 8 }`는 `isTrigger`를 생략해 기본값 `true`(트리거)다.
+  native planar 경로의 `moveHd2dKinematicBodyWithTilemap`은 단일 **solid** AABB kinematic만 받는다
+  ([물리 문서](../engine/physics-spec.md)). 엔진 기본 물리가 native로 바뀌면서 트리거 actor가 거절됐을 가능성이 있다.
+  [Data Scene native 문서](../engine/data-scene-native-runtime.md)의 조립 예시도 같은 충돌체를 쓴다.
+- **고칠 범위 판단:** 원인이 맞으면 두 가지 중 하나다. (a) 레시피와 문서 예시에 `isTrigger: false`를 적는다(문서가 요구하는 대로 쓰게 함).
+  (b) 트리거 actor 이동을 엔진이 계속 지원해야 한다면 엔진을 고친다. 공개 계약 문구가 solid를 요구하므로 (a)를 먼저 검토한다.
+  Rust 변경이 필요하면 구현 전에 보고한다(이 워크트리에는 Rust 빌드 폴더가 없다).
+- **완료 조건:** `pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/data-scene-browser-smoke.mjs`의 모든 사례 통과(R1 시작 사례 포함),
+  원인과 선택한 수정을 커밋 메시지와 이 절에 기록. 문서 예시를 고치면 `pnpm validate:docs-links`, `pnpm validate:public-api-surface`.
 
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
@@ -246,7 +267,7 @@ interface FerrumRuntimeOptions {
 `docs/engine/data-scene-authoring.md`("기본 2D 표시 설정"), `packages/ferrum-web/src/`의 `createFerrumRuntime.ts`·`createRenderer.ts`·
 `browserPlatformHost.ts`·`assetLoader.ts`·`sceneDisplay.ts`·`dataSceneView.ts`, `packages/ferrum-web/test/createFerrumRuntime.integration.test.ts`·`dataSceneView.test.ts`.
 
-**작업 단위:** R1, R2a(SDK), R2b(Studio), R3을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
+**작업 단위:** R1, F1(선행 수정), R2a(SDK), R2b(Studio), R3을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
 앞 단계가 검증을 통과한 뒤 다음 단계로 간다.
 
 **지킬 것:**
