@@ -13,6 +13,7 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ### Fixed
 
+- 평면 native 물리에서 Data Scene 레시피의 HD-2D actor가 이동하도록 solid AABB 콜라이더를 명시하고 문서 예시도 맞췄다.
 - Linux Studio `.deb`의 Debian 패키지 이름을 `ferrum2d-studio`로 고정했다. beta.10은 Tauri가 제품명에서 만든
   `ferrum2-d-studio`였으며, 새 패키지가 이 이름을 `Replaces`/`Conflicts`로 대체해 업그레이드 설치 시 함께 정리한다.
 - SDK 게임 루프가 0.1ms보다 짧은 브라우저 프레임 간격을 받으면 native 가변 시계가 거부해 멈추던 문제를 고쳤다.

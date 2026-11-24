@@ -576,7 +576,7 @@ packed Chromium은 64개 mixed query/65 hits, closest/truncation, 대기 target 
 | 변경 영역 | 검증 명령 | 유지할 기준 |
 | --- | --- | --- |
 | headless·공용 콘텐츠 | `pnpm smoke:headless`, `pnpm smoke:content-runtime` | 실제 native 상태와 lifecycle. mock 결과만으로 실행 성공 판정 금지 |
-| Data Scene | `pnpm validate:data-scene-authoring`, `pnpm smoke:data-scene`, `pnpm smoke:data-scene-gameplay` | 적용/restore·stable instance id·실패 원자성·구 Wasm 진단 |
+| Data Scene | `pnpm validate:data-scene-authoring`, `pnpm smoke:data-scene`, `pnpm smoke:data-scene-gameplay` | 적용/restore·stable instance id·실패 원자성·구 Wasm 진단·solid AABB actor의 HD-2D 이동 |
 | 런타임 시작 | `pnpm smoke:data-scene`, `pnpm smoke:asset-loading` | 포장된 SDK의 이름 텍스처 실제 픽셀, WebGPU 요청의 WebGL2 대체와 실제 백엔드, 느린 요청 취소 뒤 프레임 0 |
 | clip·투영·태양 | `pnpm smoke:data-scene-presentation`, `pnpm smoke:sprite-animation-runtime` | 실제 frame UV·시간·이벤트·pause/완료·snapshot과 command/sidecar 정합 |
 | 입력 context | `pnpm smoke:input-context`, `pnpm smoke:mobile-input` | packed 입력·modal 우선순위·release/cancel·pointer/viewport 좌표 |

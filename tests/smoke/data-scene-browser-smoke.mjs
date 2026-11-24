@@ -175,7 +175,12 @@ try {
       s.unrelatedHeight(true); await wait(); check(JSON.stringify(order()) === before, "height span changed sprite order");
       s.unrelatedHeight(false); await wait(); check(JSON.stringify(order()) === before, "height clear changed sprite order");
       let p = pixel({ x: 800, y: 580 }); check(p[2] > 240 && p[0] < 10, "tree should occlude actor behind it");
-      s.move(0, 50); await wait(); p = pixel({ x: 800, y: 610 });
+      const actor = s.engine.getPhysicsEntity(s.actor);
+      check(actor?.bodyType === "kinematic" && actor.colliderType === "aabb" && actor.colliderIsTrigger === false,
+        "HD-2D movement requires a solid AABB kinematic actor");
+      const moved = s.move(0, 50);
+      check(moved.y === actor.y + 50, "the actor should move 50 world units");
+      await wait(); p = pixel({ x: 800, y: 610 });
       check(p[0] > 240 && p[2] < 10, "red tinted actor should cover tree in front");
       check(s.engine.queryCircleBodies({ x: 800, y: 650, radius: 1, queryMaskBits: 1 }).some((h) => h.entityId === s.actor.entityId), "collider did not move with sprite");
       const label = s.frame.commands.find((c) => c.textureId === 99); const expected = s.view.worldToScreen({ x: 840, y: 570 }, s.frame.camera);
