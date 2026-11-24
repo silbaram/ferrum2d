@@ -15,6 +15,7 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ### Fixed
 
+- 픽셀 퍼펙트 스모크에서 타일 검사에 레거시 Shooter 스냅샷을 사용하고 `linear-srgb` 검사에서 WebGPU 출력을 확인하도록 고쳤다.
 - 평면 native 물리에서 Data Scene 레시피의 HD-2D actor가 이동하도록 solid AABB 콜라이더를 명시하고 문서 예시도 맞췄다.
 - Linux Studio `.deb`의 Debian 패키지 이름을 `ferrum2d-studio`로 고정했다. beta.10은 Tauri가 제품명에서 만든
   `ferrum2-d-studio`였으며, 새 패키지가 이 이름을 `Replaces`/`Conflicts`로 대체해 업그레이드 설치 시 함께 정리한다.

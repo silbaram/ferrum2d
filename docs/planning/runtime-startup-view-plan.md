@@ -4,7 +4,7 @@
 - R1 완료(`77f94fa`): 통합 검증에서 SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과.
 - [선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패) 완료(`e09767d`): Data Scene smoke 전체 통과.
 - R2a 완료(`fd200dd`, 2026-11-25): 통합 검증에서 SDK 테스트 2,061개, Data Scene smoke 전체(화면 맞춤 사례 포함), 예제 사이트 smoke 통과.
-- 다음은 [선행 수정 F2](#선행-수정-f2-픽셀-퍼펙트-smoke의-shooter-스냅샷-실패), 그다음 R2b다.
+- [선행 수정 F2](#선행-수정-f2-픽셀-퍼펙트-smoke의-shooter-스냅샷-실패) 완료(2026-11-25): SDK 픽셀 퍼펙트 smoke 전체 통과. 다음은 R2b다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
 새 API로 예제를 옮기는 일부터 다시 시작한다.
@@ -150,13 +150,14 @@ R2b보다 먼저 고친다.
   `tests/smoke/pixel-snap-native-tiles-fixture.mjs`가 `createFerrumRuntime`의 기본 엔진에 `setGameSpec`(내장 Shooter)을 넣고
   `runtime.engine.captureShooterStateSnapshot()`으로 카메라 위상을 바꾸려 하는데, 결과가 `undefined`다.
 - **R2a와 무관함:** R2a 이전 커밋 `e09767d`와 R2a `fd200dd`에서 같은 오류로 실패한다(같은 Wasm).
-- **추정 원인(확인 필요):** 이 조각은 2026-11-02(`6de0e11`)에 만들어졌고, 그 뒤 엔진 기본 물리가 native로 바뀌었다.
-  [Core API](../engine/public-api/core.md)는 "Native Shooter에서는 legacy Shooter snapshot capture/restore를 상태 변경 전에 거절한다"고 적는다.
-  즉 엔진 결함이 아니라 낡은 검사일 가능성이 높다. 이 조각이 확인하려는 것은 물리가 아니라 native 타일 렌더링의 픽셀 맞춤이다.
-- **고칠 범위 판단:** (a) 이 조각만 legacy 물리로 엔진을 만들게 한다(`engine: { physicsBackend: "legacy" }` 등).
-  (b) 스냅샷 없이 카메라 위상을 정하는 다른 공개 경로가 있으면 그것으로 바꾼다. 엔진의 Shooter 스냅샷 계약은 바꾸지 않는다.
-- **완료 조건:** `pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/flat-pixel-perfect-smoke.mjs` 통과(WebGL2·WebGPU 요청 모두, 배율 1·2).
-  원인과 선택한 수정을 커밋 메시지와 이 절에 기록한다. Rust 변경이 필요하면 구현 전에 보고한다.
+- **확인한 원인:** 기본 통합 물리는 [Core API](../engine/public-api/core.md) 계약대로 레거시 Shooter 스냅샷을 거절한다.
+  같은 SDK와 Wasm에서 타일 조각만 `engine: { physicsBackend: "legacy" }`로 바꾸면 카메라 위상·배율 조합 16개와
+  렌더링 전후 스냅샷 불변 검사가 통과했다. 이 조각은 Wasm 타일 렌더링을 그대로 검사한다.
+- **같은 smoke의 후속 실패:** 타일 검사를 통과한 뒤 `linear-srgb` 사례가 WebGPU를 요청하고도 WebGL2를 기대해서 멈췄다.
+  현재 SDK의 색 관리 계약에 맞춰 요청한 WebGPU가 실행되도록 기대값을 고쳤다.
+- **수정과 검증:** 타일 fixture에만 legacy 물리를 지정하고 실제 backend를 기록한다. 기존 Wasm으로 SDK를 빌드한 뒤
+  `node tests/smoke/flat-pixel-perfect-smoke.mjs`를 실행했다. WebGL2·WebGPU 각각 DPR 1·1.5·2와 조합별 타일 위상 16개,
+  WebGPU `linear-srgb` 사례가 통과했다. SDK 테스트 2,061개, 문서 링크·공개 API 검사도 통과했다.
 
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
@@ -237,7 +238,7 @@ R2b는 Studio viewer smoke(`flat-pixel-perfect-viewer-smoke.mjs`)에 fit 문서 
 
 R2a 검증에서 SDK 테스트 2,061개와 Data Scene 브라우저 스모크 전체가 통과했다. fit 사례는 DPR 2의
 1000×500 및 390×844 캔버스에서 네 모서리 픽셀, 사각형 배율, 포인터 변환과 같은 view의 재사용을 확인했다.
-기존 SDK 픽셀 퍼펙트 스모크는 변경 전 커밋에서도 Shooter 스냅샷 단계에서 실패한다. 선행 수정 F2에서 다룬다.
+기존 SDK 픽셀 퍼펙트 스모크의 Shooter 스냅샷 실패는 선행 수정 F2에서 해결했다.
 
 ### 문서
 

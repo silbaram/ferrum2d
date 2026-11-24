@@ -677,6 +677,10 @@ trim은 원래 canvas·offset·pivot을 복원하고 같은 공간의 normal과 
 | 도트 후처리 | `pnpm smoke:pixel-postprocess` | target 크기·색상 수·dither·alpha/HUD·OFF 복귀·해제 |
 | 도트 예제 | `pnpm smoke:pixel-showcase` | 실제 source/UI·픽셀과 예산, consumer 도트 profile과 구분 |
 
+픽셀 퍼펙트 브라우저 검사는 WebGL2와 WebGPU의 실제 출력을 비교하고 `linear-srgb` 사례에서 실제 WebGPU를 확인한다.
+타일 맞춤 사례만 레거시 Shooter 스냅샷으로 카메라 위상을 설정한다. Wasm이 만든 타일 명령을 그려 이음새와 배칭,
+렌더링 전후의 스냅샷 불변을 검사한다.
+
 ### PNG 아틀라스 가장자리 보호 gate
 
 `pnpm smoke:atlas-extrusion`은 PNG 가장자리 extrusion과 실제 browser sampling을 검사한다.
