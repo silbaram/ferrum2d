@@ -1,6 +1,6 @@
 import { groups, links, type SiteExample } from "./catalog";
 import { createControls } from "./controls";
-import type { EngineNumbers, ExampleSession, RendererChoice } from "./example";
+import type { DisplayOption, EngineNumbers, ExampleEvent, ExampleSession, RendererChoice } from "./example";
 import { icon } from "./icons";
 import { applyPanelSize, foldButton, panelSplitter, railButton } from "./layout";
 import { el, setUiText, translate, uiAttribute, uiText, type LocalizedText } from "./locale";
@@ -73,7 +73,53 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
   const next = iconButton("chevron-right", text.next(options.next?.title));
   previous.disabled = !options.previous; next.disabled = !options.next;
   const fullscreen = iconButton("maximize", text.fullscreen);
-  bar.append(reset, tab, el("span", "pb-space"), select, el("span", "pb-sep"), previous, next, fullscreen);
+  // "표시" menu: check items the example offers for reading the picture, such as collision shapes.
+  const displayWrap = el("div", "pb-menu"); displayWrap.hidden = true;
+  const displayButton = el("button", "pb-menu-btn"); displayButton.type = "button";
+  const displayMenu = el("div", "menu"); displayMenu.id = "display-menu"; displayMenu.setAttribute("role", "menu"); displayMenu.hidden = true;
+  uiAttribute(displayMenu, "aria-label", text.displayMenu);
+  displayButton.setAttribute("aria-haspopup", "menu"); displayButton.setAttribute("aria-expanded", "false");
+  displayButton.setAttribute("aria-controls", displayMenu.id);
+  displayButton.append(icon("eye"), el("span", "pb-menu-t", text.display), icon("chevron-down", "i chev"));
+  displayWrap.append(displayButton, displayMenu);
+  bar.append(reset, tab, el("span", "pb-space"), displayWrap, select, el("span", "pb-sep"), previous, next, fullscreen);
+
+  const menuItems = () => [...displayMenu.querySelectorAll<HTMLButtonElement>("[role=menuitemcheckbox]")];
+  const setMenu = (open: boolean, focus = false) => {
+    displayMenu.hidden = !open;
+    displayButton.setAttribute("aria-expanded", String(open));
+    if (open && focus) menuItems()[0]?.focus();
+  };
+  displayButton.addEventListener("click", event => setMenu(displayMenu.hidden, event.detail === 0));
+  displayButton.addEventListener("keydown", event => {
+    if (event.key !== "ArrowDown") return;
+    event.preventDefault(); setMenu(true, true);
+  });
+  displayMenu.addEventListener("keydown", event => {
+    const items = menuItems(), at = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      items[(at + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+    } else if (event.key === "Escape") {
+      event.preventDefault(); setMenu(false); displayButton.focus();
+    } else if (event.key === "Tab") setMenu(false);
+  });
+  const closeMenu = (event: PointerEvent) => { if (!displayWrap.contains(event.target as Node)) setMenu(false); };
+  document.addEventListener("pointerdown", closeMenu);
+  const showDisplay = (options: readonly DisplayOption[]) => {
+    setMenu(false);
+    displayMenu.replaceChildren(...options.map(option => {
+      const item = el("button", "menu-item"); item.type = "button"; item.tabIndex = -1;
+      item.setAttribute("role", "menuitemcheckbox");
+      item.append(icon("check", "i menu-check"), el("span", undefined, option.label));
+      let value = option.value;
+      const show = () => item.setAttribute("aria-checked", String(value));
+      item.addEventListener("click", () => { value = !value; show(); option.onChange(value); });
+      show();
+      return item;
+    }));
+    displayWrap.hidden = !options.length;
+  };
 
   // Viewport: the canvas keeps the world's aspect ratio on a grid.
   const viewport = el("div", "viewport");
@@ -85,10 +131,13 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
   const dock = el("div", "dock"); dock.dataset.open = "false";
   const tabs = el("div", "dock-tabs"); tabs.setAttribute("role", "tablist"); uiAttribute(tabs, "aria-label", text.materials);
   const panel = el("div", "dock-panel"); panel.id = "dock-panel"; panel.setAttribute("role", "tabpanel"); panel.tabIndex = 0; panel.hidden = true;
-  const tabIds = ["about", "scene", "api", "source", "engine"] as const;
-  type TabId = (typeof tabIds)[number];
+  type TabId = keyof typeof text.tabs;
+  // The "이벤트" tab is there for examples that report events.
+  const tabIds: readonly TabId[] = example.events ? ["about", "events", "scene", "api", "source", "engine"] : ["about", "scene", "api", "source", "engine"];
+  const eventCount = el("span", "dock-count");
   const tabButtons = tabIds.map((id, index) => {
     const button = el("button", "dock-tab", text.tabs[id]); button.type = "button"; button.id = `dock-tab-${id}`;
+    if (id === "events") button.append(eventCount);
     button.dataset.tab = id;
     button.setAttribute("role", "tab"); button.setAttribute("aria-controls", panel.id); button.setAttribute("aria-selected", "false");
     button.tabIndex = index ? -1 : 0;
@@ -167,7 +216,8 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
     else if (!numbers) parts.push(state === "running" ? rendererNames[renderer] : translate(text.runState.loading));
     else parts.push(rendererNames[numbers.renderer], `${Math.round(numbers.fps)} FPS`, `${translate(text.entities)} ${numbers.entities}`,
       `${translate(text.commands)} ${numbers.commands}`, `${translate(text.drawCalls)} ${numbers.drawCalls}`,
-      ...(numbers.textures === undefined ? [] : [`${translate(text.textures)} ${numbers.textures}`]));
+      ...(numbers.textures === undefined ? [] : [`${translate(text.textures)} ${numbers.textures}`]),
+      ...(numbers.extra ?? []).map(item => `${translate(item.label)} ${item.value}`));
     status.replaceChildren(lamp, ...parts.map(part => typeof part === "string" ? el("span", undefined, part) : part),
       el("span", "sb-right", translate(siteText.build)));
   };
@@ -186,6 +236,20 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
     }
     renderStatus();
     if (current === "engine") renderTab();
+  };
+
+  // The "이벤트" tab keeps the latest lines of this session; the tab shows how many arrived.
+  const MAX_EVENTS = 200;
+  let events: (ExampleEvent & { time: number })[] = [], eventTotal = 0, eventsQueued = 0, startedAt = performance.now();
+  const pushEvent = (entry: ExampleEvent) => {
+    events.unshift({ ...entry, time: (performance.now() - startedAt) / 1000 });
+    if (events.length > MAX_EVENTS) events.length = MAX_EVENTS;
+    eventTotal++;
+    eventsQueued ||= requestAnimationFrame(() => {
+      eventsQueued = 0;
+      eventCount.textContent = eventTotal ? String(eventTotal) : "";
+      if (current === "events") renderTab();
+    });
   };
 
   // Dock tabs.
@@ -233,6 +297,29 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
       body.append(part(text.useCase, el("p", undefined, example.about.useCase)), part(text.steps, steps),
         part(text.reading, el("p", undefined, example.about.reading)));
       panel.replaceChildren(body);
+    } else if (current === "events") {
+      const wrap = el("div", "dock-events");
+      const tools = el("div", "dock-tools");
+      const clear = el("button", "btn small", text.clearEvents); clear.type = "button";
+      clear.addEventListener("click", () => { events = []; eventTotal = 0; eventCount.textContent = ""; renderTab(); });
+      tools.append(el("span", undefined, text.eventsIntro), clear);
+      wrap.append(tools);
+      if (!events.length) wrap.append(el("p", "dock-empty", text.noEvents));
+      else {
+        const table = el("table", "event-log");
+        const head = el("tr");
+        head.append(el("th", undefined, text.eventTime), el("th", undefined, text.eventKind), el("th", undefined, text.eventDetail));
+        const thead = el("thead"); thead.append(head);
+        const body = el("tbody");
+        for (const event of events) {
+          const row = el("tr"); row.dataset.tone = event.tone ?? "info";
+          row.append(el("td", "ev-time", event.time.toFixed(2)), el("td", "ev-kind", event.kind), el("td", "ev-detail", event.detail));
+          body.append(row);
+        }
+        table.append(thead, body);
+        wrap.append(table);
+      }
+      panel.replaceChildren(wrap);
     } else if (current === "scene") renderScene();
     else if (current === "api") {
       const list = el("dl", "dock-api");
@@ -263,6 +350,7 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
         [translate(text.drawCalls), numbers ? String(numbers.drawCalls) : "—"],
         [translate(text.textures), numbers?.textures === undefined ? "—" : translate(text.textureCount(numbers.textures))
           + (numbers.textureBytes === undefined ? "" : ` · ${(numbers.textureBytes / 1024).toFixed(1)} KiB`)],
+        ...(numbers?.extra ?? []).map(item => [translate(item.label), String(item.value)] as [string, string]),
         [translate(text.world), `${example.world.width} × ${example.world.height}`],
         [translate(text.canvas), canvas ? `${canvas.clientWidth} × ${canvas.clientHeight} CSS px · ${canvas.width} × ${canvas.height} px` : "—"],
       ];
@@ -271,6 +359,8 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
     }
   };
   const setTab = (id: TabId | undefined) => {
+    // Another tab starts at its top; the scene tab then scrolls to its marked lines.
+    if (id !== current) panel.scrollTop = 0;
     current = id;
     dock.dataset.open = String(Boolean(id));
     panel.hidden = !id;
@@ -331,6 +421,9 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
     active = attempt;
     const { signal } = attempt.controller;
     numbers = undefined;
+    events = []; eventTotal = 0; eventCount.textContent = ""; startedAt = performance.now();
+    if (current === "events") renderTab();
+    showDisplay([]);
     const overlay = el("div", "ex-overlay");
     stage.replaceChildren(canvas, overlay);
     fields.replaceChildren();
@@ -344,6 +437,12 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
         showScene(document, focus) {
           scene = { text: JSON.stringify(document, null, 2), ...(focus ? { focus } : {}) };
           if (current === "scene") renderScene();
+        },
+        display(options) {
+          if (!signal.aborted) showDisplay(options);
+        },
+        event(entry) {
+          if (!signal.aborted && example.events) pushEvent(entry);
         },
         report(next) {
           if (signal.aborted) return;
@@ -399,6 +498,8 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
       stop();
       resize.disconnect();
       document.removeEventListener("fullscreenchange", fullscreenChange);
+      document.removeEventListener("pointerdown", closeMenu);
+      cancelAnimationFrame(eventsQueued);
       if (document.fullscreenElement === viewport) void document.exitFullscreen();
     },
   };

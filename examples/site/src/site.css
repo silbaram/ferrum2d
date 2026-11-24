@@ -168,6 +168,20 @@ a.crumb:hover { color: var(--fg-1); }
 .dot[data-state=error], .sb-dot[data-state=error] { background: var(--red); }
 .pb-space { flex: 1; }
 .pb-select { flex: none; height: 24px; padding: 0 var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--radius-1); background: var(--bg-2); color: var(--fg-1); font-size: var(--fs-12); }
+/* "표시" menu: a text button with a small check-item popover (Pixelforge floating menu). */
+.pb-menu { position: relative; flex: none; margin-right: var(--sp-1); }
+.pb-menu-btn { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px 0 var(--sp-2); border: 1px solid var(--border-strong); border-radius: var(--radius-1);
+  background: var(--bg-2); color: var(--fg-1); font-size: var(--fs-12); cursor: pointer; }
+.pb-menu-btn:hover, .pb-menu-btn[aria-expanded=true] { background: var(--bg-3); }
+.pb-menu-btn svg.i { width: 14px; height: 14px; color: var(--fg-2); }
+.pb-menu-btn .chev { width: 12px; height: 12px; }
+.menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 5; min-width: 180px; padding: var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--radius-2);
+  background: var(--bg-2); box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 255, 255, .04); }
+.menu-item { display: flex; align-items: center; gap: var(--sp-2); width: 100%; height: 28px; padding: 0 var(--sp-2); border: 0; border-radius: var(--radius-1);
+  background: none; color: var(--fg-1); font-size: var(--fs-12); text-align: left; white-space: nowrap; cursor: pointer; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--bg-3); outline: none; }
+.menu-check { width: 14px; height: 14px; color: var(--accent); visibility: hidden; }
+.menu-item[aria-checked=true] .menu-check { visibility: visible; }
 .pb-sep { flex: none; width: 1px; height: 16px; margin: 0 var(--sp-1); background: var(--border-strong); }
 
 .viewport { grid-area: view; position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden;
@@ -184,6 +198,13 @@ a.crumb:hover { color: var(--fg-1); }
 .pivot::before, .pivot::after { content: ""; position: absolute; background: var(--accent); }
 .pivot::before { left: -8px; top: -1px; width: 16px; height: 2px; }
 .pivot::after { left: -1px; top: -8px; width: 2px; height: 16px; }
+/* Trigger zone marker: lit while the robot is inside, from the engine's trigger events. */
+.zone-mark { position: absolute; border: 2px dashed transparent; border-radius: var(--radius-1); transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
+.zone-mark[data-inside=true] { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), 0 0 16px var(--accent-soft); }
+.pickup-pop { position: absolute; transform: translate(-50%, -50%); color: #b0ffe4; font: 600 var(--fs-13) var(--ff-mono); text-shadow: 0 1px 0 rgba(0, 0, 0, .8);
+  pointer-events: none; animation: pickup-pop 700ms var(--ease-out) forwards; }
+@media (prefers-reduced-motion: reduce) { .pickup-pop { animation-duration: 1ms; } }
+@keyframes pickup-pop { from { opacity: 1; translate: 0 0; } to { opacity: 0; translate: 0 -24px; } }
 .vp-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-4);
   background: rgba(7, 10, 15, .72); color: var(--fg-2); font-size: var(--fs-12); text-align: center; }
 .vp-state b { color: var(--fg-0); font-size: var(--fs-13); font-weight: 600; }
@@ -198,6 +219,7 @@ a.crumb:hover { color: var(--fg-1); }
 .dock-tab { position: relative; flex: none; padding: 0 14px; border: 0; border-right: 1px solid var(--border); background: none; color: var(--fg-3); font-size: var(--fs-12); cursor: pointer; white-space: nowrap; }
 .dock-tab:hover { background: var(--bg-2); color: var(--fg-1); }
 .dock-tab[aria-selected=true] { background: var(--bg-1); color: var(--fg-1); }
+.dock-count { margin-left: 6px; color: var(--fg-3); font: var(--fs-11) var(--ff-mono); font-variant-numeric: tabular-nums; }
 .dock-tab[aria-selected=true]::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--accent); }
 .dock-toggle { display: grid; place-items: center; flex: none; width: 36px; padding: 0; border: 0; background: none; color: var(--fg-3); cursor: pointer; }
 .dock-toggle:hover { background: var(--bg-2); color: var(--fg-1); }
@@ -222,6 +244,18 @@ a.crumb:hover { color: var(--fg-1); }
 .dock-engine dt { color: var(--fg-3); }
 .dock-engine dd { color: var(--fg-1); font-family: var(--ff-mono); font-variant-numeric: tabular-nums; }
 .dock-api dd, .dock-engine dd { margin: 0; }
+.dock-empty { margin: 0; color: var(--fg-3); }
+/* Event log: time, kind and what it was between; enter and exit lines carry a colored rail. */
+.event-log { width: 100%; border-collapse: collapse; font-size: var(--fs-12); }
+.event-log th { padding: 0 var(--sp-2) 4px; color: var(--fg-3); font-size: var(--fs-11); font-weight: 600; text-align: left; }
+.event-log td { padding: 3px var(--sp-2); border-top: 1px solid var(--divider); white-space: nowrap; }
+.event-log tr > :first-child { width: 1%; padding-left: 10px; text-align: right; }
+.event-log tbody tr > :first-child { box-shadow: inset 2px 0 var(--fg-4); }
+.event-log tr[data-tone=enter] > :first-child { box-shadow: inset 2px 0 var(--green); }
+.event-log tr[data-tone=exit] > :first-child { box-shadow: inset 2px 0 var(--yellow); }
+.ev-time { color: var(--fg-3); font-family: var(--ff-mono); font-variant-numeric: tabular-nums; }
+.ev-kind { width: 1%; color: var(--fg-1); }
+.ev-detail { color: var(--fg-2); font-family: var(--ff-mono); }
 .src-link { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-2); font-family: var(--ff-mono); }
 .src-link:hover { color: var(--fg-1); text-decoration: underline; }
 
@@ -322,6 +356,7 @@ a.crumb:hover { color: var(--fg-1); }
   .sb { display: none; }
 }
 @media (max-width: 420px) {
+  .pb-menu-t { display: none; }
   .tb { gap: var(--sp-1); padding-inline: var(--sp-2); }
   .brand span { display: none; }
   .tb-link, .search { padding-inline: var(--sp-1); }

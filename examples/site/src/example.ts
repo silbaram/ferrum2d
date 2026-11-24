@@ -19,6 +19,8 @@ export interface EngineNumbers {
   drawCalls: number;
   textures?: number;
   textureBytes?: number;
+  /** Numbers this example adds after the common ones, such as contact counts. */
+  extra?: readonly { label: LocalizedText; value: number | string }[];
 }
 
 export interface SliderOptions {
@@ -55,6 +57,23 @@ export interface ExampleControls {
   hint(text: LocalizedText): void;
 }
 
+/** A check item in the play bar's "표시" menu: something drawn over the picture to help read it. */
+export interface DisplayOption {
+  label: LocalizedText;
+  value: boolean;
+  onChange(value: boolean): void;
+}
+
+/** One line in the "이벤트" tab. */
+export interface ExampleEvent {
+  /** What happened, such as "trigger enter". */
+  kind: LocalizedText;
+  /** Between what, such as "robot ↔ zone". */
+  detail: string;
+  /** "enter" and "exit" pair up visually; "info" is anything else. */
+  tone?: "enter" | "exit" | "info";
+}
+
 export interface ExampleHost {
   /** A new canvas for every start: a canvas keeps the first context type it was given. */
   canvas: HTMLCanvasElement;
@@ -68,6 +87,10 @@ export interface ExampleHost {
   showScene(document: unknown, focus?: string): void;
   /** Call at a low rate (a few times a second), not every frame. */
   report(numbers: EngineNumbers): void;
+  /** Fills the play bar's "표시" menu. Call once while starting. */
+  display(options: readonly DisplayOption[]): void;
+  /** Adds a line to the "이벤트" tab; the catalog entry must set `events`. Report changes (enter, exit), not every frame. */
+  event(entry: ExampleEvent): void;
 }
 
 export interface ExampleSession {

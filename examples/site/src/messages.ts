@@ -58,6 +58,8 @@ export const frameText = {
     ? { ko: `다음 예제: ${title.ko}`, en: `Next Example: ${title.en}` }
     : { ko: "다음 예제 없음", en: "No Next Example" },
   fullscreen: { ko: "전체 화면", en: "Fullscreen" },
+  display: { ko: "표시", en: "Show" },
+  displayMenu: { ko: "실행 화면에 표시할 것", en: "Show in the Live View" },
   exitFullscreen: { ko: "전체 화면 끝내기", en: "Exit Fullscreen" },
   materials: { ko: "예제 자료", en: "Example Resources" },
   tabs: {
@@ -66,7 +68,14 @@ export const frameText = {
     api: { ko: "API", en: "API" },
     source: { ko: "소스", en: "Source" },
     engine: { ko: "엔진", en: "Engine" },
+    events: { ko: "이벤트", en: "Events" },
   },
+  eventsIntro: { ko: "엔진이 보낸 이벤트입니다. 최근 것이 위에 있습니다.", en: "Events from the engine, newest first." },
+  noEvents: { ko: "아직 이벤트가 없습니다.", en: "No events yet." },
+  clearEvents: { ko: "지우기", en: "Clear" },
+  eventTime: { ko: "시간", en: "Time" },
+  eventKind: { ko: "종류", en: "Kind" },
+  eventDetail: { ko: "대상", en: "Between" },
   openPanel: { ko: "아래 패널 열기", en: "Open Bottom Panel" },
   closePanel: { ko: "아래 패널 닫기", en: "Close Bottom Panel" },
   panelHeight: { ko: "아래 패널 높이", en: "Bottom Panel Height" },

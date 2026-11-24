@@ -1,4 +1,5 @@
 import type { ExampleStart } from "./example";
+import { collisionCopy } from "./examples/collision/messages";
 import { spriteCopy } from "./examples/sprite/messages";
 import type { LocalizedText } from "./locale";
 
@@ -33,6 +34,8 @@ export interface SiteExample {
   about: { useCase: LocalizedText; steps: readonly LocalizedText[]; reading: LocalizedText };
   /** The "API" tab: the calls this example makes. */
   api: readonly { name: string; text: LocalizedText }[];
+  /** Adds the "이벤트" tab for lines the example reports with `host.event`. */
+  events?: boolean;
   /** Repository paths of this example's files. */
   sources: readonly string[];
   load(): Promise<ExampleStart>;
@@ -55,6 +58,23 @@ export const examples: readonly SiteExample[] = [
     ],
     load: () => import("./examples/sprite/index").then(module => module.default),
     code: () => import("./examples/sprite/index.ts?raw").then(module => module.default),
+  },
+  {
+    id: "collision",
+    group: "physics",
+    ...collisionCopy,
+    // Captured from this example at 402 × 241 (the robot inside the trigger zone, collision shapes on).
+    thumbnail: "thumbs/example-collision.jpg",
+    world: { width: 640, height: 384 },
+    events: true,
+    sources: [
+      "examples/site/src/examples/collision/index.ts",
+      "examples/site/src/examples/collision/scene.json",
+      "examples/site/src/examples/collision/messages.ts",
+      "scripts/assets/build-example-collision.mjs",
+    ],
+    load: () => import("./examples/collision/index").then(module => module.default),
+    code: () => import("./examples/collision/index.ts?raw").then(module => module.default),
   },
 ];
 

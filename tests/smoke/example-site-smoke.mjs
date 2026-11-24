@@ -85,8 +85,8 @@ try {
   // List: the essential-feature groups, then games and tools. Examples arrive one at a time.
   const groups = page.locator('.group-row');
   assert.deepEqual(await groups.locator('.t').allTextContents(), ['그리기', '움직임과 화면', '충돌과 물리', '효과와 소리', '게임 구성', '게임 데모', '도구']);
-  assert.deepEqual(await groups.locator('.n').allTextContents(), ['1', '0', '0', '0', '0', '0', '2']);
-  assert.equal(await page.locator('.empty-row').count(), 5);
+  assert.deepEqual(await groups.locator('.n').allTextContents(), ['1', '0', '1', '0', '0', '0', '2']);
+  assert.equal(await page.locator('.empty-row').count(), 4);
   // Tools are their own apps: they open in a new window and say so.
   const studioRow = page.getByRole('link', {name: 'Ferrum2D Studio (새 창)', exact: true});
   const studio = await studioRow.evaluate(a => a.href);
@@ -102,14 +102,14 @@ try {
 
   // First screen: cards per group, and one quiet line while examples arrive.
   assert.equal(await page.locator('.empty').count(), 0);
-  assert.deepEqual(await page.locator('.home-group h2').allTextContents(), ['그리기', '도구']);
+  assert.deepEqual(await page.locator('.home-group h2').allTextContents(), ['그리기', '충돌과 물리', '도구']);
   const spriteCard = page.locator('.card', {hasText: '스프라이트 그리기'});
   assert.equal(await spriteCard.getAttribute('href'), '?example=sprite');
   assert.equal(await spriteCard.getAttribute('target'), null);
   assert.equal(await spriteCard.locator('img').evaluate(img => img.complete && img.naturalWidth > 0), true, 'the example thumbnail loads');
   assert.equal(await page.locator('.card', {hasText: 'Ferrum2D Studio'}).getAttribute('target'), '_blank');
   assert.match(await page.locator('.home-note a').getAttribute('href'), /^https:\/\/github\.com\/silbaram\/ferrum2d\/tree\/[0-9a-f]{40}\/examples$/);
-  assert.match(await page.locator('.sb').textContent(), /예제 1/);
+  assert.match(await page.locator('.sb').textContent(), /예제 2/);
   await page.screenshot({path: resolve(run, 'home-1440.png')});
 
   // Search filters the list and the first screen; "/" focuses it.
@@ -304,7 +304,7 @@ try {
   await page.goBack(); await page.waitForSelector('.home');
   assert.equal(page.url(), base);
   await released(page, 'leaving an example');
-  assert.match(await page.locator('.sb').textContent(), /예제 1/);
+  assert.match(await page.locator('.sb').textContent(), /예제 2/);
   await page.goForward(); await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
   for (const wait of [0, 50, 250]) {
     await page.locator('.brand').click(); await page.waitForSelector('.home');
@@ -314,6 +314,63 @@ try {
     await page.waitForTimeout(1500);
     await released(page, `leaving ${wait}ms into startup`);
   }
+
+  // Collisions and triggers: opened with the sprite example's "next" button. The robot moves by key; walls
+  // block it, triggers report, the engine collects energy, and the "표시" menu and "이벤트" tab come from this example.
+  await page.locator('.item-row', {hasText: '스프라이트 그리기'}).click();
+  await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+  await page.getByRole('button', {name: '다음 예제: 충돌과 트리거'}).click();
+  await page.waitForURL(base + '?example=collision');
+  await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+  assert.deepEqual(await page.locator('.crumbs .crumb').allTextContents(), ['예제', '충돌과 물리', '충돌과 트리거']);
+  assert.deepEqual(await page.getByRole('tab').allTextContents(), ['설명', '이벤트', '씬 파일', 'API', '소스', '엔진']);
+  assert.deepEqual(await page.locator('.field-k').allTextContents(), ['속도', '로봇 모양', '안쪽 벽']);
+  await page.waitForFunction(() => /접촉 0.*트리거 0.*에너지 0 \/ 3/.test(document.querySelector('.sb').textContent));
+  await page.getByRole('tab', {name: /^이벤트/}).click();
+  const logged = text => page.waitForFunction(line => [...document.querySelectorAll('.event-log tbody tr')]
+    .some(row => row.textContent.replace(/^[\d.]+/, '') === line), text, {timeout: 15000});
+  /** Holds a movement key until the event log shows the line. */
+  const walkUntil = async (key, line) => { await page.keyboard.down(key); try { await logged(line); } finally { await page.keyboard.up(key); } };
+  await page.evaluate(() => document.activeElement?.blur());
+  // The status bar refreshes a few times a second, so wait for it.
+  const statusShows = pattern => page.waitForFunction(source => new RegExp(source).test(document.querySelector('.sb').textContent), pattern.source);
+  await walkUntil('ArrowUp', '에너지 수집robot ← energy_1');
+  await statusShows(/에너지 1 \/ 3/);
+  await walkUntil('ArrowUp', '접촉 시작robot ↔ wall_north');
+  await statusShows(/접촉 1/);
+  await walkUntil('ArrowRight', '트리거 들어감robot ↔ zone');
+  assert.equal(await page.locator('.zone-mark').getAttribute('data-inside'), 'true');
+  await walkUntil('ArrowDown', '트리거 나감robot ↔ zone');
+  assert.equal(await page.locator('.zone-mark').getAttribute('data-inside'), 'false');
+  // The inner wall blocks while solid and lets the robot through as a trigger, from the same place.
+  await walkUntil('ArrowLeft', '접촉 시작robot ↔ inner_b');
+  await page.getByRole('button', {name: '트리거', exact: true}).click();
+  await page.getByRole('tab', {name: '씬 파일'}).click();
+  // Only the inner walls turn see-through, so this tint marks the new document.
+  await page.waitForFunction(() => document.querySelector('.dock-panel')?.textContent.includes('"tint": "#ffffff59"'));
+  await page.getByRole('tab', {name: /^이벤트/}).click();
+  await page.evaluate(() => document.activeElement?.blur());
+  await walkUntil('ArrowLeft', '트리거 나감robot ↔ inner_b');
+  assert.match(await page.locator('.event-log').textContent(), /트리거 들어감robot ↔ inner_b/);
+  assert(Number(await page.locator('.dock-count').textContent()) >= 8, 'the events tab counts the lines');
+  // "표시": the engine's collision lines go away and come back.
+  const display = page.getByRole('button', {name: '표시'});
+  await display.click();
+  assert.deepEqual(await page.getByRole('menuitemcheckbox').evaluateAll(items => items.map(item => `${item.textContent}:${item.getAttribute('aria-checked')}`)),
+    ['충돌 모양:true', '접촉:false']);
+  const lines = await page.locator('.stage').screenshot();
+  await page.getByRole('menuitemcheckbox', {name: '충돌 모양'}).click();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('menu').isHidden(), true);
+  assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('pb-menu-btn')), true, 'Escape returns to the menu button');
+  await page.waitForTimeout(100);
+  assert.notDeepEqual(await page.locator('.stage').screenshot(), lines, 'turning off collision shapes changes the picture');
+  await page.screenshot({path: resolve(run, 'collision-1440.png')});
+  await page.getByRole('button', {name: '처음 값으로'}).click();
+  await page.waitForFunction(() => /에너지 0 \/ 3/.test(document.querySelector('.sb').textContent));
+  assert.equal(await page.getByRole('button', {name: '단단함'}).getAttribute('aria-pressed'), 'true');
+  await page.locator('.brand').click(); await page.waitForSelector('.home');
+  await released(page, 'leaving the collision example');
 
   // Former example addresses lead to the site.
   for (const route of formerRoutes) {
@@ -367,10 +424,10 @@ try {
   }
 
   assert.deepEqual(errors, []);
-  const report = {ok: true, run, base, groups: 7, examples: ['sprite'], locales: ['ko', 'en'], rendererSwitch, formerRoutes: formerRoutes.length, widths: [1440, 1024, 390, 320], browser: browser.version()};
+  const report = {ok: true, run, base, groups: 7, examples: ['sprite', 'collision'], locales: ['ko', 'en'], rendererSwitch, formerRoutes: formerRoutes.length, widths: [1440, 1024, 390, 320], browser: browser.version()};
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
-  console.log(`Example site passed: shell, list, bilingual search, language selection, sprite example (controls, drag, scene, reset, panels, renderer ${rendererSwitch}, release), missing example, ${formerRoutes.length} former routes, drawer. ${run}`);
+  console.log(`Example site passed: shell, list, bilingual search, language selection, sprite example (controls, drag, scene, reset, panels, renderer ${rendererSwitch}, release), collision example (blocking, triggers, pickup, events, display menu), missing example, ${formerRoutes.length} former routes, drawer. ${run}`);
 } catch (error) {
   await activePage?.screenshot({path: resolve(run, 'failure.png'), fullPage: true}).catch(() => {});
   throw error;
