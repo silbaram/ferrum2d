@@ -4,7 +4,9 @@
 - R1 완료(`77f94fa`): 통합 검증에서 SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과.
 - [선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패) 완료(`e09767d`): Data Scene smoke 전체 통과.
 - R2a 완료(`fd200dd`, 2026-11-25): 통합 검증에서 SDK 테스트 2,061개, Data Scene smoke 전체(화면 맞춤 사례 포함), 예제 사이트 smoke 통과.
-- [선행 수정 F2](#선행-수정-f2-픽셀-퍼펙트-smoke의-shooter-스냅샷-실패) 완료(2026-11-25): SDK 픽셀 퍼펙트 smoke 전체 통과. 다음은 R2b다.
+- [선행 수정 F2](#선행-수정-f2-픽셀-퍼펙트-smoke의-shooter-스냅샷-실패) 완료(2026-11-25): SDK 픽셀 퍼펙트 smoke 전체 통과.
+- R2b 완료. Studio viewer smoke에서 fit 문서의 미리보기·실행, 크기 변경 시 게임 카메라 유지, 2D 편집 카메라와 선택 좌표계 복원을 확인했다.
+  공식 Studio 브라우저 smoke는 390×500에서 조명 탭을 열지 못해 시간 초과했다. R2b 이전 `d6e7f63`에서도 같은 조건으로 재현됐다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
 새 API로 예제를 옮기는 일부터 다시 시작한다.
@@ -50,7 +52,7 @@ runtime.dataScene?.view.pointerToWorld({ x: event.clientX, y: event.clientY }); 
 | D1 | `signal`을 시작 뒤에 abort하면? | 시작만 취소한다. 시작이 끝난 뒤의 abort는 무시하고 `runtime.destroy()`는 호출자가 부른다. | `fetch`·`loadAssets`와 같은 의미. 성공 뒤 자동 정리는 소유권이 흐려진다. |
 | D2 | 화면 맞춤을 어디에 두나? | 씬 문서 `display.fit` + 런타임 기본값 `fit` 옵션. 우선순위는 `pixelPerfect`와 같다(문서 값 우선, 문서 `false`는 해제, 생략은 런타임 기본값). | 이미 있는 `display.pixelPerfect`와 같은 구조라 배우기 쉽고, 씬마다 월드 크기가 달라도 된다. |
 | D3 | `releaseCanvasContext` 기본값 | `false`(지금과 같음). | 같은 캔버스에 런타임을 다시 만드는 기존 앱이 깨지지 않는다. |
-| D4 | Studio 미리보기에 `display.fit` 반영 | R2에 포함(별도 커밋 R2b). | Studio가 이미 `display.pixelPerfect`를 미리보기·실행에 적용하므로(`apps/studio/src/placementPixelPresentation.ts`), fit만 무시하면 화면이 달라진다. |
+| D4 | Studio 미리보기에 `display.fit` 반영 | R2에 포함(별도 커밋 R2b). | Studio가 이미 `display.pixelPerfect`를 미리보기·실행에 적용하므로, fit 설정도 함께 반영해야 프로젝트 런타임과 화면이 일치한다. |
 
 ## R1. 시작: 에셋 미리 읽기·시작 취소·렌더러 종류
 
@@ -218,7 +220,7 @@ interface FerrumRuntimeDataScene {
 
 ### Studio (R2b, 별도 커밋)
 
-`apps/studio/src/placementPixelPresentation.ts`가 `display.pixelPerfect`를 미리보기·실행에 적용하는 것과 같은 자리에서 `display.fit`도 적용한다.
+`apps/studio/src/placementScenePresentation.ts`에서 게임 미리보기·실행에 `display.pixelPerfect`와 `display.fit`을 적용한다.
 2D 편집 화면은 지금처럼 넓은 편집 viewport를 유지하고, 게임 미리보기·실행에서만 맞춘다. 알 수 없는 필드로 거절되지 않는지도 확인한다.
 
 ### 테스트
@@ -234,7 +236,7 @@ interface FerrumRuntimeDataScene {
 
 브라우저 smoke: `tests/smoke/flat-pixel-perfect-smoke.mjs`(`pnpm smoke:flat-pixel-perfect`) 또는 data-scene smoke에 fit 사례를 더한다.
 두 캔버스 크기에서 월드 네 모서리 표식이 모두 보이고(잘리지 않음) 비율이 유지되는지, 크기를 바꾼 뒤 포인터 변환이 맞는지 본다.
-R2b는 Studio viewer smoke(`flat-pixel-perfect-viewer-smoke.mjs`)에 fit 문서 미리보기 한 사례를 더한다.
+R2b는 Studio viewer smoke(`flat-pixel-perfect-viewer-smoke.mjs`)에서 fit 문서를 열고 미리보기·실행에 적용하는 사례를 검사한다.
 
 R2a 검증에서 SDK 테스트 2,061개와 Data Scene 브라우저 스모크 전체가 통과했다. fit 사례는 DPR 2의
 1000×500 및 390×844 캔버스에서 네 모서리 픽셀, 사각형 배율, 포인터 변환과 같은 view의 재사용을 확인했다.
@@ -282,7 +284,7 @@ interface FerrumRuntimeOptions {
 | 입력의 편집 대상 판정 | `InputManager`는 `input·textarea·select·button`만 제외한다. 키로 조작하는 `role="separator"`·슬라이더 등에 초점이 있어도 게임 키로 받는다. | 제외 규칙 확장 또는 옵션 검토. |
 | 충돌체 기본값이 트리거인 함정 | Data Scene 충돌체는 `isTrigger`를 생략하면 트리거다. body를 붙이고 `isTrigger: false`를 잊으면 막지도 않고 HD-2D 이동도 거절된다(F1의 원인). | body가 있는 충돌체의 기본값을 solid로 바꿀지(기존 문서 동작이 바뀌므로 제품 결정) 또는 body+트리거 조합에 진단을 낼지 검토. |
 | 이동 실패 이유 | `moveHd2dKinematicBodyWithTilemap`은 actor가 조건(단일 solid AABB kinematic, 높이 정보)에 맞지 않으면 이유 없이 결과 없음으로 돌아온다. | 거절 이유를 돌려주거나 개발 모드 진단을 낸다. |
-| WebGPU 복구 중 화면 맞춤 크기 변화 | R2a 뒤 화면 맞춤이 켜지면 캔버스 크기 변화에서 `renderer.resize()` 대신 `setViewportZoom`을 부른다. `WebGPURenderer.setViewportZoom`은 준비 상태가 아니면 오류를 던지므로, 장치 손실 복구 중 크기가 바뀌면 크기 감시 콜백에서 오류가 날 수 있다(맞춤이 꺼진 경로는 준비 전이면 건너뜀). | 작다. R2b 또는 R3 때 준비 전이면 미뤘다가 복구 뒤 맞추도록 함께 고친다. |
+| WebGPU 복구 중 화면 맞춤 크기 변화 | R2a 뒤 화면 맞춤이 켜지면 캔버스 크기 변화에서 `renderer.resize()` 대신 `setViewportZoom`을 부른다. `WebGPURenderer.setViewportZoom`은 준비 상태가 아니면 오류를 던지므로, 장치 손실 복구 중 크기가 바뀌면 크기 감시 콜백에서 오류가 날 수 있다(맞춤이 꺼진 경로는 준비 전이면 건너뜀). | 런타임 실행 여부와 관계없이 복구 완료 시 최신 캔버스 크기를 반영하도록 R3 또는 별도 수정에서 다룬다. |
 
 ## Codex 작업 지시
 

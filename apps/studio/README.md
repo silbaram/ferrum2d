@@ -220,6 +220,8 @@ GLB는 asset ID/contentId가 맞는 resource를 공개 loader로 import한다. D
 직접 import와 catalog load 모두 model cache 16개/128 MiB 예산을 지킨다.
 Standalone/browser 문서의 외부 모델은 먼저 Import Model로 불러온다.
 Game Preview를 종료하면 작성 초안·history·편집 camera를 복원한다.
+평면 씬 JSON에 `display.fit`을 지정하면 게임 미리보기와 실행에서 월드 사각형을 캔버스에 맞춘다.
+2D에서는 문서별 편집 카메라와 배율을 사용한다. [월드 화면 맞춤 설정](../../docs/engine/data-scene-authoring.md#월드-화면-맞춤)
 `보기 → 격자`는 2D/HD-2D 배치 기준선을 기본 표시한다. 옆 숫자는 월드 단위 기본 간격이며
 Snap과 공유하지만 표시 여부와 좌표 정렬은 독립적이다. 줌 아웃에서는 선분 512개 이하와 최소 표시 간격을 유지하도록
 기본 간격의 배수로 줄이고 실제 표시 간격을 `units`로 표시한다. 원근 화면의 먼 격자는 투명도를 낮춘다. 5칸마다 큰 구획과 원점 축을 구분한다.

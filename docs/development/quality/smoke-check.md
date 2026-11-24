@@ -674,12 +674,14 @@ trim은 원래 canvas·offset·pivot을 복원하고 같은 공간의 normal과 
 | normal | `pnpm smoke:sprite-normal-2d` | 실제 Wasm clip·UV·flip/회전·alpha·DPR·조명 OFF·GL 상태 복원 |
 | 9-slice | `pnpm smoke:sprite-nine-slice` | 경계·작은 target·flip·clip/normal 정합과 실패 원자성 |
 | 픽셀 퍼펙트 | `pnpm smoke:flat-pixel-perfect` | 정수 배율·letterbox·pointer·camera shake·snap·simulation/replay 불변 |
+| Studio 화면 맞춤 | `node tests/smoke/flat-pixel-perfect-viewer-smoke.mjs` | fit 문서 열기·미리보기와 실행·크기 변경 시 게임 카메라 유지·2D 편집 카메라와 선택 좌표계 복원·작성 이력 보존 |
 | 도트 후처리 | `pnpm smoke:pixel-postprocess` | target 크기·색상 수·dither·alpha/HUD·OFF 복귀·해제 |
 | 도트 예제 | `pnpm smoke:pixel-showcase` | 실제 source/UI·픽셀과 예산, consumer 도트 profile과 구분 |
 
 픽셀 퍼펙트 브라우저 검사는 WebGL2와 WebGPU의 실제 출력을 비교하고 `linear-srgb` 사례에서 실제 WebGPU를 확인한다.
 타일 맞춤 사례만 레거시 Shooter 스냅샷으로 카메라 위상을 설정한다. Wasm이 만든 타일 명령을 그려 이음새와 배칭,
 렌더링 전후의 스냅샷 불변을 검사한다.
+Studio 화면 맞춤 검사는 `pnpm smoke:flat-pixel-perfect`에 포함되며 준비된 Studio 빌드로도 실행할 수 있다.
 
 ### PNG 아틀라스 가장자리 보호 gate
 

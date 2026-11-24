@@ -118,6 +118,7 @@ runtime은 구조적 renderer capability를 사용한다. custom renderer를 구
 평면 Data Scene의 화면 맞춤은 씬 적용 시 렌더러 zoom·native viewport·카메라를 함께 확정한다.
 적용 실패 시 기존 네이티브 체크포인트로 카메라와 씬을 복원하고 런타임이 렌더러 표시를 되돌린다.
 크기 감시는 화면 맞춤이 켜져 있을 때 배율만 계산하며, 좌표 변환 view는 씬이 바뀌어도 같은 런타임에 연결된다.
+Studio는 게임 모드에 들어갈 때 문서의 표시 설정을 적용하고, 2D 모드로 돌아올 때 문서별 편집 카메라를 복원한다.
 
 에셋 CPU 데이터·GPU 준비·장면 활성화는 구분한다. 비동기 취소, 늦은 결과, 실패 rollback,
 참조 수명, resize·context/device loss·destroy의 해제를 다룬다. 개별 모델 GPU 준비의 rollback을
