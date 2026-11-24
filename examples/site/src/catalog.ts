@@ -1,4 +1,5 @@
 import type { ExampleStart } from "./example";
+import { breakoutCopy } from "./examples/breakout/messages";
 import { collisionCopy } from "./examples/collision/messages";
 import { spriteCopy } from "./examples/sprite/messages";
 import type { LocalizedText } from "./locale";
@@ -75,6 +76,23 @@ export const examples: readonly SiteExample[] = [
     ],
     load: () => import("./examples/collision/index").then(module => module.default),
     code: () => import("./examples/collision/index.ts?raw").then(module => module.default),
+  },
+  {
+    id: "breakout",
+    group: "games",
+    ...breakoutCopy,
+    // Captured from this example at 402 × 241 (the ball in flight after the first brick).
+    thumbnail: "thumbs/example-breakout.jpg",
+    world: { width: 640, height: 384 },
+    events: true,
+    sources: [
+      "examples/site/src/examples/breakout/index.ts",
+      "examples/site/src/examples/breakout/scene.json",
+      "examples/site/src/examples/breakout/messages.ts",
+      "scripts/assets/build-example-breakout.mjs",
+    ],
+    load: () => import("./examples/breakout/index").then(module => module.default),
+    code: () => import("./examples/breakout/index.ts?raw").then(module => module.default),
   },
 ];
 

@@ -68,8 +68,8 @@ export interface DisplayOption {
 export interface ExampleEvent {
   /** What happened, such as "trigger enter". */
   kind: LocalizedText;
-  /** Between what, such as "robot ↔ zone". */
-  detail: string;
+  /** Between what, such as "robot ↔ zone" (scene ids read the same in both languages). */
+  detail: string | LocalizedText;
   /** "enter" and "exit" pair up visually; "info" is anything else. */
   tone?: "enter" | "exit" | "info";
 }
@@ -96,6 +96,8 @@ export interface ExampleHost {
 export interface ExampleSession {
   /** The play bar's reset: back to the first values. */
   reset(): void;
+  /** Games: when given, the play bar shows pause and resume. The picture keeps drawing while paused. */
+  setPaused?(paused: boolean): void;
   /** Releases everything the example made. Safe to call more than once. */
   destroy(): void;
 }

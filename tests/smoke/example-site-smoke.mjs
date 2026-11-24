@@ -85,8 +85,8 @@ try {
   // List: the essential-feature groups, then games and tools. Examples arrive one at a time.
   const groups = page.locator('.group-row');
   assert.deepEqual(await groups.locator('.t').allTextContents(), ['그리기', '움직임과 화면', '충돌과 물리', '효과와 소리', '게임 구성', '게임 데모', '도구']);
-  assert.deepEqual(await groups.locator('.n').allTextContents(), ['1', '0', '1', '0', '0', '0', '2']);
-  assert.equal(await page.locator('.empty-row').count(), 4);
+  assert.deepEqual(await groups.locator('.n').allTextContents(), ['1', '0', '1', '0', '0', '1', '2']);
+  assert.equal(await page.locator('.empty-row').count(), 3);
   // Tools are their own apps: they open in a new window and say so.
   const studioRow = page.getByRole('link', {name: 'Ferrum2D Studio (새 창)', exact: true});
   const studio = await studioRow.evaluate(a => a.href);
@@ -102,14 +102,14 @@ try {
 
   // First screen: cards per group, and one quiet line while examples arrive.
   assert.equal(await page.locator('.empty').count(), 0);
-  assert.deepEqual(await page.locator('.home-group h2').allTextContents(), ['그리기', '충돌과 물리', '도구']);
+  assert.deepEqual(await page.locator('.home-group h2').allTextContents(), ['그리기', '충돌과 물리', '게임 데모', '도구']);
   const spriteCard = page.locator('.card', {hasText: '스프라이트 그리기'});
   assert.equal(await spriteCard.getAttribute('href'), '?example=sprite');
   assert.equal(await spriteCard.getAttribute('target'), null);
   assert.equal(await spriteCard.locator('img').evaluate(img => img.complete && img.naturalWidth > 0), true, 'the example thumbnail loads');
   assert.equal(await page.locator('.card', {hasText: 'Ferrum2D Studio'}).getAttribute('target'), '_blank');
   assert.match(await page.locator('.home-note a').getAttribute('href'), /^https:\/\/github\.com\/silbaram\/ferrum2d\/tree\/[0-9a-f]{40}\/examples$/);
-  assert.match(await page.locator('.sb').textContent(), /예제 2/);
+  assert.match(await page.locator('.sb').textContent(), /예제 3/);
   await page.screenshot({path: resolve(run, 'home-1440.png')});
 
   // Search filters the list and the first screen; "/" focuses it.
@@ -147,9 +147,9 @@ try {
   await english.close(); activePage = page;
 
   // An example that is not here yet.
-  await page.goto(base + '?example=breakout'); await page.waitForSelector('.missing');
+  await page.goto(base + '?example=no-such-example'); await page.waitForSelector('.missing');
   assert.equal(await page.locator('.missing h1').textContent(), '예제를 찾을 수 없습니다.');
-  assert.deepEqual(await page.locator('.crumbs .crumb').allTextContents(), ['예제', 'breakout']);
+  assert.deepEqual(await page.locator('.crumbs .crumb').allTextContents(), ['예제', 'no-such-example']);
   await page.locator('.missing .btn').click(); await page.waitForSelector('.home');
   assert.equal(page.url(), base);
 
@@ -304,7 +304,7 @@ try {
   await page.goBack(); await page.waitForSelector('.home');
   assert.equal(page.url(), base);
   await released(page, 'leaving an example');
-  assert.match(await page.locator('.sb').textContent(), /예제 2/);
+  assert.match(await page.locator('.sb').textContent(), /예제 3/);
   await page.goForward(); await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
   for (const wait of [0, 50, 250]) {
     await page.locator('.brand').click(); await page.waitForSelector('.home');
@@ -369,8 +369,50 @@ try {
   await page.getByRole('button', {name: '처음 값으로'}).click();
   await page.waitForFunction(() => /에너지 0 \/ 3/.test(document.querySelector('.sb').textContent));
   assert.equal(await page.getByRole('button', {name: '단단함'}).getAttribute('aria-pressed'), 'true');
+  // Breakout: opened with the collision example's "next" button. Physics is stepped at a fixed rate, so with
+  // the paddle left alone the same launch breaks the same brick and then misses.
+  await page.getByRole('button', {name: '다음 예제: 벽돌 깨기'}).click();
+  await page.waitForURL(base + '?example=breakout');
+  await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+  assert.deepEqual(await page.locator('.crumbs .crumb').allTextContents(), ['예제', '게임 데모', '벽돌 깨기']);
+  assert.deepEqual(await page.locator('.field-k').allTextContents(), ['공 속도', '패들 너비', '벽돌 줄']);
+  assert.equal(await page.locator('.game-banner').textContent(), '클릭하거나 Space를 눌러 발사');
+  await statusShows(/점수 0.*목숨 3.*벽돌 50/);
+  const pauseButton = page.getByRole('button', {name: '일시정지'});
+  assert.equal(await pauseButton.isVisible(), true, 'a game shows pause in the play bar');
+  await page.getByRole('button', {name: '표시'}).click();
+  assert.deepEqual(await page.getByRole('menuitemcheckbox').evaluateAll(items => items.map(item => item.getAttribute('aria-checked'))), ['false', 'false']);
+  await page.keyboard.press('Escape');
+  await page.getByRole('tab', {name: /^이벤트/}).click();
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('Space');
+  await logged('발사ball · 18°');
+  assert.equal(await page.locator('.game-banner').isHidden(), true);
+  await page.waitForFunction(() => /벽돌 깨짐ball ↔ brick_4_5 · \+10/.test(document.querySelector('.event-log').textContent), null, {timeout: 15000});
+  await statusShows(/점수 10.*벽돌 49/);
+  // Pausing stops the ball; the picture holds still until it resumes.
+  await pauseButton.click();
+  const resumeButton = page.getByRole('button', {name: '계속'});
+  assert.equal(await resumeButton.getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.game-banner').textContent(), '일시정지');
+  const still = await page.locator('.stage').screenshot();
+  await page.waitForTimeout(400);
+  assert.deepEqual(await page.locator('.stage').screenshot(), still, 'nothing moves while paused');
+  await resumeButton.click();
+  await page.waitForFunction(() => /놓침ball ↔ miss · 2\/3/.test(document.querySelector('.event-log').textContent), null, {timeout: 15000});
+  await statusShows(/목숨 2/);
+  assert.equal(await page.locator('.game-banner').textContent(), '클릭하거나 Space를 눌러 발사');
+  await page.screenshot({path: resolve(run, 'breakout-1440.png')});
+  // A wider paddle starts a new game with every brick back.
+  await page.getByRole('button', {name: '넓게'}).click();
+  await page.getByRole('tab', {name: '씬 파일'}).click();
+  await page.waitForFunction(() => /"width": 112/.test(document.querySelector('.dock-panel').textContent));
+  await statusShows(/점수 0.*목숨 3.*벽돌 50/);
+  await page.getByRole('button', {name: '처음 값으로'}).click();
+  await page.waitForTimeout(100);
+  assert.equal(await page.getByRole('button', {name: '보통'}).getAttribute('aria-pressed'), 'true');
   await page.locator('.brand').click(); await page.waitForSelector('.home');
-  await released(page, 'leaving the collision example');
+  await released(page, 'leaving the breakout example');
 
   // Former example addresses lead to the site.
   for (const route of formerRoutes) {
@@ -424,10 +466,10 @@ try {
   }
 
   assert.deepEqual(errors, []);
-  const report = {ok: true, run, base, groups: 7, examples: ['sprite', 'collision'], locales: ['ko', 'en'], rendererSwitch, formerRoutes: formerRoutes.length, widths: [1440, 1024, 390, 320], browser: browser.version()};
+  const report = {ok: true, run, base, groups: 7, examples: ['sprite', 'collision', 'breakout'], locales: ['ko', 'en'], rendererSwitch, formerRoutes: formerRoutes.length, widths: [1440, 1024, 390, 320], browser: browser.version()};
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
-  console.log(`Example site passed: shell, list, bilingual search, language selection, sprite example (controls, drag, scene, reset, panels, renderer ${rendererSwitch}, release), collision example (blocking, triggers, pickup, events, display menu), missing example, ${formerRoutes.length} former routes, drawer. ${run}`);
+  console.log(`Example site passed: shell, list, bilingual search, language selection, sprite example (controls, drag, scene, reset, panels, renderer ${rendererSwitch}, release), collision example (blocking, triggers, pickup, events, display menu), breakout (launch, bricks, pause, miss, new game), missing example, ${formerRoutes.length} former routes, drawer. ${run}`);
 } catch (error) {
   await activePage?.screenshot({path: resolve(run, 'failure.png'), fullPage: true}).catch(() => {});
   throw error;

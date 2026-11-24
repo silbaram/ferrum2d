@@ -205,6 +205,15 @@ a.crumb:hover { color: var(--fg-1); }
   pointer-events: none; animation: pickup-pop 700ms var(--ease-out) forwards; }
 @media (prefers-reduced-motion: reduce) { .pickup-pop { animation-duration: 1ms; } }
 @keyframes pickup-pop { from { opacity: 1; translate: 0 0; } to { opacity: 0; translate: 0 -24px; } }
+/* Game HUD drawn over the picture: score, lives and a centered message. */
+.game-score, .game-lives { position: absolute; transform: translateY(-50%); color: var(--fg-0); font: var(--fs-12) var(--ff-mono); text-shadow: 0 1px 0 rgba(0, 0, 0, .8); white-space: nowrap; }
+.game-score { color: var(--fg-2); }
+.game-score b { margin-left: 2px; color: var(--fg-0); font-weight: 600; font-variant-numeric: tabular-nums; }
+.game-lives { display: flex; gap: 4px; transform: translate(-100%, -50%); }
+.game-life { width: 8px; height: 8px; border-radius: var(--radius-1); background: var(--accent); box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); }
+.game-life[data-lost] { background: var(--bg-4); }
+.game-banner { position: absolute; transform: translate(-50%, -50%); max-width: 90%; padding: 6px var(--sp-3); border: 1px solid var(--border-strong); border-radius: var(--radius-2);
+  background: rgba(7, 10, 15, .78); color: var(--fg-0); font-size: var(--fs-13); text-align: center; box-shadow: var(--shadow-2); }
 .vp-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-4);
   background: rgba(7, 10, 15, .72); color: var(--fg-2); font-size: var(--fs-12); text-align: center; }
 .vp-state b { color: var(--fg-0); font-size: var(--fs-13); font-weight: 600; }

@@ -49,6 +49,8 @@ export const siteText = {
 export const frameText = {
   playback: { ko: "실행", en: "Playback" },
   reset: { ko: "처음 값으로", en: "Reset" },
+  pause: { ko: "일시정지", en: "Pause" },
+  resume: { ko: "계속", en: "Resume" },
   renderer: { ko: "렌더러", en: "Renderer" },
   webgpuUnavailable: { ko: "WebGPU (지원 안 함)", en: "WebGPU (unsupported)" },
   previous: (title?: LocalizedText) => title

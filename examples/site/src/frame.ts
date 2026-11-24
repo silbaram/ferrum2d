@@ -55,6 +55,15 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
   // Play bar.
   const bar = el("div", "playbar"); bar.setAttribute("role", "toolbar"); uiAttribute(bar, "aria-label", text.playback);
   const reset = iconButton("rotate-ccw", text.reset);
+  // Pause and resume, for examples that run a game; hidden until a session offers it.
+  const pause = iconButton("pause", text.pause); pause.hidden = true;
+  pause.setAttribute("aria-pressed", "false");
+  let paused = false;
+  const showPaused = () => {
+    pause.setAttribute("aria-pressed", String(paused));
+    labelButton(pause, paused ? text.resume : text.pause);
+    pause.replaceChildren(icon(paused ? "play" : "pause"));
+  };
   const tab = el("div", "pb-tab");
   const dot = el("span", "dot"); dot.setAttribute("aria-hidden", "true");
   const runState = el("span", "sr-only");
@@ -82,7 +91,7 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
   displayButton.setAttribute("aria-controls", displayMenu.id);
   displayButton.append(icon("eye"), el("span", "pb-menu-t", text.display), icon("chevron-down", "i chev"));
   displayWrap.append(displayButton, displayMenu);
-  bar.append(reset, tab, el("span", "pb-space"), displayWrap, select, el("span", "pb-sep"), previous, next, fullscreen);
+  bar.append(reset, pause, tab, el("span", "pb-space"), displayWrap, select, el("span", "pb-sep"), previous, next, fullscreen);
 
   const menuItems = () => [...displayMenu.querySelectorAll<HTMLButtonElement>("[role=menuitemcheckbox]")];
   const setMenu = (open: boolean, focus = false) => {
@@ -426,6 +435,7 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
     showDisplay([]);
     const overlay = el("div", "ex-overlay");
     stage.replaceChildren(canvas, overlay);
+    paused = false; showPaused(); pause.hidden = true;
     fields.replaceChildren();
     setState("loading");
     try {
@@ -455,6 +465,7 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
       attempt.settled = true;
       if (signal.aborted) { started.destroy(); releaseCanvas(canvas); return; }
       attempt.session = started;
+      pause.hidden = !started.setPaused;
       setState("running");
     } catch (error) {
       // The example released what it made before rejecting.
@@ -465,7 +476,19 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
     }
   }
 
-  reset.addEventListener("click", () => active?.session?.reset());
+  reset.addEventListener("click", () => {
+    const session = active?.session;
+    if (!session) return;
+    // A reset starts over running.
+    if (paused) { paused = false; showPaused(); session.setPaused?.(false); }
+    session.reset();
+  });
+  pause.addEventListener("click", () => {
+    const session = active?.session;
+    if (!session?.setPaused) return;
+    paused = !paused; showPaused();
+    session.setPaused(paused);
+  });
   select.addEventListener("change", () => {
     renderer = select.value as RendererChoice;
     const url = new URL(location.href);
