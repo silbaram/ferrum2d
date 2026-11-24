@@ -19,6 +19,10 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 :focus:not(:focus-visible) { outline: none; }
 
+/* While a splitter is dragged, its cursor holds everywhere and nothing gets selected. */
+html[data-resizing=x], html[data-resizing=x] * { cursor: col-resize !important; user-select: none; }
+html[data-resizing=y], html[data-resizing=y] * { cursor: row-resize !important; user-select: none; }
+
 .app { height: 100vh; height: 100dvh; display: grid; grid-template-rows: var(--h-topbar) minmax(0, 1fr) var(--h-statusbar); }
 
 /* Top bar */
@@ -49,13 +53,36 @@ a.crumb:hover { color: var(--fg-1); }
   background: var(--bg-2); color: var(--fg-1); font-size: var(--fs-12); cursor: pointer; }
 
 /* Body: list beside the main area */
-.body { position: relative; display: grid; grid-template-columns: 264px minmax(0, 1fr); min-height: 0; }
+/* Body: list beside the main area. The list width comes from layout.ts and stays within 40% of the body. */
+.body { position: relative; display: grid; grid-template-columns: min(var(--browser-size, 264px), 40%) minmax(0, 1fr); min-height: 0; }
 .panel { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; background: var(--bg-1); }
 .browser { border-right: 1px solid var(--border); }
-.panel-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; height: 32px; padding: 0 var(--sp-3); border-bottom: 1px solid var(--border);
+.panel-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: var(--sp-1); height: 32px; padding: 0 var(--sp-3) 0 var(--sp-1); border-bottom: 1px solid var(--border);
   background: var(--bg-1); color: var(--fg-3); font-size: var(--fs-11); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .panel-head .count { margin-left: auto; font-weight: 400; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .tree { padding: var(--sp-1) 0 var(--sp-3); }
+
+/* Folding side panels: the button sits on the panel's outer edge; a folded panel is a 36px rail of icons. */
+.panel-toggle { display: grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-1);
+  background: none; color: var(--fg-3); cursor: pointer; }
+.panel-toggle:hover { background: var(--bg-3); color: var(--fg-1); }
+.rail { display: none; flex-direction: column; padding: var(--sp-1) 0; }
+.rail-btn { display: grid; place-items: center; height: 32px; padding: 0; border: 0; border-left: 2px solid transparent; background: none; color: var(--fg-3); cursor: pointer; }
+.rail-btn:hover { background: var(--bg-3); color: var(--fg-1); }
+.rail-btn[data-current] { border-left-color: var(--accent); color: var(--fg-1); }
+
+/* Splitters: a 6px grab strip centred on the hairline between panels, amber while hovered, focused or dragged. */
+.splitter { position: absolute; z-index: 2; touch-action: none; }
+.splitter::after { content: ""; position: absolute; background: transparent; transition: background-color var(--dur-fast) var(--ease-out); }
+.splitter:hover::after { transition-delay: var(--dur-base); }
+.splitter:hover::after, .splitter:focus-visible::after, .splitter[data-active]::after { background: var(--accent); }
+.splitter[data-active]::after { transition: none; }
+.splitter:focus-visible { outline: none; }
+.splitter-x { top: 0; bottom: 0; width: 6px; cursor: col-resize; }
+.splitter-x::after { top: 0; bottom: 0; left: 2px; width: 2px; }
+.splitter-y { left: 0; right: 0; height: 6px; cursor: row-resize; }
+.splitter-y::after { left: 0; right: 0; top: 2px; height: 2px; }
+.browser-splitter { left: calc(min(var(--browser-size, 264px), 40%) - 3px); }
 .group-items { margin: 0; padding: 0; list-style: none; }
 .row { display: flex; align-items: center; gap: var(--sp-2); width: 100%; height: 28px; padding: 0 var(--sp-3); border: 0; border-left: 2px solid transparent;
   background: none; color: var(--fg-2); text-align: left; white-space: nowrap; cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
@@ -123,7 +150,9 @@ a.crumb:hover { color: var(--fg-1); }
 
 /* Example screen: play bar, viewport and dock beside the inspector. */
 .app[data-view=example] .main { overflow: hidden; }
-.ex { display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(0, 1fr) 312px; grid-template-rows: 36px minmax(0, 1fr) auto;
+/* The inspector width and dock height come from layout.ts; the viewport keeps at least 320 × 160 (frame.ts MIN_VIEW). */
+.ex { position: relative; display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(0, 1fr) min(var(--inspector-size, 312px), 100% - 320px);
+  grid-template-rows: 36px minmax(0, 1fr) auto;
   grid-template-areas: "bar insp" "view insp" "dock insp"; }
 
 .playbar { grid-area: bar; display: flex; align-items: center; gap: 2px; min-width: 0; padding: 0 var(--sp-2) 0 var(--sp-1); border-bottom: 1px solid var(--border); background: var(--bg-1); }
@@ -163,7 +192,7 @@ a.crumb:hover { color: var(--fg-1); }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.dock { grid-area: dock; display: grid; grid-template-rows: 32px auto; min-width: 0; border-top: 1px solid var(--border); background: var(--bg-1); }
+.dock { grid-area: dock; position: relative; display: grid; grid-template-rows: 32px auto; min-width: 0; border-top: 1px solid var(--border); background: var(--bg-1); }
 .dock-tabs { display: flex; align-items: stretch; min-width: 0; overflow-x: auto; scrollbar-width: none; background: var(--bg-0); }
 .dock[data-open=true] .dock-tabs { box-shadow: inset 0 -1px var(--border); }
 .dock-tab { position: relative; flex: none; padding: 0 14px; border: 0; border-right: 1px solid var(--border); background: none; color: var(--fg-3); font-size: var(--fs-12); cursor: pointer; white-space: nowrap; }
@@ -174,7 +203,10 @@ a.crumb:hover { color: var(--fg-1); }
 .dock-toggle:hover { background: var(--bg-2); color: var(--fg-1); }
 .dock-toggle svg.i { transition: transform var(--dur-base) var(--ease-out); }
 .dock[data-open=true] .dock-toggle svg.i { transform: rotate(180deg); }
-.dock-panel { height: 240px; overflow: auto; padding: var(--sp-3) var(--sp-4); color: var(--fg-2); font-size: var(--fs-12); line-height: var(--lh-relaxed); scrollbar-width: thin; }
+.dock-splitter { top: -3px; }
+.dock[data-open=false] .dock-splitter { display: none; }
+/* Room left under the play bar (36px), the dock tabs (33px) and the viewport's 160px. */
+.dock-panel { height: var(--dock-size, 240px); max-height: calc(100dvh - var(--h-topbar) - var(--h-statusbar) - 229px); overflow: auto; padding: var(--sp-3) var(--sp-4); color: var(--fg-2); font-size: var(--fs-12); line-height: var(--lh-relaxed); scrollbar-width: thin; }
 .dock-text { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3) var(--sp-6); }
 .dock-text h3 { margin: 0 0 var(--sp-1); color: var(--fg-3); font-size: var(--fs-11); font-weight: 600; letter-spacing: .06em; }
 .dock-text p, .dock-text ol { margin: 0; }
@@ -194,10 +226,15 @@ a.crumb:hover { color: var(--fg-1); }
 .src-link:hover { color: var(--fg-1); text-decoration: underline; }
 
 .inspector { grid-area: insp; min-height: 0; overflow: auto; overscroll-behavior: contain; border-left: 1px solid var(--border); background: var(--bg-1); scrollbar-width: thin; }
+.insp-splitter { right: calc(min(var(--inspector-size, 312px), 100% - 320px) - 3px); }
+/* The bar lines up with the play bar and keeps the fold button in reach while the inspector scrolls. */
+.insp-bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: var(--sp-2); height: 36px; padding: 0 var(--sp-1) 0 var(--sp-3);
+  border-bottom: 1px solid var(--border); background: var(--bg-1); }
+.insp-bar .panel-toggle { margin-left: auto; }
 .insp-head { padding: var(--sp-3); border-bottom: 1px solid var(--border); }
-.insp-path { display: flex; align-items: center; gap: 6px; color: var(--fg-3); font-size: var(--fs-11); }
+.insp-path { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--fg-3); font-size: var(--fs-11); white-space: nowrap; }
 .insp-path svg.i { width: 12px; height: 12px; }
-.insp-name { margin: 6px 0 2px; color: var(--fg-0); font-size: var(--fs-16); font-weight: 600; line-height: var(--lh-snug); letter-spacing: 0; }
+.insp-name { margin: 0 0 2px; color: var(--fg-0); font-size: var(--fs-16); font-weight: 600; line-height: var(--lh-snug); letter-spacing: 0; }
 .insp-summary { margin: 0; color: var(--fg-2); font-size: var(--fs-12); line-height: var(--lh-relaxed); }
 .sec h2 { margin: 0; font-size: inherit; }
 .sec-h { display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding: 0 var(--sp-3); border: 0; border-bottom: 1px solid var(--border); background: var(--bg-2);
@@ -243,6 +280,21 @@ a.crumb:hover { color: var(--fg-1); }
 
 .scrim { display: none; }
 
+/* Folded side panels, wide screens only: narrow screens always show the whole list and inspector. */
+@media (width > 900px) {
+  .app[data-browser=folded] .body { grid-template-columns: 36px minmax(0, 1fr); }
+  .app[data-browser=folded] :is(.browser .panel-title, .browser .count, .tree, .browser-splitter) { display: none; }
+  .app[data-browser=folded] .browser { overflow: hidden; }
+  .app[data-browser=folded] .browser .panel-head { justify-content: center; padding: 0; }
+  .app[data-browser=folded] .browser .rail { display: flex; }
+  .ex[data-inspector=folded] { grid-template-columns: minmax(0, 1fr) 36px; }
+  .ex[data-inspector=folded] :is(.insp-path, .insp-body, .insp-splitter) { display: none; }
+  .ex[data-inspector=folded] .inspector { overflow: hidden; }
+  .ex[data-inspector=folded] .insp-bar { justify-content: center; padding: 0; }
+  .ex[data-inspector=folded] .insp-bar .panel-toggle { margin: 0; }
+  .ex[data-inspector=folded] .rail { display: flex; }
+}
+
 /* Narrow screens: the page scrolls, the list is a drawer under the top bar. */
 @media (max-width: 900px) {
   body { overflow: auto; }
@@ -262,6 +314,9 @@ a.crumb:hover { color: var(--fg-1); }
   .viewport { aspect-ratio: var(--ex-aspect); min-height: 160px; }
   .viewport:fullscreen { aspect-ratio: auto; }
   .inspector { overflow: visible; border-left: 0; }
+  .insp-bar { position: static; }
+  .splitter, .panel-toggle { display: none; }
+  .dock-panel { height: 240px; max-height: none; }
   .dock { border-top: 0; }
   .empty { padding: var(--sp-4); }
   .sb { display: none; }

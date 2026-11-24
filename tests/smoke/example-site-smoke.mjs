@@ -236,6 +236,52 @@ try {
   await page.getByRole('tab', {name: '엔진'}).click();
   assert.equal(await page.locator('.dock-panel').isHidden(), true, 'the chosen tab closes the dock again');
 
+  // Panels: each splitter resizes in 8px steps (drag, arrow keys, double-click for the starting size), the list
+  // and the inspector fold to icon rails, and both stay that way after a reload.
+  const widthOf = async selector => (await page.locator(selector).boundingBox()).width;
+  const dragBy = async (splitter, dx, dy) => {
+    const line = await splitter.boundingBox();
+    const x = line.x + line.width / 2, y = line.y + line.height / 2;
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, {steps: 5}); await page.mouse.up();
+  };
+  await page.getByRole('tab', {name: '설명'}).click();
+  const dockSplitter = page.getByRole('separator', {name: '아래 패널 높이'});
+  await dragBy(dockSplitter, 0, -101);
+  assert.equal((await page.locator('.dock-panel').boundingBox()).height, 344, 'dragging the dock line up grows the dock in 8px steps');
+  await dockSplitter.press('ArrowUp');
+  assert.equal(await dockSplitter.getAttribute('aria-valuenow'), '352');
+  await dockSplitter.dblclick();
+  assert.equal((await page.locator('.dock-panel').boundingBox()).height, 240);
+  await page.getByRole('tab', {name: '설명'}).click();
+  const roomy = await widthOf('.stage');
+  const inspectorSplitter = page.getByRole('separator', {name: '인스펙터 너비'});
+  await dragBy(inspectorSplitter, -61, 0);
+  assert.equal(await widthOf('.inspector'), 376, 'dragging the inspector line left widens it');
+  assert(await widthOf('.stage') < roomy, 'a wider inspector leaves the canvas less room');
+  await page.getByRole('button', {name: '인스펙터 접기'}).click();
+  assert.equal(await widthOf('.inspector'), 36);
+  assert.equal(await page.locator('.insp-body').isHidden(), true);
+  assert(await widthOf('.stage') > roomy, 'a folded inspector gives the canvas its room');
+  await dragBy(page.getByRole('separator', {name: '예제 목록 너비'}), 40, 0);
+  assert.equal(await widthOf('.browser'), 304);
+  await page.getByRole('button', {name: '예제 목록 접기'}).click();
+  assert.equal(await widthOf('.browser'), 36);
+  assert.equal(await page.locator('#site-tree').isHidden(), true);
+  await page.screenshot({path: resolve(run, 'sprite-folded-1440.png')});
+  await page.reload(); await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+  assert.deepEqual([await widthOf('.browser'), await widthOf('.inspector')], [36, 36], 'folded panels stay folded after a reload');
+  // A rail icon opens its panel at that part.
+  await page.getByRole('button', {name: '볼 것'}).click();
+  assert.equal(await widthOf('.inspector'), 376, 'the inspector opens at its kept width');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-controls')), 'sec-observe');
+  await page.getByRole('button', {name: '그리기', exact: true}).click();
+  assert.equal(await widthOf('.browser'), 304);
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-controls')), 'group-drawing');
+  await inspectorSplitter.focus(); await page.keyboard.press('ArrowLeft');
+  assert.equal(await widthOf('.inspector'), 384, 'the arrow key away from the inspector widens it');
+  await inspectorSplitter.dblclick(); await page.getByRole('separator', {name: '예제 목록 너비'}).dblclick();
+  assert.deepEqual([await widthOf('.browser'), await widthOf('.inspector')], [264, 312], 'double-click returns to the starting widths');
 
   // Another renderer restarts the example on a new canvas.
   const webgpu = page.locator('.pb-select option[value=webgpu]');
@@ -283,9 +329,13 @@ try {
     // The example screen: run first, then what to try and look at, then the dock.
     await page.goto(base + '?example=sprite'); await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
     assert.equal(await overflow(page), false, `example overflow at ${width}`);
+    // Folding is for wide screens: fold the inspector here, and narrow screens still show all of it.
+    if (width === 1024) await page.getByRole('button', {name: '인스펙터 접기'}).click();
     if (width < 900) {
       const top = async selector => (await page.locator(selector).boundingBox()).y;
       assert(await top('.viewport') < await top('.inspector') && await top('.inspector') < await top('.dock'), `example order at ${width}`);
+      assert.equal(await page.locator('.insp-body').isVisible(), true, `the inspector is whole at ${width}`);
+      assert.equal(await page.locator('.splitter:visible, .panel-toggle:visible').count(), 0, `no splitters or fold buttons at ${width}`);
     }
     await page.screenshot({path: resolve(run, `sprite-${width}.png`), fullPage: true});
     if (width === 320) {
@@ -320,7 +370,7 @@ try {
   const report = {ok: true, run, base, groups: 7, examples: ['sprite'], locales: ['ko', 'en'], rendererSwitch, formerRoutes: formerRoutes.length, widths: [1440, 1024, 390, 320], browser: browser.version()};
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
-  console.log(`Example site passed: shell, list, bilingual search, language selection, sprite example (controls, drag, scene, reset, renderer ${rendererSwitch}, release), missing example, ${formerRoutes.length} former routes, drawer. ${run}`);
+  console.log(`Example site passed: shell, list, bilingual search, language selection, sprite example (controls, drag, scene, reset, panels, renderer ${rendererSwitch}, release), missing example, ${formerRoutes.length} former routes, drawer. ${run}`);
 } catch (error) {
   await activePage?.screenshot({path: resolve(run, 'failure.png'), fullPage: true}).catch(() => {});
   throw error;

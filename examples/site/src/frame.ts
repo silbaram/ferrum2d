@@ -2,6 +2,7 @@ import { groups, links, type SiteExample } from "./catalog";
 import { createControls } from "./controls";
 import type { EngineNumbers, ExampleSession, RendererChoice } from "./example";
 import { icon } from "./icons";
+import { applyPanelSize, foldButton, panelSplitter, railButton } from "./layout";
 import { el, setUiText, translate, uiAttribute, uiText, type LocalizedText } from "./locale";
 import { frameText as text, siteText } from "./messages";
 
@@ -26,6 +27,8 @@ const newWindowLink = (href: string, className: string, ...content: (Node | stri
 };
 
 export type RunState = "loading" | "running" | "error";
+/** The viewport keeps at least this much room when the inspector or the dock grows (site.css agrees). */
+const MIN_VIEW = { width: 320, height: 160 };
 const rendererNames: Record<RendererChoice, string> = { webgl2: "WebGL2", webgpu: "WebGPU" };
 
 export interface FrameOptions {
@@ -46,6 +49,8 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
 
   const root = el("div", "ex");
   root.style.setProperty("--ex-aspect", `${example.world.width} / ${example.world.height}`);
+  applyPanelSize(root, "inspector");
+  applyPanelSize(root, "dock");
 
   // Play bar.
   const bar = el("div", "playbar"); bar.setAttribute("role", "toolbar"); uiAttribute(bar, "aria-label", text.playback);
@@ -92,13 +97,29 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
   const toggle = iconButton("chevron-up", text.openPanel, "dock-toggle");
   toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-controls", panel.id);
   tabs.append(...tabButtons, el("span", "pb-space"), toggle);
-  dock.append(tabs, panel);
+  // The open dock grows upward from the line above its tabs.
+  const dockSplitter = panelSplitter({
+    panel: "dock", axis: "y", grow: -1, label: text.panelHeight, controls: panel.id, host: root,
+    measure: () => panel.offsetHeight,
+    room: () => panel.offsetHeight + viewport.clientHeight - MIN_VIEW.height,
+  });
+  dockSplitter.classList.add("dock-splitter");
+  dock.append(dockSplitter, tabs, panel);
 
-  // Inspector: the example's name, what to try and what to look at.
-  const inspector = el("aside", "inspector"); uiAttribute(inspector, "aria-label", text.inspector);
-  const head = el("header", "insp-head");
+  // Inspector: a bar with the example's group and the fold button, then the name, what to try and what to
+  // look at. Folded, it is a rail with one icon per section.
+  const inspector = el("aside", "inspector"); inspector.id = "example-inspector"; uiAttribute(inspector, "aria-label", text.inspector);
+  const inspectorBody = el("div", "insp-body"); inspectorBody.id = "example-inspector-body";
+  const fold = foldButton({
+    panel: "inspector", host: root, controls: inspectorBody.id,
+    labels: { fold: text.collapseInspector, unfold: text.expandInspector },
+    icons: { fold: "panel-right-close", unfold: "panel-right-open" },
+  });
+  const inspectorBar = el("div", "insp-bar");
   const path = el("div", "insp-path"); path.append(icon(group.icon), uiText(group.title));
-  head.append(path, el("h1", "insp-name", example.title), el("p", "insp-summary", example.summary));
+  inspectorBar.append(path, fold.button);
+  const head = el("header", "insp-head");
+  head.append(el("h1", "insp-name", example.title), el("p", "insp-summary", example.summary));
   const section = (title: LocalizedText, id: string, ...content: Node[]) => {
     const node = el("section", "sec");
     const h2 = el("h2"); const button = el("button", "sec-h"); button.type = "button";
@@ -115,9 +136,26 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
   const fields = el("div", "fields");
   const observe = el("ul", "observe");
   observe.append(...example.observe.map(text => el("li", undefined, text)));
-  inspector.append(head, section(text.try, "try", fields), section(text.observe, "observe", observe));
+  inspectorBody.append(head, section(text.try, "try", fields), section(text.observe, "observe", observe));
+  const rail = el("div", "rail");
+  for (const [id, name, title] of [["try", "sliders-horizontal", text.try], ["observe", "eye", text.observe]] as const) {
+    rail.append(railButton(name, title, () => {
+      fold.set(false);
+      const heading = inspectorBody.querySelector<HTMLButtonElement>(`[aria-controls="sec-${id}"]`)!;
+      if (heading.getAttribute("aria-expanded") === "false") heading.click();
+      heading.scrollIntoView({ block: "nearest" });
+      heading.focus();
+    }));
+  }
+  inspector.append(inspectorBar, rail, inspectorBody);
+  const inspectorSplitter = panelSplitter({
+    panel: "inspector", axis: "x", grow: -1, label: text.inspectorWidth, controls: inspector.id, host: root,
+    measure: () => inspector.offsetWidth,
+    room: () => inspector.offsetWidth + viewport.clientWidth - MIN_VIEW.width,
+  });
+  inspectorSplitter.classList.add("insp-splitter");
 
-  root.append(bar, viewport, dock, inspector);
+  root.append(bar, viewport, dock, inspector, inspectorSplitter);
   main.replaceChildren(root);
 
   // Status bar and the engine tab show the same numbers.

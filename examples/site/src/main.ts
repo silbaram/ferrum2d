@@ -1,6 +1,7 @@
 import { examples, groups, links, tools, type GroupId, type SiteExample, type SiteLink } from "./catalog";
 import { mountExample } from "./frame";
 import { icon } from "./icons";
+import { applyPanelSize, foldButton, panelSplitter, railButton } from "./layout";
 import { el, setSiteLocale, siteLocale, translate, uiAttribute, uiText, type LocalizedText } from "./locale";
 import { siteText } from "./messages";
 import "./tokens.css";
@@ -64,18 +65,45 @@ function docsLink(className: string, label: LocalizedText): HTMLAnchorElement {
   return a;
 }
 
-// Body: example list beside the main area.
+// Body: example list beside the main area. On wide screens the list resizes and folds to a rail of
+// group icons; on narrow screens it is a drawer.
 const body = el("div", "body");
 const browser = el("nav", "panel browser"); browser.id = "site-browser";
 uiAttribute(browser, "aria-label", siteText.exampleList);
-const browserHead = el("div", "panel-head", siteText.examples);
+const tree = el("div", "tree"); tree.id = "site-tree";
+const browserFold = foldButton({
+  panel: "browser", host: app, controls: tree.id,
+  labels: { fold: siteText.collapseList, unfold: siteText.expandList },
+  icons: { fold: "panel-left-close", unfold: "panel-left-open" },
+});
+const browserHead = el("div", "panel-head");
 const browserCount = el("span", "count", String(examples.length));
-browserHead.append(browserCount);
-const tree = el("div", "tree");
-browser.append(browserHead, tree);
+browserHead.append(browserFold.button, el("span", "panel-title", siteText.examples), browserCount);
+const browserRail = el("div", "rail");
+for (const group of groups) {
+  const button = railButton(group.icon, group.title, () => {
+    browserFold.set(false);
+    const head = tree.querySelector<HTMLButtonElement>(`[aria-controls="group-${group.id}"]`);
+    if (!head) return;
+    if (head.getAttribute("aria-expanded") === "false") head.click();
+    head.scrollIntoView({ block: "nearest" });
+    head.focus();
+  });
+  button.dataset.group = group.id;
+  browserRail.append(button);
+}
+browser.append(browserHead, tree, browserRail);
+const browserSplitter = panelSplitter({
+  panel: "browser", axis: "x", grow: 1, label: siteText.listWidth, controls: browser.id, host: app,
+  measure: () => browser.offsetWidth,
+  // site.css keeps the list to 40% of the window.
+  room: () => body.clientWidth * 0.4,
+});
+browserSplitter.classList.add("browser-splitter");
+applyPanelSize(app, "browser");
 const main = el("main", "main"); main.id = "site-main"; main.tabIndex = -1;
 const scrim = el("div", "scrim"); scrim.hidden = true;
-body.append(browser, main, scrim);
+body.append(browser, browserSplitter, main, scrim);
 
 // Status bar.
 const status = el("footer", "sb");
@@ -240,6 +268,7 @@ function route(): void {
   const example = selectedExample();
   renderTitle(example);
   app.dataset.view = example ? "example" : "page";
+  for (const button of browserRail.querySelectorAll<HTMLElement>(".rail-btn")) button.toggleAttribute("data-current", button.dataset.group === example?.group);
   renderTree(searchText());
   renderStatus();
   if (example) renderExample(example);
@@ -258,7 +287,7 @@ const setDrawer = (open: boolean) => {
   app.dataset.drawer = open ? "open" : "closed";
   menu.setAttribute("aria-expanded", String(open));
   scrim.hidden = !open;
-  if (open) browser.querySelector<HTMLElement>("a, button")?.focus();
+  if (open) tree.querySelector<HTMLElement>("a, button")?.focus();
 };
 menu.addEventListener("click", () => setDrawer(app.dataset.drawer !== "open"));
 scrim.addEventListener("click", () => setDrawer(false));
