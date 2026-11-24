@@ -23,7 +23,7 @@ const server = createServer((request, response) => { void (async () => {
   const url = new URL(request.url, "http://localhost");
   if (url.pathname === "/") {
     response.setHeader("Content-Type", "text/html");
-    response.end(html(!url.searchParams.has("runtime-startup")));
+    response.end(html(!url.searchParams.has("runtime-startup") && !url.searchParams.has("runtime-fit")));
     return;
   }
   if (url.pathname === "/startup-texture.png") {
@@ -148,6 +148,104 @@ async function checkRuntimeStartup(browser, address) {
   }
 }
 
+async function checkRuntimeFit(browser, address) {
+  const sizes = [{ width: 1000, height: 500 }, { width: 390, height: 844 }];
+  const page = await browser.newPage({ viewport: sizes[0], deviceScaleFactor: 2 });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await page.goto(`${address}?runtime-fit`);
+    await page.evaluate(async () => {
+      const { createFerrumRuntime } = await import("@ferrum2d/ferrum-web/core");
+      const canvas = document.querySelector("canvas");
+      const fit = { x: -80, y: 20, width: 640, height: 384 };
+      const corners = [
+        { x: -68, y: 32, tint: "#ff0000" }, { x: 548, y: 32, tint: "#00ff00" },
+        { x: -68, y: 392, tint: "#0000ff" }, { x: 548, y: 392, tint: "#ffff00" },
+      ];
+      const dataScene = {
+        format: "ferrum2d.consumer.scene-authoring", version: 1,
+        display: { fit },
+        sceneComposition: {
+          initialFragment: "main", prefabs: { marker: {} },
+          fragments: { main: { instances: corners.map(({ x, y, tint }, index) => ({
+            id: `corner-${index}`, prefab: "marker", x, y,
+            props: { components: {
+              visual: { kind: "sprite", texture: "white", width: 16, height: 16, tint },
+              collider: "none", layer: "player",
+            } },
+          })) } },
+        },
+        behaviorRecipes: { entities: {} },
+      };
+      let metrics;
+      const runtime = await createFerrumRuntime({
+        canvas, dataScene, ui: false, autostart: true,
+        assets: { textures: { white: "/startup-texture.png" } },
+        webgl2: { preserveDrawingBuffer: true, clearColor: [0, 0, 0, 1] },
+        onFrame: ({ frame, rendererStats }) => {
+          metrics = { entities: frame.entityCount, commands: rendererStats.renderCommandCount, draws: rendererStats.drawCalls };
+        },
+      });
+      const view = runtime.dataScene.view;
+      const gl = canvas.getContext("webgl2");
+      const pixel = ({ x, y }) => {
+        const rgba = new Uint8Array(4);
+        gl.readPixels(Math.floor(x * canvas.width / canvas.clientWidth), canvas.height - 1 - Math.floor(y * canvas.height / canvas.clientHeight),
+          1, 1, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+        if (gl.isContextLost()) throw new Error("Fit WebGL context lost");
+        return [...rgba];
+      };
+      window.fitSmoke = {
+        ready: () => metrics !== undefined,
+        sample() {
+          const center = { x: fit.x + fit.width / 2, y: fit.y + fit.height / 2 };
+          const screenCenter = view.worldToScreen(center);
+          const rect = canvas.getBoundingClientRect();
+          const snapshot = view.snapshot();
+          return {
+            metrics, screenCenter, zoom: snapshot.zoom, dpr: snapshot.dpr,
+            topLeft: view.worldToScreen({ x: fit.x, y: fit.y }),
+            bottomRight: view.worldToScreen({ x: fit.x + fit.width, y: fit.y + fit.height }),
+            pointer: view.pointerToWorld({ x: rect.left + screenCenter.x, y: rect.top + screenCenter.y }),
+            pixels: corners.map((point) => pixel(view.worldToScreen(point))),
+          };
+        },
+        reapply: () => { runtime.dataScene.reapply(); return runtime.dataScene.view === view; },
+        destroy: () => runtime.destroy(),
+      };
+    });
+    await page.waitForFunction(() => window.fitSmoke.ready());
+    const results = [];
+    const close = (actual, expected) => assert(Math.abs(actual - expected) < 1e-7, `${actual} vs ${expected}`);
+    for (const size of sizes) {
+      await page.setViewportSize(size);
+      await page.evaluate(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
+      const result = await page.evaluate(() => window.fitSmoke.sample());
+      const zoom = Math.min(size.width / 640, size.height / 384);
+      close(result.zoom, zoom);
+      assert.equal(result.dpr, 2);
+      close(result.screenCenter.x, size.width / 2);
+      close(result.screenCenter.y, size.height / 2);
+      close(result.topLeft.x, (size.width - 640 * zoom) / 2);
+      close(result.topLeft.y, (size.height - 384 * zoom) / 2);
+      close(result.bottomRight.x, (size.width + 640 * zoom) / 2);
+      close(result.bottomRight.y, (size.height + 384 * zoom) / 2);
+      close(result.pointer.x, 240);
+      close(result.pointer.y, 212);
+      assert.deepEqual(result.pixels, [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255, 255, 0, 255]]);
+      assert.deepEqual(result.metrics, { entities: 4, commands: 4, draws: 1 });
+      results.push({ ...size, ...result });
+    }
+    assert.equal(await page.evaluate(() => window.fitSmoke.reapply()), true, "reapply should preserve the fit view");
+    assert.deepEqual(errors, []);
+    return results;
+  } finally {
+    await page.evaluate(() => window.fitSmoke?.destroy()).catch(() => {});
+    await page.close();
+  }
+}
+
 try {
   await new Promise((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
   const address = `http://127.0.0.1:${server.address().port}/`;
@@ -156,6 +254,7 @@ try {
   else { try { browser = await chromium.launch({ ...options, channel: process.env.FERRUM_BROWSER_CHANNEL ?? "chrome" }); }
     catch (error) { if (process.env.FERRUM_BROWSER_CHANNEL) throw error; browser = await chromium.launch(options); } }
   report.runtimeStartup = await checkRuntimeStartup(browser, address);
+  report.runtimeFit = await checkRuntimeFit(browser, address);
   for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) for (const deviceScaleFactor of [1, 2]) {
     const page = await browser.newPage({ viewport, deviceScaleFactor }); const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));

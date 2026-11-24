@@ -341,6 +341,16 @@ export function applyDataSceneAuthoringDocument(
   document: unknown,
   options: ApplyDataSceneAuthoringDocumentOptions = {},
 ): ApplyDataSceneAuthoringDocumentResult {
+  return applyDataSceneAuthoringDocumentWithCommit(engine, document, options);
+}
+
+/** Run a runtime display commit before publishing the scene and releasing its native checkpoint. */
+export function applyDataSceneAuthoringDocumentWithCommit(
+  engine: FerrumEngine,
+  document: unknown,
+  options: ApplyDataSceneAuthoringDocumentOptions,
+  commitDisplay?: () => void,
+): ApplyDataSceneAuthoringDocumentResult {
   const {
     path: optionPath,
     activateDataScene,
@@ -662,6 +672,7 @@ export function applyDataSceneAuthoringDocument(
     if (resolved.physics || (typeof engine.physicsBackend === "function" && engine.physicsBackend() === "unified-3d"))
       finalizeNativePhysicsAuthoring(engine);
     continuity?.restore(result.entityHandles);
+    commitDisplay?.();
     preparation?.commit();
     rememberDataSceneProgressContext(engine, document, result.entityHandles, options, continuityMetadata);
     if (options.activateDataScene !== false) rememberNativeFileApplySource(engine, document, fileMaterializedComponentTemplates(resolved), options.textureId);
@@ -676,7 +687,7 @@ export function applyDataSceneAuthoringDocument(
     finally { preparation?.dispose(); }
   } };
   try {
-    return nativePhysics ? withNativePhysicsAuthoring(engine, apply) : apply();
+    return nativePhysics || commitDisplay ? withNativePhysicsAuthoring(engine, apply) : apply();
   } catch (error) {
     try {
       restoreDataSceneVariableRuntimeSnapshot(engine, previousVariables, `${path}.variables`);

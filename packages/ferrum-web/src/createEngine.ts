@@ -1215,6 +1215,7 @@ async function buildEngineFacade(
         throw new Error("Native scene authoring requires Wasm scene authoring version 1 and runtime checkpoints.");
       synchronizePhysicsMetadata?.();
       const spec = structuredClone(framePipeline.physicsSpec), scene = framePipeline.physicsSpecScene;
+      const viewportDirty = framePipeline.viewportDirty;
       const checkpoint = rustEngine.capture_runtime_checkpoint();
       if (!checkpoint) throw new Error("Native authoring checkpoint exceeds runtime admission limits.");
       nativeAuthoringActive = true;
@@ -1224,6 +1225,7 @@ async function buildEngineFacade(
         if (!rustEngine.restore_runtime_checkpoint(checkpoint)) throw new Error(`Native authoring rollback was rejected: ${String(error)}`);
         framePipeline.physicsSpec = spec;
         framePipeline.physicsSpecScene = scene;
+        framePipeline.viewportDirty = viewportDirty;
         throw error;
       } finally {
         nativeAuthoringActive = false;

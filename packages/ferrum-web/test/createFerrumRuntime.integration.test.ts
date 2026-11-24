@@ -2,7 +2,7 @@ import "./nativeRuntimeTestHelper.js";
 import { BrowserPlatformHost } from "../src/browserPlatformHost.js";
 import { DialogueSession } from "../src/dialogueQuest.js";
 import { WasmBridge } from "../src/wasmBridge.js";
-import { deepEqual, equal, throws, rejects } from "node:assert/strict";
+import { deepEqual, equal, ok, throws, rejects } from "node:assert/strict";
 import process from "node:process";
 import { test } from "node:test";
 import {
@@ -780,6 +780,196 @@ test("owned createFerrumRuntime without physics options selects the same native 
 function startupOptions(renderer = fakeRuntimeRenderer()) {
   return { canvas: {} as HTMLCanvasElement, renderer, input: {} as InputManager, ui: false as const };
 }
+
+function fitFixture(width = 1000, height = 500) {
+  const size = { clientWidth: width, clientHeight: height, width, height };
+  const canvas = Object.assign(size, {
+    getBoundingClientRect: () => ({ left: 30, top: 40, width: size.clientWidth, height: size.clientHeight }),
+  }) as unknown as HTMLCanvasElement;
+  const renderer = fakeRuntimeRenderer();
+  const zooms: number[] = [];
+  let zoom = 1;
+  let presentation: PixelPerfectPresentation | undefined;
+  renderer.setViewportZoom = (next) => { zoom = next; zooms.push(next); };
+  renderer.viewportSize = () => ({
+    width: (presentation?.sourceWidth ?? size.clientWidth) / zoom,
+    height: (presentation?.sourceHeight ?? size.clientHeight) / zoom,
+  });
+  renderer.pixelPerfectPresentation = () => presentation;
+  renderer.setPixelPerfect = (value) => {
+    const next = resolvePixelPerfectOptions(value);
+    presentation = next ? resolvePixelPerfectPresentation(size.width, size.height, next) : undefined;
+  };
+  const document = {
+    format: "ferrum2d.consumer.scene-authoring", version: 1,
+    behaviorRecipes: { entities: {} },
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: { hero: { props: { components: {
+        visual: { kind: "sprite", texture: "hero", width: 16, height: 12 },
+        layer: "enemy",
+        collider: { type: "aabb", halfWidth: 8, halfHeight: 6, isTrigger: false },
+        body: { type: "kinematic" },
+      } } } },
+      fragments: { main: { instances: [{ id: "hero-1", prefab: "hero", x: 80, y: 40 }] } },
+    },
+  } as const;
+  return {
+    size, renderer, zooms,
+    options: {
+      ...startupOptions(renderer), canvas, assets: { textures: { hero: "/hero.png" } }, dataScene: document,
+    },
+    document,
+  };
+}
+
+test("runtime fit zoom is responsive and keeps one view across document updates", async () => {
+  const previousWindow = globalThis.window;
+  const windowSurface = new RuntimeInputSurface();
+  globalThis.window = windowSurface as unknown as Window & typeof globalThis;
+  try {
+    const { options, size, zooms, renderer, document } = fitFixture();
+    const runtime = await createFerrumRuntime({ ...options, fit: { width: 640, height: 384 } });
+    try {
+      const scene = runtime.dataScene!;
+      const view = scene.view;
+      equal(zooms[zooms.length - 1], 500 / 384);
+      deepEqual([view.snapshot().cameraX, view.snapshot().cameraY], [320, 192]);
+      const screenCenter = view.worldToScreen({ x: 320, y: 192 });
+      const worldCenter = view.pointerToWorld({ x: 530, y: 290 });
+      ok(Math.abs(screenCenter.x - 500) < 1e-8 && Math.abs(screenCenter.y - 250) < 1e-8);
+      ok(Math.abs(worldCenter.x - 320) < 1e-8 && Math.abs(worldCenter.y - 192) < 1e-8);
+
+      renderer.setViewportZoom!(2);
+      equal(view.snapshot().zoom, 2);
+      view.setZoom(3);
+      equal(view.snapshot().zoom, 3);
+      view.setCamera({ x: 400, y: 240 });
+      size.clientWidth = size.width = 640;
+      size.clientHeight = size.height = 640;
+      windowSurface.dispatchEvent(new Event("resize"));
+      equal(view.snapshot().zoom, 1);
+      deepEqual([view.snapshot().cameraX, view.snapshot().cameraY], [400, 240]);
+      deepEqual(view.pointerToWorld({ x: 350, y: 360 }), { x: 400, y: 240 });
+
+      scene.reapply({ ...document, display: { fit: { width: 320, height: 160, x: -32, y: 20 } } });
+      equal(scene.view, view);
+      equal(view.snapshot().zoom, 2);
+      deepEqual([view.snapshot().cameraX, view.snapshot().cameraY], [128, 100]);
+      scene.reapply();
+      equal(view.snapshot().zoom, 2);
+      scene.transition({ ...document, display: { fit: false } });
+      equal(scene.view, view);
+      equal(view.snapshot().zoom, 1);
+      view.setZoom(2);
+      windowSurface.dispatchEvent(new Event("resize"));
+      equal(view.snapshot().zoom, 2);
+      scene.transition(document);
+      equal(view.snapshot().zoom, 1);
+      equal(scene.view, view);
+    } finally {
+      runtime.destroy();
+    }
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
+
+test("runtime fit defers zoom on a hidden canvas and preserves the new camera when shown", async () => {
+  const previousWindow = globalThis.window;
+  const windowSurface = new RuntimeInputSurface();
+  globalThis.window = windowSurface as unknown as Window & typeof globalThis;
+  try {
+    const { options, size, zooms } = fitFixture(0, 0);
+    const runtime = await createFerrumRuntime({ ...options, fit: { width: 640, height: 384 } });
+    try {
+      const { view } = runtime.dataScene!;
+      deepEqual(zooms, []);
+      throws(() => view.snapshot(), /visible canvas/);
+      view.setCamera({ x: 96, y: 96 });
+      size.clientWidth = size.width = 320;
+      size.clientHeight = size.height = 240;
+      windowSurface.dispatchEvent(new Event("resize"));
+      deepEqual(zooms, [0.5]);
+      deepEqual(view.worldToScreen({ x: 96, y: 96 }), { x: 160, y: 120 });
+    } finally {
+      runtime.destroy();
+    }
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
+
+test("runtime resolves fit and pixelPerfect defaults after document overrides", async () => {
+  const { options, renderer, document } = fitFixture();
+  const fit = { width: 640, height: 384 };
+  const pixelPerfect = { width: 320, height: 180 };
+  await rejects(createFerrumRuntime({ ...options, fit, dataScene: { ...document, display: { pixelPerfect } } }), /dataScene\.display\.fit.*pixelPerfect/);
+  await rejects(createFerrumRuntime({ ...options, pixelPerfect, dataScene: { ...document, display: { fit } } }), /dataScene\.display\.fit.*pixelPerfect/);
+  const spatial = { terrain: [], billboards: {}, camera: {
+    projection: "orthographic" as const, position: { x: 0, y: -100, elevation: 100 }, target: { x: 0, y: 0, elevation: 0 }, height: 200,
+  } };
+  await rejects(createFerrumRuntime({ ...options, fit, dataScene: { ...document, spatial } }), /dataScene\.display\.fit.*spatial/);
+  await rejects(createFerrumRuntime({ ...options, fit, renderer: fakeRuntimeRenderer() }), /display\.fit.*viewport zoom/);
+  const runtime = await createFerrumRuntime({
+    ...options, fit, pixelPerfect, dataScene: { ...document, display: { pixelPerfect: false } },
+  });
+  try {
+    equal(renderer.pixelPerfectPresentation?.(), undefined);
+    const scene = runtime.dataScene!;
+    scene.transition({ ...document, display: { fit: false } });
+    equal(renderer.pixelPerfectPresentation?.()?.sourceWidth, 320);
+    equal(scene.view.snapshot().zoom, 1);
+  } finally {
+    runtime.destroy();
+  }
+});
+
+test("runtime rolls back fit, scene and camera follow when display commit fails", async () => {
+  const { options, document, renderer } = fitFixture();
+  const runtime = await createFerrumRuntime({ ...options, fit: { width: 640, height: 384 } });
+  try {
+    const scene = runtime.dataScene!;
+    const prior = scene.result;
+    const view = scene.view;
+    const actor = prior.entityHandles["hero-1"];
+    view.setZoom(2);
+    view.setCamera({ follow: actor, bounds: { minX: -600, minY: -600, maxX: 600, maxY: 600 } });
+    const previous = view.snapshot();
+    const rejectedCamera = runtime.engine.setDataSceneCamera;
+    runtime.engine.setDataSceneCamera = () => false;
+    try {
+      throws(() => scene.reapply({ ...document, display: { fit: { width: 320, height: 180 } } }), /Data Scene camera requires/);
+    } finally {
+      runtime.engine.setDataSceneCamera = rejectedCamera;
+    }
+    equal(scene.result, prior);
+    equal(scene.view, view);
+    deepEqual(view.snapshot(), previous);
+    ok(runtime.engine.getPhysicsEntity(actor));
+    ok(runtime.engine.setPhysicsBodyPosition(actor, 200, 160));
+    const viewport = renderer.viewportSize();
+    runtime.engine.setViewportSize(viewport.width, viewport.height);
+    deepEqual([view.snapshot().cameraX, view.snapshot().cameraY], [200, 160]);
+  } finally {
+    runtime.destroy();
+  }
+});
+
+test("startup failure restores the injected renderer's previous zoom at the upper limit", async () => {
+  const { options, renderer, zooms } = fitFixture(169, 500);
+  renderer.setViewportZoom!(10000);
+  const started = new Error("autostart denied");
+  const inputMock = fakeEngine([]);
+  inputMock.setViewportSize = () => {};
+  inputMock.setDataSceneCamera = () => true;
+  inputMock.start = () => { throw started; };
+  const engine = attachMemoryDataSceneVariableRuntime(attachDataSceneRuntimeEngineAdapter(inputMock, new RuntimeDataSceneAdapter()));
+  await rejects(createFerrumRuntime({
+    ...options, fit: { width: 640, height: 384 }, engineInstance: engine, autostart: true,
+  }), (error) => error === started);
+  deepEqual(zooms, [10000, 169 / 640, 10000]);
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

@@ -160,6 +160,7 @@ export function resolveSceneAuthoringDocument(
   const physics = document.physics === undefined ? undefined : resolveDataScenePhysics(document.physics, `${path}.physics`);
   const display=resolveSceneDisplay(document.display,`${path}.display`);
   if(spatial && display?.pixelPerfect)throw sceneCompositionDiagnosticError(`${path}.display.pixelPerfect`,"flat pixelPerfect cannot be combined with spatial; use spatial.environment.pixelArt");
+  if (spatial && display?.fit) throw sceneCompositionDiagnosticError(`${path}.display.fit`, "cannot be combined with spatial");
   if (spatial && lighting) throw sceneCompositionDiagnosticError(`${path}.lighting`, "flat lighting cannot be combined with spatial; use spatial.environment.lighting");
   const instances = validateComponents || componentTemplates !== undefined || physics !== undefined || spatial !== undefined || navigation?.obstacles !== undefined
     ? bindingPlan?.instances ?? instantiateSceneFragment(sceneComposition, { ...bindingOptions, path: `${path}.composition` })

@@ -2,7 +2,7 @@
 
 상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→R2a→R2b→R3)마다 Codex가 구현하고 통합 담당이 검증한다.
 R1 완료(`77f94fa`, 2026-11-25 통합 검증: SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과).
-[선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패) 완료(2026-11-25). 다음은 R2a다.
+[선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패)과 R2a(SDK 화면 맞춤·view) 완료(2026-11-25). 다음은 R2b다.
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
 새 API로 예제를 옮기는 일부터 다시 시작한다.
 
@@ -214,6 +214,11 @@ interface FerrumRuntimeDataScene {
 브라우저 smoke: `tests/smoke/flat-pixel-perfect-smoke.mjs`(`pnpm smoke:flat-pixel-perfect`) 또는 data-scene smoke에 fit 사례를 더한다.
 두 캔버스 크기에서 월드 네 모서리 표식이 모두 보이고(잘리지 않음) 비율이 유지되는지, 크기를 바꾼 뒤 포인터 변환이 맞는지 본다.
 R2b는 Studio viewer smoke(`flat-pixel-perfect-viewer-smoke.mjs`)에 fit 문서 미리보기 한 사례를 더한다.
+
+R2a 검증에서 SDK 테스트 2,061개와 Data Scene 브라우저 스모크 전체가 통과했다. fit 사례는 DPR 2의
+1000×500 및 390×844 캔버스에서 네 모서리 픽셀, 사각형 배율, 포인터 변환과 같은 view의 재사용을 확인했다.
+기존 SDK 픽셀 퍼펙트 스모크는 동일 Wasm을 쓰는 변경 전 커밋에서도 Shooter 스냅샷 단계에서 실패한다.
+기본 통합 물리에서는 기존 Shooter 스냅샷을 캡처할 수 있어야 한다고 가정한 테스트 사례다. 이 검증은 별도로 정리한다.
 
 ### 문서
 

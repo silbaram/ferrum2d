@@ -27,7 +27,7 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 | `variables` | 아니오 | 선언된 정수·실수·불리언 값을 `global` 또는 `scene` 생존 스코프로 정의한다. |
 | `physics` | 아니오 | 개발 소스의 단일 native 월드·선택 관절·planar collision-only grid. [작성 계약](#단일-3d-물리-월드-작성)을 따른다. |
 | `spatial` | 아니오 | 개발 소스의 opt-in 입체 지형·camera·billboard·native actor와 선택 shared-edge `connections` 설정. [공간 계약](data-scene-spatial.md)을 따른다. |
-| `display` | 아니오 | flat 2D의 선택 `pixelPerfect` 표시 설정. 가상 해상도·정수 확대·여백을 정의한다. |
+| `display` | 아니오 | flat 2D 표시 설정. `pixelPerfect`는 가상 해상도와 정수 확대를, `fit`은 화면에 맞출 월드 사각형을 정의한다. |
 | `lighting` | 아니오 | world 좌표의 flat `LightingScene2D`. 공간 문서와 동시 지정 불가. [조명 작성·patch 계약](public-api/authoring.md#2d-scene-lighting-placement-patch)을 따른다. |
 
 최소 scene은 `sceneComposition.prefabs`, `sceneComposition.fragments`, `behaviorRecipes.entities`만으로 검증 가능해야 한다. starter scene adapter가 쓰는 `runtimeEntity`, `builtinShooterPlayer`, `builtinBreakoutPaddle` 같은 binding은 create-game 템플릿용 확장이지 최소 Data Scene 계약이 아니다.
@@ -59,11 +59,24 @@ scene에는 에셋 이름·UV/animation만 넣는다. 생성 binding/combined pa
 광원·물리 debug·포인터/world 변환은 연속 좌표를 사용한다. 정렬 경계와 작은 객체의 처리 등은
 [Core 표시 계약](public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.
 
-Ferrum2D Studio에서 JSON을 열고 **게임 미리보기** 또는 **실행**을 누르면 표시 설정을 적용한다.
+Ferrum2D Studio에서 JSON을 열고 **게임 미리보기** 또는 **실행**을 누르면 `display.pixelPerfect`를 적용한다.
 2D 편집 화면에서는 넓은 편집 viewport를 유지하며 돌아오면 편집 카메라 위치·zoom과 객체 선택 좌표계를 함께 복원한다.
 flat 미리보기의 기본 카메라 중심과 zoom 1을 사용한다. 게임 코드가 별도로 설치하는 카메라 follow/스크립트는
 프로젝트 런타임에서 설정해야 한다. 표시 설정을 바꾸는 전용 Inspector UI는 아직 없으며 JSON으로 작성한다.
 기본 예제의 표시 설정은 변경하지 않는다.
+
+### 월드 화면 맞춤
+
+```json
+{ "display": { "fit": { "width": 640, "height": 384, "x": -80, "y": 20 } } }
+```
+
+`SceneFitSpec`의 `width`와 `height`는 0보다 크고 100,000 이하인 유한한 수다.
+왼쪽 위 월드 좌표 `x`, `y`는 유한한 수이고 기본값은 각각 0이다. 알 수 없는 필드는 경로를 포함한 오류로 거절한다.
+씬 값이 런타임의 `fit` 기본값보다 우선한다. 생략하면 기본값을 사용하고 `false`는 기본값을 해제한다.
+Pixel Perfect가 가상 픽셀 해상도와 정수 확대를 쓰는 데 비해, `fit`은 창 크기에 맞춰 연속 배율을 사용한다.
+씬 설정과 런타임 기본값을 합친 결과에서 두 모드를 함께 켜거나 `spatial` 씬에서 `fit`을 켜면 오류다.
+기존 v1 문서는 그대로 읽힌다. 브라우저 런타임 동작과 좌표 변환은 [Core 화면 맞춤](public-api/core.md#월드-화면-맞춤)을 따른다.
 
 창이 작으면 nearest 축소(`integerScale: false`)를 사용한다. 포인터 변환과 여백 클릭 처리는
 [Core API](public-api/core.md#기본-2d-픽셀-퍼펙트-표시)를 따른다. 저수준 apply 함수는 문서를 검증·적용하며

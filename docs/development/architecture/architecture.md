@@ -115,6 +115,9 @@ runtime은 구조적 renderer capability를 사용한다. custom renderer를 구
 단언하지 않는다. 미지원 debug/render 요청은 target 변경 전에 거절하고, timer 종료와 외부 소유 자원의 수명을 보존한다.
 런타임은 렌더러 준비 뒤 에셋 선행 로딩과 엔진 생성을 함께 진행하고, 둘 다 완료되면 Data Scene과 물리 프로필을 적용한다.
 시작 취소는 런타임 소유 자원을 정리하며, 성공한 런타임은 호출자가 해제한다. 크기 감시는 시작이 끝난 뒤 연결한다.
+평면 Data Scene의 화면 맞춤은 씬 적용 시 렌더러 zoom·native viewport·카메라를 함께 확정한다.
+적용 실패 시 기존 네이티브 체크포인트로 카메라와 씬을 복원하고 런타임이 렌더러 표시를 되돌린다.
+크기 감시는 화면 맞춤이 켜져 있을 때 배율만 계산하며, 좌표 변환 view는 씬이 바뀌어도 같은 런타임에 연결된다.
 
 에셋 CPU 데이터·GPU 준비·장면 활성화는 구분한다. 비동기 취소, 늦은 결과, 실패 rollback,
 참조 수명, resize·context/device loss·destroy의 해제를 다룬다. 개별 모델 GPU 준비의 rollback을

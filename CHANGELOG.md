@@ -10,6 +10,8 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 - `createFerrumRuntime`에서 시작 에셋을 Data Scene 적용 전에 읽고 진행률과 결과를 제공한다.
   시작을 `AbortSignal`로 취소할 수 있으며, 실제 렌더러 종류와 WebGPU 대체 정보를 조회할 수 있다.
+- 평면 Data Scene에서 `display.fit`이나 런타임 `fit` 기본값으로 월드 사각형을 캔버스에 맞출 수 있다.
+  `runtime.dataScene.view`는 씬을 다시 적용하거나 전환한 뒤에도 현재 카메라와 배율로 좌표를 변환한다.
 
 ### Fixed
 

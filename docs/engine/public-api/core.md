@@ -116,6 +116,33 @@ WebGPU는 `fade`·`bloom`·`crt`·`vignette`·`glitch`·`pixelArt` 후처리를 
 이때 인자로 전달한 새 후처리 설정은 다음 프레임에 사용한다.
 WebGL2에서 후처리/색 관리가 필요하면 별도 가상 출력 타깃을 사용한다. 해제/재설정은 기존 타깃을 재사용하거나 정리한다.
 
+## 월드 화면 맞춤
+
+```ts
+const runtime = await createFerrumRuntime({
+  canvas,
+  dataScene: document,
+  fit: { width: 640, height: 384 },
+});
+const view = runtime.dataScene!.view;
+const world = view.pointerToWorld({ x: event.clientX, y: event.clientY });
+```
+
+`SceneFitSpec`은 평면 Data Scene에서 화면에 맞출 월드 사각형이다. 씬의 `display.fit`으로 런타임 기본값을
+덮어쓸 수 있고, `false`로 해제할 수 있다. [문서 형식과 검증](../data-scene-authoring.md#월드-화면-맞춤).
+
+- 씬을 적용하거나 `reapply`·`transition`하면 사각형의 중심에 카메라를 둔다. 배율은 CSS 캔버스 폭과 높이에
+  사각형이 들어가는 가장 큰 균일 배율이며 0.0001~10,000 범위로 제한한다. 비어 있는 여백은 렌더러 배경색으로 보인다.
+  사각형 바깥쪽에 보이는 장면 내용도 그린다.
+- 캔버스 크기 변화에서는 배율만 갱신하고 카메라의 추적·경계 설정을 유지한다. 숨겨져 크기가 0인 동안에는
+  배율 갱신을 미루고, 다시 보이는 크기로 바뀔 때 맞춘다. 적용 실패 시 이전 표시와 카메라 설정을 복원한다.
+- 맞춤이 활성화된 상태에서 `view.setZoom`을 호출해도 다음 크기 변화나 씬 적용 때 맞춤 배율이 다시 적용된다.
+  맞춤을 해제하면 zoom을 1로 되돌린다. 처음부터 맞춤을 쓰지 않는 씬은 기존 카메라와 zoom 설정을 사용한다.
+- `runtime.dataScene.view`는 맞춤 여부와 관계없이 제공되며 씬을 다시 적용하거나 전환해도 같은 객체다.
+  좌표 변환은 현재 렌더러 배율과 카메라를 읽는다. 직접 `createDataSceneView`를 호출하는 경로는 기존 초기 설정 동작을 유지한다.
+- 맞춤을 사용하는 custom renderer의 `setViewportZoom`은 현재 캔버스 크기에 맞게 표시를 갱신해야 한다.
+  저수준 `applyDataSceneAuthoringDocument`는 씬 문서의 표시 설정을 검증하고 보존한다. 화면 맞춤은 브라우저 런타임이 적용한다.
+
 ## 도트 후처리
 
 `postProcess`의 `pixelArt` 패스는 WebGL2/WebGPU에서 RGB 채널별 포스터라이즈·4×4 Bayer 디더링·
