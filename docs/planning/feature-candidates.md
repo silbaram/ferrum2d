@@ -1,7 +1,7 @@
 # HD-2D 후속 기능·검증 후보
 
-기준일: 2026-11-12
-상태: 기능 확장은 설계 후보·미착수, 실물 GPU·장시간 항목은 후속 검증 대기, 추가 예제 노출은 제품 결정 대기다.
+기준일: 2026-11-24
+상태: 기능 확장은 설계 후보·미착수, 실물 GPU·장시간 항목은 후속 검증 대기다. 예제 노출은 [예제 사이트 계획](example-site-rebuild-plan.md)의 예제 목록이 정한다.
 기능 개발은 대상 장면과 완료 조건을, 환경 검증은 기기·실행 조건을 정한 뒤 시작한다.
 
 현재 지원 범위는 [공간 계약](../engine/data-scene-spatial.md), [물리 기능 맵](../development/architecture/physics-engine.md),
@@ -38,22 +38,17 @@ PNG extrusion의 현재 계약과 검증 명령은
 | 전체 scene GPU transaction | 기존 모델 GPU 준비 rollback과 지형/billboard/environment/target까지의 일괄 활성화·복구를 구분한다. |
 | 공통 URL 해석·요청 공유 | texture/sound/JSON의 cache key·인증·독립 취소·참조 수명을 정의한다. 기존 bounded manifest 로딩·모델 요청 공유·CPU/GPU cache·IndexedDB preload를 중복 구현하지 않는다. |
 | 네트워크 geometry 스트리밍 | 사전 등록 CPU LOD·native visual chunk와 구분한다. 요청 취소·재진입·자원 상한·오래된 결과 차단부터 설계한다. |
+| 복원한 Engine에 Data Scene 도구 다시 연결 | 네이티브 게임 파일로 복원한 Engine에 `runtime.dataScene`(변수·reapply·handle)을 다시 연결하는 공개 SDK API가 없다. 예제 사이트 '저장과 불러오기' 예제를 시작할 때 필요한 범위(어떤 도구를, 어떤 수명으로)를 정하고 착수한다. |
 | 추가 모델 형식·재질·압축 | 실제 자산에서 BLEND, UV1, 추가 재질, Draco/Meshopt 필요성을 측정한다. decoder 의존성·CPU/메모리 예산·실패/fallback을 먼저 정하며 skin/morph/전체 PBR로 자동 확대하지 않는다. |
 
 장치 손실 처리의 플랫폼 기준은 [GPUDevice.lost](https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/lost)다.
 현재 명시적 복구와 terminal destroy를 구분한다. 자동 재시도 UI 정책·실물 GPU loss 검증은 앱 필요에 따라 별도 범위를 정한다.
 
-## 추가 GPU 학습 예제의 필요성 판단
+## 추가 GPU 학습 예제
 
-현재 기능별 실험과 예제의 진입점은 [Showcase Hub](../engine/showcase-hub.md)를 따른다.
-현재 렌더링·GPU 자원 실험은 명령/드로우 수와 텍스처 준비·해제·추정 메모리를 보여준다.
-남은 후보는 GPU 타이밍·장치 손실과 명시적 복구를 추가 조작형 실험으로 보여줄 필요성 판단이다.
-이미 있는 렌더러·복구 기능이나 조명·노멀·카메라·후처리 실험을 다시 만드는 개발 항목은 아니다.
-
-- 기존 기능 실험과 smoke/report 설명으로 부족한 사용자 질문을 먼저 정한다.
-- 추가 노출이 필요하면 입력·관찰 결과·실패/복구 시나리오와 반복 가능한 브라우저 검증을 정의한다.
-- 기존 route 안에서 설명할 수 있는지 먼저 확인하고, 새 route는 Pages 용량·CI 실행 시간·유지 비용을 검토한 뒤 결정한다.
-- 공개 예제를 위해 Rust render command ABI나 WebGL2 fallback을 바꾸지 않는다. 실제 Pages 배포는 별도 승인 범위다.
+예제 사이트를 새로 만들면서 예제 후보는 [예제 사이트 계획](example-site-rebuild-plan.md#예제-목록-2026-11-24-승인)의 목록에서 관리한다
+('많이 그리기'·'조명'·'화면 후처리' 등). GPU 타이밍·장치 손실과 명시적 복구를 조작형 예제로 보여 줄지는 그 목록에 추가할 때 정한다.
+공개 예제를 위해 Rust render command ABI나 WebGL2 fallback을 바꾸지 않는다.
 
 ## 물리·탐색 후속 후보
 
@@ -63,6 +58,7 @@ PNG extrusion의 현재 계약과 검증 명령은
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |
 | 대형 경로·물리 진단 | 기존 bounded joint/CCD 진단·batch cast 이후의 대형 scene 비용을 측정하고, 추가 broadphase/query 가속이 필요한 경우 착수 |
+| 실행 중 native world에 물리 생략 HD-2D 문서 재적용 | 내장 장면에서 처음 전환하면 호환 물리로 실행하지만, 이미 native world로 실행 중인 Data Scene에 `physics`를 생략한 heightSpan 주인공 문서를 다시 적용하면(예: Studio 같은 Engine의 편집→게임 재적용) 거부한다. 실행한 world를 버리고 호환 물리로 바꿀지 제품 결정이 필요하다. |
 
 ## 조명 수용 검증
 

@@ -81,6 +81,12 @@ Radeon 8060S와 Direct3D 11을 사용했다. 브라우저 키보드·마우스 �
 정지). 관절 시나리오의 Rust 재현은 아직 없다. 완료 조건은 4개 시나리오의 300프레임 무오류, smoke 예외 목록 제거,
 64명 군중 결정성 hash 유지다.
 
+같은 계열로 보이는 사례(2026-11-24, 예제 사이트 '벽돌 깨기'): Data Scene planar native에서 연속 충돌을 켠 채 회전하지 않는
+dynamic 원(공, 반지름 6, 300px/s, 중력 0·튕김 1·마찰 0)이 static 상자(벽돌 52 × 18) 사이의 한 칸 틈에 들어가면 프레임 단계가
+`physics capacity exceeded`를 던지고 world가 멈춘다. 벽돌을 `despawnPhysicsEntity`로 지우든 body를 끄고 옮기든 같고, 연속 충돌을 끄면
+생기지 않는다. 재현: 벽돌 깨기에서 `configureAutoRigidBodyStep`의 `continuous`를 켜고 넓은 패들을 가만히 둔 채 세 번 발사(약 5초, 매번
+같은 시점). 예제는 연속 충돌을 끄고 쓴다. 회전 상자가 없는 경우이므로 위 1~4가 이 사례도 해결하는지 함께 확인한다.
+
 ### 첫 제품 검증
 
 Core Native 단위 3,735건과 통합 1건, Clippy 및 외부 저장소 검사, Rapier 저장 102건과 Parry

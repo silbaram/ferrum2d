@@ -232,7 +232,7 @@ interface FerrumRuntimeOptions {
 
 | 후보 | 문제 | 제안 |
 | --- | --- | --- |
-| 연속 충돌(CCD) 작업 한도 오류 | planar native에서 CCD를 켠 채 dynamic 공이 static 상자 사이 한 칸 틈에 들어가면 프레임 단계가 `physics capacity exceeded`를 던지고 시뮬레이션이 멈춘다. 재현은 [예제 사이트 계획](example-site-rebuild-plan.md)의 벽돌 깨기 항목. | 우선 높음(정확성). 원인 확인 후 작업 한도 초과를 멈춤이 아닌 처리(이번 단계 CCD 생략 등)와 별도 오류 문구로. |
+| 연속 충돌(CCD) 작업 한도 오류 | planar native에서 CCD를 켠 채 dynamic 공이 static 상자 사이 한 칸 틈에 들어가면 프레임 단계가 `physics capacity exceeded`를 던지고 시뮬레이션이 멈춘다. 재현과 관련 원인은 [통합 3D 물리의 미해결 항목](unified-3d-physics-plan.md#미해결-회전-상자-접촉의-운동-증명-2026-11-22)에 합쳤다. | 우선 높음(정확성). 그 항목의 수정 방향 결정과 함께 진행하고, 작업 한도 초과는 멈춤 대신 구분되는 오류로 알린다. |
 | 충돌 쌍 수치의 의미 | `frame.physics.collisionSolidPairs`·`collisionTriggerPairs`는 한 출력 프레임 안 물리 단계마다 더한 값이라 "지금 겹친 쌍"으로 읽으면 틀린다. | 문서 명확화, 필요하면 "지금 쌍 수" 추가. |
 | 고정 속도 body | 벽돌 깨기 공처럼 속도를 일정하게 유지하려면 매 프레임 코드로 맞춰야 한다. | dynamic body의 최대·고정 속도 옵션 검토. |
 | 전투 모드 없는 충돌 시 제거 | `collisionDespawn` 레시피는 씬 문서에서 HD-2D 전투 모드(`gameplay.combat`)가 필요하다. | 탐험 모드에서도 쓸 수 있게 할지 검토. |
