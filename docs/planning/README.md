@@ -15,13 +15,13 @@
 
 | 문서 | 상태 | 다음 작업 또는 판단 |
 | --- | --- | --- |
-| [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) | 사용자 승인·R1, F1, R2a, F2, R2b, R3 완료(엔진 개선 1순위) | 다음은 기존 smoke 수정(F3), 통합 검증, 그다음 예제 이관. |
+| [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) | 사용자 승인·R1~R3, F1~F3 완료(엔진 개선 1순위) | 다음은 통합 검증 → 예제 이관(E1) → 기존 smoke 6개 진단(F4). CI 실행 방식(D5) 사용자 결정 대기. |
 | [통합 3D 물리](unified-3d-physics-plan.md) | 사용자 승인·개발 진행 중 | 오픈소스 비교, Rust/Wasm 3D 백엔드 도입, 2D 평면·HD-2D 통합 및 수용 검증. 회전 상자 접촉의 운동 증명 한계(물리 실험실 4개 시나리오, 벽돌 깨기 CCD 멈춤) 제품 결정 대기 |
 | [게임 개발 편의성](game-development-convenience-review.md) | 설계 후보·미착수 / 제품 결정 대기 | 외부 맵·실행 진단·reload의 실제 필요와 저장 경계 확정 |
 | [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 연동 미착수 | VX-00 최소 출력·실게임 검증 후 공용 리소스화. 외부 VFX 제작 도구와 Ferrum2D Studio를 구분 |
 | [HD-2D 후속 기능·검증](feature-candidates.md) | 설계 후보 / 환경 검증·제품 결정 대기 | 대상 씬·GPU·브라우저·성능/외형 수용 조건 확보 후 검증 또는 확장 선택. 복원한 Engine의 Data Scene 도구 재연결, 실행 중 native world 재적용 결정 포함 |
 | [배포 후속 검증](deployment-roadmap.md) | 설치 환경 검증 / 운영 정책 결정 대기 | 실제 앱·기기·서명 자료를 확보한 뒤 설치·GUI·업데이트 검증 |
-| [예제 사이트 다시 만들기](example-site-rebuild-plan.md) | 사용자 승인·예제 3개 완료, 엔진 개선 뒤 재개 | 편집기형 예제 사이트에 예제를 하나씩 추가. 다음은 [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) 완료 뒤 새 API로 예제 옮기기 |
+| [예제 사이트 다시 만들기](example-site-rebuild-plan.md) | 사용자 승인·예제 3개 완료, 엔진 개선 뒤 재개 | 편집기형 예제 사이트에 예제를 하나씩 추가. 다음은 [런타임 시작·화면 맞춤](runtime-startup-view-plan.md)의 E1(새 API로 예제 옮기기) |
 
 자동 라이트맵 베이크·IBL·캐스케이드 그림자는 별도 확장 후보다. 기존 조명 계획의 미완료 항목이나
 현재 제품의 필수 기능으로 취급하지 않는다. AI 이미지 생성 서비스 직접 연결도

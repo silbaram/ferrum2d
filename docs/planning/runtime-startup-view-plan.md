@@ -1,6 +1,6 @@
 # 런타임 시작·화면 맞춤 개선
 
-상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→F1→R2a→F2→R2b→R3→F3)마다 Codex가 구현하고 통합 담당이 검증한다.
+상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→F1→R2a→F2→R2b→R3→F3→E1→F4)마다 Codex가 구현하고 통합 담당이 검증한다.
 - R1 완료(`77f94fa`): 통합 검증에서 SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과.
 - [선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패) 완료(`e09767d`): Data Scene smoke 전체 통과.
 - R2a 완료(`fd200dd`, 2026-11-25): 통합 검증에서 SDK 테스트 2,061개, Data Scene smoke 전체(화면 맞춤 사례 포함), 예제 사이트 smoke 통과.
@@ -12,9 +12,12 @@
 - R3 완료(`17f5439`, 2026-11-25): 통합 검증에서 SDK 테스트 2,068개, 공개 API 범위·문서 링크 검사, Data Scene smoke 통과.
   전용 캔버스로 런타임 20개를 만들고 없앤 뒤 활성 WebGL2 컨텍스트 0, 시작 실패·취소 때도 0, 옵션이 없으면 기존처럼 남고 재사용된다.
 - WebGPU 복구 중 화면 맞춤 수정 완료(`a917965`, 후보 표의 항목): 일시정지한 런타임의 복구 사례가 창 크기 2개 × DPR 1·2에서 통과했다.
-- 공식 WebGPU 복구 smoke와 기본 WebGPU 공간 smoke는 물리 진행 저장 거절로 멈춘다(R3 이전 `844b0ab`에서도 같음).
-  [선행 수정 F3](#선행-수정-f3-webgpu-공간-smoke의-진행-저장-거절)에서 고친다.
-- F3에서 스모크의 진행 저장 경로를 수정했다. 검증과 남은 항목은 [재현 목록과 조치](#재현-목록과-조치)에 기록한다.
+- [선행 수정 F3](#선행-수정-f3-webgpu-공간-smoke의-진행-저장-거절) 완료(`a9046ee`, 2026-11-25): SDK·Rust 소스 변경 없음.
+  통합 검증에서 공식 WebGPU 복구 smoke, 공간 조명 보고서 테스트 8종, 평면 조명 smoke, HD-2D 전투 8개 모드 통과.
+  CI 오프스크린 smoke는 원래 실패 지점을 지나 30분 동안 오류가 없었다. 화면 조합 4개의 전체 실행은 통합 검증에서 진행 중이다(Codex는 조합별 실행 통과).
+- F3 중 찾은 별개 실패 6개는 [선행 수정 F4](#선행-수정-f4-기존-smoke-6개-진단)에서 진단한다.
+- 다음(2026-11-25 사용자 결정): 통합 담당의 전체 끝 검증 → [예제 반영 E1](#예제-반영-e1-세-예제를-새-api로) → F4.
+  E1과 F4는 다루는 파일이 겹치지 않아 순서를 바꿀 수 있다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
 새 API로 예제를 옮기는 일부터 다시 시작한다.
@@ -226,6 +229,43 @@ HD-2D `--actions-only`, `--visuals-only`, `--input-only`, `--spawn-only`도 두 
 - 사전 실행의 `smoke:spatial-scene`과 `smoke:sprite-animation-runtime`은 애니메이션 프레임 단언,
   `smoke:data-scene-gameplay`는 장애물의 인스턴스 참조 검증, `smoke:unified-physics-web`은 네이티브 탐색 단언에서 각각 중단됐다.
 
+## 선행 수정 F4: 기존 smoke 6개 진단
+
+F3 검증 중 찾은 별개 실패다(위 "재현 목록과 조치"의 별개 검증 후속). 진행 저장과 무관하며, 6개 중 5개는 CI 단계에 있다.
+CI(`.github/workflows/ci.yml`)는 수동 실행만 있어 2026-06-15 이후 돈 적이 없으므로 언제부터 실패했는지 알 수 없다.
+
+| smoke | 증상(F3 기록) | CI 단계 |
+| --- | --- | --- |
+| `smoke:spatial-scene` | 애니메이션 프레임 단언 | 있음 |
+| `smoke:sprite-animation-runtime` | 애니메이션 프레임 단언 | 있음(`--require-webgpu`) |
+| `smoke:data-scene-gameplay` | 장애물의 인스턴스 참조 검증 | 있음 |
+| `smoke:unified-physics-web` | 네이티브 탐색 단언 | 있음 |
+| `smoke:hd2d-combat`(기본) | 적 128명에서 9프레임을 그려 기준 10프레임 미달 | 있음 |
+| `smoke:spatial-webgpu`(기본, 오프스크린 아님) | 소프트웨어 Chromium의 캔버스 공유 이미지 생성 실패 뒤 픽셀 읽기에서 중단 | 없음(CI는 `--offscreen-target`) |
+
+**할 일:**
+1. 각 실패를 지금 브랜치에서 재현하고 원인을 좁힌다. 가능하면 처음 실패한 커밋을 찾는다.
+   Codex 작업 폴더에서는 Rust를 빌드하지 않는다. 원인이 Rust 쪽이면 거기까지 좁혀 보고한다.
+2. 원인별로 처리한다.
+   - 오래된 테스트(엔진 계약이 바뀌었는데 테스트가 따라가지 못함): F1~F3처럼 테스트를 고친다. 기존 단언은 줄이지 않는다.
+   - 엔진 결함: 고치지 않고 재현 명령·원인·고칠 위치를 보고한다. 통합 담당이 별도 단계로 계획한다.
+   - 환경 한계(소프트웨어 렌더링 속도·GPU 기능): 기준을 바꾸지 않고 근거(같은 사례의 실제 수치 등)를 보고한다. 기준 조정은 보고 뒤 정한다.
+3. [통합 3D 물리](unified-3d-physics-plan.md)가 진행 중인 영역(예: `unified-physics-web`의 탐색)은 진단만 하고 그 계획의 항목으로 넘긴다.
+
+**검증:** 테스트를 고친 smoke는 전체 통과. 나머지는 보고에 재현 명령·원인·제안을 적고, 이 문서의 표에 결과를 남긴다.
+
+**결정 D5 (사용자 결정 대기): CI 실행 방식**
+
+CI는 `c0ad85a`(2026-06-16)부터 수동 실행 전용이다(AGENTS.md "CI 정합 검증"과 운영 문서에 기록). 저장소가 공개라 GitHub Actions 비용은 없다.
+
+| 안 | 내용 | 장단점 |
+| --- | --- | --- |
+| A. 지금처럼 수동 | PR·머지 전에 통합 담당이 수동으로 한 번 실행한다(브랜치 푸시 필요). | 정책 변경 없음. 잊으면 이번처럼 실패가 묻힌다. |
+| B. PR 자동 실행 추가 | `main` 대상 `pull_request`에 기본 검사를 자동 실행하고, 확장 브라우저 묶음은 수동으로 둔다. | 머지 전에 자동으로 확인한다. AGENTS.md와 운영 문서의 "자동 실행 아님" 문구를 고친다. |
+| C. 주기 실행 추가 | 주 1회 `schedule`로 `main`을 검사한다. | 머지가 드물어도 실패를 잡는다. 작업 브랜치는 검사하지 않는다. |
+
+통합 담당 추천은 F4 뒤 B다. CI 설정과 문서 변경은 사용자 결정 뒤 별도 커밋으로 한다.
+
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
 ### 문서 형식
@@ -331,12 +371,36 @@ interface FerrumRuntimeOptions {
   살아 있는 WebGL2 컨텍스트가 0인지(예제 사이트 smoke의 `getContext` 감시 방식), 옵션이 없으면 지금처럼 남는지 본다.
 - 문서: `core.md` "Runtime 생성"의 렌더러 수명 단락, `CHANGELOG.md`.
 
-## 예제 반영 (2순위, R1~R3 뒤)
+## 예제 반영 E1: 세 예제를 새 API로
 
-1. 예제 사이트의 세 예제를 새 API로 옮긴다: `createRenderer`·`AssetLoader`·`createDataSceneView`·`ResizeObserver`·view 재생성 제거,
-   `signal`·`assets`·`display.fit`·`rendererBackend`·`releaseCanvasContext` 사용. 사이트 틀의 `releaseCanvas` 제거.
-   예제 소스 탭에서 "엔진으로 이렇게 시작한다"가 보이게 하는 것이 목적이다.
-2. 그 다음 사이트 전용 공통 도우미(수치 보내기·'표시' 메뉴·이벤트 연결)와 벽돌 깨기의 엔진 HUD·입력 전환을 판단한다.
+2순위 작업이다. 예제 소스 탭에서 "엔진으로 이렇게 시작한다"가 보이게 하는 것이 목적이다.
+예제의 동작·조작·화면·문구는 그대로 두고 시작 코드만 바꾼다.
+
+**바꿀 것** (`examples/site/src/examples/{sprite,collision,breakout}/index.ts`와 `examples/site/src/frame.ts`):
+
+| 지금 | 바꾼 뒤 |
+| --- | --- |
+| `createRenderer`로 렌더러를 만들고 `owner.own(() => renderer.destroy())` | `createFerrumRuntime({ canvas, rendererPreference: host.renderer, webgl2: { clearColor }, webgpu: { clearColor } })`가 렌더러를 만들고 없앤다. |
+| `new AssetLoader(renderer).loadAssets(..., { signal })` | `assets: { textures: { ... } }` |
+| `owner.check()`로 단계마다 떠났는지 확인 | `signal: host.signal`로 시작을 취소한다. 시작 뒤 해제는 지금처럼 `owner.own(() => runtime.destroy())` |
+| `"gpuDevice" in renderer`로 렌더러 추정 | `runtime.rendererBackend` |
+| `createDataSceneView` + 맞춤용 `ResizeObserver` + `setZoom(min(...))`, 다시 적용할 때 view 재생성 | 씬 문서 `display.fit: { width: 640, height: 384 }`와 `runtime.dataScene.view` |
+| `renderer.resourceStats` | `runtime.renderer.resourceStats` |
+| 틀의 `releaseCanvas`(`WEBGL_lose_context`를 직접 호출) | 예제가 `releaseCanvasContext: true`를 쓰고, 틀의 `releaseCanvas`는 지운다. 예제 계약 주석에 이 책임을 적는다. |
+
+- 화면 위 HTML(스프라이트의 기준점 표시 등) 위치를 맞추는 크기 감시는 남긴다. 예제의 화면 요소라 엔진이 맡을 일이 아니다.
+- 스프라이트는 문서를 코드(`documentFor`)로 만들므로 거기에, 충돌·벽돌 깨기는 `scene.json`에 `display.fit`을 넣는다. 씬 파일 탭에 그대로 보인다.
+- WebGPU에서 WebGL2로 대체되면 상태 막대가 이미 실제 렌더러를 보여 준다(`report.renderer`에 `runtime.rendererBackend`). 새 화면 요소는 만들지 않는다.
+- `createOwner`는 시작 뒤 자원(입력 리스너·애니메이션 프레임 등) 정리에 계속 쓴다. `check()`를 쓰는 곳이 없어지면 계약에서 뺄지 보고한다.
+
+**지킬 것:** SDK·Rust 변경 금지. 새 API로 표현할 수 없는 것이 나오면 우회하지 말고 보고한다.
+
+**검증:** `pnpm lint`, `pnpm smoke:example-site`(예제 전환·렌더러 전환 뒤 살아 있는 WebGL2 컨텍스트 수 검사 포함), `git diff --stat -- packages crates`가 비어 있음.
+보고에 예제별 시작 코드 줄 수(바꾸기 전 → 뒤)를 적는다.
+
+**문서:** [예제 사이트 계획](example-site-rebuild-plan.md)의 진행 상황 표(스프라이트 행의 "틀이 직접 놓아준다"), smoke 문서에서 틀의 컨텍스트 해제를 설명하는 곳.
+
+E1 다음에는 사이트 전용 공통 도우미(수치 보내기·'표시' 메뉴·이벤트 연결)와 벽돌 깨기의 엔진 HUD·입력 전환을 판단한다.
 
 ## 이 계획 다음의 엔진 후보 (예제에서 찾은 것, 범위 밖)
 
@@ -357,13 +421,14 @@ interface FerrumRuntimeOptions {
 `docs/engine/data-scene-authoring.md`("기본 2D 표시 설정"), `packages/ferrum-web/src/`의 `createFerrumRuntime.ts`·`createRenderer.ts`·
 `browserPlatformHost.ts`·`assetLoader.ts`·`sceneDisplay.ts`·`dataSceneView.ts`, `packages/ferrum-web/test/createFerrumRuntime.integration.test.ts`·`dataSceneView.test.ts`.
 
-**작업 단위:** R1, F1·F2·F3(선행 수정), R2a(SDK), R2b(Studio), R3을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
-F3는 고칠 사례가 많으면 smoke 묶음별로 커밋을 나눠도 된다.
+**작업 단위:** R1, F1~F4(선행 수정), R2a(SDK), R2b(Studio), R3, E1(예제)을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
+F3·F4는 고칠 사례가 많으면 smoke 묶음별로, E1은 예제별로 커밋을 나눠도 된다.
 앞 단계가 검증을 통과한 뒤 다음 단계로 간다.
 
 **지킬 것:**
 - 새 옵션을 쓰지 않는 기존 호출은 동작·호출 순서·오류가 완전히 같아야 한다.
-- Rust/Wasm, 새 의존성, `examples/site` 변경 금지. 프레임 hot path에 새 JS↔Wasm 왕복을 넣지 않는다(화면 맞춤은 크기 변화·적용 때만).
+- Rust/Wasm, 새 의존성 변경 금지. `examples/site`는 E1에서만 바꾼다. F3·F4·E1은 SDK 소스도 바꾸지 않는다.
+- 프레임 hot path에 새 JS↔Wasm 왕복을 넣지 않는다(화면 맞춤은 크기 변화·적용 때만).
 - 코드 주석은 영어, 문서는 한국어. 공개 타입에는 짧은 TSDoc.
 - 설계가 이 문서와 달라져야 하면 구현 전에 이유를 보고하고 문서를 먼저 고친다.
 
@@ -371,7 +436,7 @@ F3는 고칠 사례가 많으면 smoke 묶음별로 커밋을 나눠도 된다.
 - 개발 중: 바꾼 파일의 타입 검사(`pnpm --filter @ferrum2d/ferrum-web lint`)와 관련 테스트만.
 - 단계 끝: `pnpm --filter @ferrum2d/ferrum-web test`, `pnpm validate:public-api-surface`, `pnpm validate:docs-links`,
   해당 브라우저 smoke(R1 `pnpm smoke:data-scene`·`pnpm smoke:asset-loading`, R2 `pnpm smoke:flat-pixel-perfect`, R3 추가한 smoke).
-  R2b는 `pnpm --filter @ferrum2d/studio build`와 Studio viewer smoke.
+  R2b는 `pnpm --filter @ferrum2d/studio build`와 Studio viewer smoke. F4·E1은 각 절의 검증.
 - 전체 끝(통합 담당이 한 번): `pnpm lint`, `pnpm build`, `pnpm package:check:ferrum-web`, `pnpm smoke:example-site`(기존 예제 회귀).
 - Rust를 바꾸지 않으므로 `cargo` 검사는 생략하고 그 사유를 보고에 적는다.
 
