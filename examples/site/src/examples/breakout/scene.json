@@ -1,6 +1,9 @@
 {
   "format": "ferrum2d.consumer.scene-authoring",
   "version": 1,
+  "display": {
+    "fit": { "width": 640, "height": 384 }
+  },
   "behaviorRecipes": {
     "entities": {}
   },

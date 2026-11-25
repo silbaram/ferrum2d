@@ -1,6 +1,5 @@
 import {
-  AssetLoader, createDataSceneView, createFerrumRuntime, createRenderer,
-  type CollisionEventView, type DataSceneView, type PhysicsEntityHandle,
+  createFerrumRuntime, type CollisionEventView, type PhysicsEntityHandle,
 } from "@ferrum2d/ferrum-web/core";
 import type { SceneAuthoringDocumentSpec } from "@ferrum2d/ferrum-web/authoring";
 import { createOwner, type ExampleHost, type ExampleSession } from "../../example";
@@ -65,18 +64,7 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
   const owner = createOwner(signal);
   try {
     const clearColor: [number, number, number, number] = [0.027, 0.039, 0.059, 1];
-    const renderer = await createRenderer(canvas, { preferred: host.renderer, webgl2: { clearColor }, webgpu: { clearColor } });
-    owner.own(() => renderer.destroy());
-    owner.check();
-    const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
-
-    const assets = new AssetLoader(renderer);
     const url = (file: string) => new URL(`examples/collision/${file}`, document.baseURI).href;
-    await assets.loadAssets({ textures: {
-      robot: url("robot.png"), floor: url("floor.png"), wall: url("wall.png"), energy: url("energy.png"), zone: url("zone.png"),
-    } }, undefined, { signal });
-    owner.check();
-
     let values: Values = { ...FIRST };
     const progress: Progress = { robot: { ...START }, collected: new Set() };
     const debug = { colliders: true, contacts: false };
@@ -88,7 +76,12 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
     let names = new Map<string, string>();
     const nameOf = (id: number, generation: number) => names.get(`${id}:${generation}`);
     const runtime = await createFerrumRuntime({
-      canvas, renderer, assetHost: assets, dataScene: spec(documentFor(values, progress)), autostart: false,
+      canvas, rendererPreference: host.renderer, signal, releaseCanvasContext: true,
+      webgl2: { clearColor }, webgpu: { clearColor },
+      assets: { textures: {
+        robot: url("robot.png"), floor: url("floor.png"), wall: url("wall.png"), energy: url("energy.png"), zone: url("zone.png"),
+      } },
+      dataScene: spec(documentFor(values, progress)), autostart: false,
       engine: { includeCollisionEvents: true, includeGameplayEvents: true, fixedTimestep: { enabled: true, stepSeconds: 1 / 60 } },
       // The renderer draws the engine's physics lines; the "표시" menu chooses which ones the engine writes.
       physicsDebugLines: { colliders: true },
@@ -105,9 +98,9 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
         const now = performance.now();
         if (now - last < 200) return;
         last = now;
-        const resources = renderer.resourceStats?.();
+        const resources = runtime.renderer.resourceStats?.();
         host.report({
-          renderer: backend, fps, entities: frame.entityCount, commands: rendererStats.renderCommandCount,
+          renderer, fps, entities: frame.entityCount, commands: rendererStats.renderCommandCount,
           drawCalls: rendererStats.drawCalls, textures: resources?.textureCount, textureBytes: resources?.textureBytes,
           extra: [
             { label: text.contactCount, value: contacts.size },
@@ -118,10 +111,13 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
       },
     });
     owner.own(() => runtime.destroy());
-    owner.check();
-    const engine = runtime.engine;
+    signal.throwIfAborted();
+    const { engine, dataScene, rendererBackend } = runtime;
+    if (!dataScene || rendererBackend === "custom") throw new Error("Expected a Data Scene and an owned renderer.");
+    const renderer = rendererBackend;
+    const { view } = dataScene;
     const physicsSetup = () => {
-      handles = runtime.dataScene!.result.entityHandles;
+      handles = dataScene.result.entityHandles;
       names = new Map(Object.entries(handles).map(([name, handle]) => [`${handle.entityId}:${handle.entityGeneration}`, name]));
       engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 0 });
       // The engine picks the robot's walk or idle clip from how far it actually moved in each step.
@@ -130,17 +126,11 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
     };
     physicsSetup();
 
-    // Fit the 640 × 384 world to the canvas.
-    let view: DataSceneView = createDataSceneView(engine, renderer, canvas, { x: WORLD.width / 2, y: WORLD.height / 2 });
-    const fit = () => {
-      if (canvas.clientWidth > 0 && canvas.clientHeight > 0) view.setZoom(Math.min(canvas.clientWidth / WORLD.width, canvas.clientHeight / WORLD.height));
-    };
-
     // The red zone lights up while the robot is inside it, straight from the trigger events.
     const zone = document.createElement("span"); zone.className = "zone-mark";
     overlay.append(zone);
     const place = () => {
-      if (canvas.clientWidth <= 0) return;
+      if (canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return;
       const from = view.worldToScreen({ x: ZONE.x - ZONE.width / 2, y: ZONE.y - ZONE.height / 2 });
       const to = view.worldToScreen({ x: ZONE.x + ZONE.width / 2, y: ZONE.y + ZONE.height / 2 });
       Object.assign(zone.style, { left: `${from.x}px`, top: `${from.y}px`, width: `${to.x - from.x}px`, height: `${to.y - from.y}px` });
@@ -150,17 +140,17 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
       .filter(instance => instance.id.startsWith("energy_")).map(instance => [instance.id, instance]));
     function pop(name: string): void {
       const cell = cells.get(name);
-      if (!cell || canvas.clientWidth <= 0) return;
+      if (!cell || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return;
       const at = view.worldToScreen({ x: cell.x, y: cell.y - 14 });
       const label = document.createElement("span"); label.className = "pickup-pop"; label.textContent = "+1";
       label.style.left = `${at.x}px`; label.style.top = `${at.y}px`;
       label.addEventListener("animationend", () => label.remove(), { once: true });
       overlay.append(label);
     }
-    const resize = new ResizeObserver(() => { fit(); place(); });
+    const resize = new ResizeObserver(place);
     resize.observe(canvas);
     owner.own(() => resize.disconnect());
-    fit(); place();
+    place();
 
     const kinds: Partial<Record<CollisionEventView["kind"], { label: typeof text.events.enter; tone: "enter" | "exit" | "info" }>> = {
       enter: { label: text.events.enter, tone: "enter" },
@@ -232,13 +222,12 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
         queued = 0;
         if (signal.aborted) return;
         const document = documentFor(values, progress);
-        runtime.dataScene!.reapply(spec(document));
+        dataScene.reapply(spec(document));
         // The new entities report their own begin events; the old pairs end with the old entities.
         contacts.clear(); overlaps.clear();
         physicsSetup();
         zone.dataset.inside = "false";
-        view = createDataSceneView(engine, renderer, canvas, { x: WORLD.width / 2, y: WORLD.height / 2 });
-        fit(); place();
+        place();
         host.showScene(document, "robot");
       });
     };

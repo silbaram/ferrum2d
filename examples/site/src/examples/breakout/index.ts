@@ -1,6 +1,5 @@
 import {
-  AssetLoader, createDataSceneView, createFerrumRuntime, createRenderer,
-  type CollisionEventView, type DataSceneView, type PhysicsEntityHandle,
+  createFerrumRuntime, type CollisionEventView, type PhysicsEntityHandle,
 } from "@ferrum2d/ferrum-web/core";
 import type { SceneAuthoringDocumentSpec } from "@ferrum2d/ferrum-web/authoring";
 import { createOwner, type ExampleHost, type ExampleSession } from "../../example";
@@ -55,17 +54,7 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
   const owner = createOwner(signal);
   try {
     const clearColor: [number, number, number, number] = [0.027, 0.039, 0.059, 1];
-    const renderer = await createRenderer(canvas, { preferred: host.renderer, webgl2: { clearColor }, webgpu: { clearColor } });
-    owner.own(() => renderer.destroy());
-    owner.check();
-    const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
-
-    const assets = new AssetLoader(renderer);
     const url = (file: string) => new URL(`examples/breakout/${file}`, document.baseURI).href;
-    await assets.loadAssets({ textures: Object.fromEntries(["field", "wall", "brick", "paddle", "ball", "miss"].map(name => [name, url(`${name}.png`)])) },
-      undefined, { signal });
-    owner.check();
-
     let values: Values = { ...FIRST }, phase: Phase = "ready", paused = false;
     let score = 0, lives = LIVES, last = 0, ready = false;
     let bricks = new Set<string>();
@@ -74,7 +63,10 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
     const nameOf = (id: number, generation: number) => names.get(`${id}:${generation}`);
 
     const runtime = await createFerrumRuntime({
-      canvas, renderer, assetHost: assets, dataScene: spec(documentFor(values)), autostart: false,
+      canvas, rendererPreference: host.renderer, signal, releaseCanvasContext: true,
+      webgl2: { clearColor }, webgpu: { clearColor },
+      assets: { textures: Object.fromEntries(["field", "wall", "brick", "paddle", "ball", "miss"].map(name => [name, url(`${name}.png`)])) },
+      dataScene: spec(documentFor(values)), autostart: false,
       engine: { includeCollisionEvents: true, fixedTimestep: { enabled: true, stepSeconds: 1 / 60 } },
       physicsDebugLines: { colliders: true },
       onFrame: ({ frame, rendererStats, fps }) => {
@@ -84,22 +76,25 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
         const now = performance.now();
         if (now - last < 200) return;
         last = now;
-        const resources = renderer.resourceStats?.();
+        const resources = runtime.renderer.resourceStats?.();
         host.report({
-          renderer: backend, fps, entities: frame.entityCount, commands: rendererStats.renderCommandCount,
+          renderer, fps, entities: frame.entityCount, commands: rendererStats.renderCommandCount,
           drawCalls: rendererStats.drawCalls, textures: resources?.textureCount, textureBytes: resources?.textureBytes,
           extra: [{ label: text.score, value: score }, { label: text.lives, value: lives }, { label: text.bricks, value: bricks.size }],
         });
       },
     });
     owner.own(() => runtime.destroy());
-    owner.check();
-    const engine = runtime.engine;
+    signal.throwIfAborted();
+    const { engine, dataScene, rendererBackend } = runtime;
+    if (!dataScene || rendererBackend === "custom") throw new Error("Expected a Data Scene and an owned renderer.");
+    const renderer = rendererBackend;
+    const { view } = dataScene;
 
     const debug = { colliders: false, contacts: false };
     const showDebug = () => engine.setPhysicsDebugLinesEnabled(debug.colliders || debug.contacts ? { ...debug } : false);
     const physicsSetup = () => {
-      handles = runtime.dataScene!.result.entityHandles;
+      handles = dataScene.result.entityHandles;
       names = new Map(Object.entries(handles).map(([name, handle]) => [`${handle.entityId}:${handle.entityGeneration}`, name]));
       bricks = new Set(Object.keys(handles).filter(name => name.startsWith("brick_")));
       // Continuous collision stays off: at these speeds the ball moves at most 8px a step, less than any
@@ -109,11 +104,6 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
       showDebug();
     };
     physicsSetup();
-
-    let view: DataSceneView = createDataSceneView(engine, renderer, canvas, { x: WORLD.width / 2, y: WORLD.height / 2 });
-    const fit = () => {
-      if (canvas.clientWidth > 0 && canvas.clientHeight > 0) view.setZoom(Math.min(canvas.clientWidth / WORLD.width, canvas.clientHeight / WORLD.height));
-    };
 
     // Score, lives and the start, pause and end messages are drawn over the picture by this page.
     const scoreValue = el("b", undefined, "0");
@@ -131,17 +121,17 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
       if (message) setUiText(bannerText, message);
     };
     const place = () => {
-      if (canvas.clientWidth <= 0) return;
+      if (canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return;
       const at = (box: HTMLElement, x: number, y: number) => {
         const point = view.worldToScreen({ x, y });
         box.style.left = `${point.x}px`; box.style.top = `${point.y}px`;
       };
       at(scoreBox, 40, 40); at(livesBox, 600, 40); at(banner, WORLD.width / 2, 250);
     };
-    const resize = new ResizeObserver(() => { fit(); place(); });
+    const resize = new ResizeObserver(place);
     resize.observe(canvas);
     owner.own(() => resize.disconnect());
-    fit(); place(); showHud();
+    place(); showHud();
 
     const position = (name: string) => handles[name] ? engine.getPhysicsEntity(handles[name]) : undefined;
     const aim = (angle: number) => {
@@ -250,21 +240,20 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
 
     // A new game applies the document again: all bricks back, the paddle in the middle.
     let queued = 0;
-    function newGame(): void {
+    const newGame = () => {
       if (queued) return;
       queued = requestAnimationFrame(() => {
         queued = 0;
         if (signal.aborted) return;
         const document = documentFor(values);
-        runtime.dataScene!.reapply(spec(document));
-        if (paused) runtime.dataScene!.pause();
+        dataScene.reapply(spec(document));
+        if (paused) dataScene.pause();
         physicsSetup();
         phase = "ready"; score = 0; lives = LIVES;
-        view = createDataSceneView(engine, renderer, canvas, { x: WORLD.width / 2, y: WORLD.height / 2 });
-        fit(); place(); showHud();
+        place(); showHud();
         host.showScene(document, "ball");
       });
-    }
+    };
     owner.own(() => cancelAnimationFrame(queued));
 
     const speed = controls.slider({ label: text.speed, min: 180, max: 480, step: 20, value: FIRST.speed, onInput: value => { values = { ...values, speed: value }; } });
@@ -290,7 +279,7 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
       },
       setPaused(next) {
         paused = next;
-        if (next) runtime.dataScene!.pause(); else runtime.dataScene!.resume();
+        if (next) dataScene.pause(); else dataScene.resume();
         held.clear();
         showHud();
       },

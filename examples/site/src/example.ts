@@ -75,7 +75,7 @@ export interface ExampleEvent {
 }
 
 export interface ExampleHost {
-  /** A new canvas for every start: a canvas keeps the first context type it was given. */
+  /** A fresh canvas for a runtime-owned renderer with releaseCanvasContext enabled. */
   canvas: HTMLCanvasElement;
   /** A layer the size of the canvas, for markers over the picture. It does not take pointer input. */
   overlay: HTMLElement;
@@ -120,10 +120,6 @@ export function createOwner(signal: AbortSignal) {
     /** Adopts a resource; one that arrives after the abort is released at once. */
     own(dispose: () => void): void {
       if (destroyed) dispose(); else disposers.push(dispose);
-    },
-    /** Throws when the example already left, so startup stops at the next step. */
-    check(): void {
-      if (signal.aborted) throw new DOMException("The example left before it started.", "AbortError");
     },
     destroy,
   };

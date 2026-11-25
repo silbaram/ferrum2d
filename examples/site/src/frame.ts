@@ -408,25 +408,19 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
   resize.observe(viewport);
   fit();
 
-  // Session lifecycle. A renderer's destroy() frees its GPU objects but keeps the context for reuse; every
-  // start here uses a new canvas, so the frame lets go of the old context once its session has ended.
-  // Otherwise moving between examples would pile up contexts toward the browser's limit.
-  const releaseCanvas = (canvas: HTMLCanvasElement) => {
-    try { canvas.getContext("webgl2")?.getExtension("WEBGL_lose_context")?.loseContext(); } catch { /* not a WebGL canvas */ }
-  };
-  interface Run { controller: AbortController; canvas: HTMLCanvasElement; settled: boolean; session?: ExampleSession }
+  // Each example owns its runtime. Abort also cancels startup before a session is returned.
+  interface Run { controller: AbortController; session?: ExampleSession }
   let active: Run | undefined, lastReport = 0;
   const stop = () => {
     const run = active; active = undefined;
     if (!run) return;
     run.controller.abort();
-    // A start still in flight releases its canvas itself when it settles.
-    if (run.settled) { run.session?.destroy(); releaseCanvas(run.canvas); }
+    run.session?.destroy();
   };
   async function start(): Promise<void> {
     stop();
     const canvas = el("canvas", "ex-canvas"); uiAttribute(canvas, "aria-label", text.liveView(example.title));
-    const attempt: Run = { controller: new AbortController(), canvas, settled: false };
+    const attempt: Run = { controller: new AbortController() };
     active = attempt;
     const { signal } = attempt.controller;
     numbers = undefined;
@@ -440,7 +434,7 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
     setState("loading");
     try {
       const run = await example.load();
-      if (signal.aborted) { attempt.settled = true; return; }
+      if (signal.aborted) return;
       const started = await run({
         canvas, overlay, renderer, signal,
         controls: createControls(fields, signal),
@@ -462,15 +456,13 @@ export function mountExample(main: HTMLElement, options: FrameOptions): { refres
           if (current === "engine" && now - lastReport > 180) { lastReport = now; renderTab(); }
         },
       });
-      attempt.settled = true;
-      if (signal.aborted) { started.destroy(); releaseCanvas(canvas); return; }
+      if (signal.aborted) { started.destroy(); return; }
       attempt.session = started;
       pause.hidden = !started.setPaused;
       setState("running");
     } catch (error) {
       // The example released what it made before rejecting.
-      attempt.settled = true;
-      if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) { releaseCanvas(canvas); return; }
+      if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
       console.error(error);
       setState("error", error instanceof Error ? error.message : String(error));
     }

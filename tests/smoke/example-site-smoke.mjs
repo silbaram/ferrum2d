@@ -8,12 +8,16 @@ import {chromium} from 'playwright-core';
 // (docs/planning/example-site-rebuild-plan.md): the shell, then each example's screen, controls and lifecycle.
 // Run `pnpm build:pages` first; `pnpm smoke:example-site` does.
 const root = resolve('dist-pages'), prefix = '/ferrum2d/';
+const spriteTexture = prefix + 'examples/sprite/robot.png';
+let holdSpriteTexture = false;
 const formerRoutes = ['starter-runtime', 'physics-sandbox', 'breakout', 'platformer', 'topdown-shooter', 'pixel-art'];
 const types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.woff2': 'font/woff2', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.wasm': 'application/wasm'};
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
   if (!url.pathname.startsWith(prefix)) { res.writeHead(404).end(); return; }
+  // Leave the request pending so the smoke can leave during runtime asset loading.
+  if (holdSpriteTexture && url.pathname === spriteTexture) return;
   let file = resolve(root, decodeURIComponent(url.pathname.slice(prefix.length)));
   if (file !== root && !file.startsWith(root + sep)) { res.writeHead(403).end(); return; }
   if (url.pathname.endsWith('/')) file = resolve(file, 'index.html');
@@ -56,6 +60,7 @@ const watch = page => {
   page.on('console', message => { if (message.type() === 'error') errors.push(`${page.url()}: ${message.text()}`); });
   page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
 };
+const assertSceneFit = json => assert.deepEqual(JSON.parse(json).display.fit, {width: 640, height: 384});
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
 const status = async url => (await fetch(url)).status;
 let activePage;
@@ -199,6 +204,7 @@ try {
   await page.waitForFunction(x => [...document.querySelectorAll('.dock-panel .ln.hl')]
     .some(line => line.textContent.trim() === `"x": ${x},`), position);
   const sceneJson = await page.locator('.dock-scene pre').textContent();
+  assertSceneFit(sceneJson);
   const draws = await page.evaluate(() => window.__draws);
   await language.selectOption('en');
   assert.equal(page.url(), base + '?example=sprite');
@@ -293,11 +299,13 @@ try {
     await page.waitForSelector('.dot[data-state=running], .dot[data-state=error]', {timeout: 30000});
     assert.equal(await page.locator('.dot').getAttribute('data-state'), 'running');
     assert.equal(await first.evaluate(canvas => canvas.isConnected), false, 'a renderer switch uses a new canvas');
+    await page.waitForFunction(canvas => window.__webgl2Contexts.some(context => context.canvas === canvas && context.isContextLost()), first);
     await page.waitForFunction(() => /FPS/.test(document.querySelector('.sb').textContent));
     rendererSwitch = (await page.locator('.sb').textContent()).match(/WebGPU|WebGL2/)[0];
     await page.locator('.pb-select').selectOption('webgl2');
     await page.waitForURL(base + '?example=sprite');
     await page.waitForSelector('.dot[data-state=running]', {timeout: 30000});
+    assert.equal(await liveContexts(page), 1, 'only the current WebGL2 context survives switching back');
   }
 
   // Leaving releases the renderer; so does leaving while the example is still starting.
@@ -313,6 +321,30 @@ try {
     await page.locator('.brand').click(); await page.waitForSelector('.home');
     await page.waitForTimeout(1500);
     await released(page, `leaving ${wait}ms into startup`);
+  }
+
+  // Disable the browser cache and leave while a named texture fetch is still pending.
+  const textureUrl = new URL(spriteTexture, base).href;
+  await page.route(textureUrl, route => route.continue());
+  holdSpriteTexture = true;
+  try {
+    await Promise.all([
+      page.waitForRequest(textureUrl),
+      page.locator('.item-row', {hasText: '스프라이트 그리기'}).click(),
+    ]);
+    assert.equal(await page.locator('.dot').getAttribute('data-state'), 'loading');
+    assert.equal(await liveContexts(page), 1, 'the runtime created a context before reading the texture');
+    const [failure] = await Promise.all([
+      page.waitForEvent('requestfailed', request => request.url() === textureUrl),
+      page.locator('.brand').click(),
+    ]);
+    assert.equal(failure.failure()?.errorText, 'net::ERR_ABORTED');
+    await page.waitForSelector('.home');
+    await page.waitForFunction(() => window.__webgl2Contexts.every(context => context.isContextLost()));
+    await released(page, 'leaving during runtime asset loading');
+  } finally {
+    holdSpriteTexture = false;
+    await page.unroute(textureUrl);
   }
 
   // Collisions and triggers: opened with the sprite example's "next" button. The robot moves by key; walls
@@ -348,6 +380,7 @@ try {
   await page.getByRole('tab', {name: '씬 파일'}).click();
   // Only the inner walls turn see-through, so this tint marks the new document.
   await page.waitForFunction(() => document.querySelector('.dock-panel')?.textContent.includes('"tint": "#ffffff59"'));
+  assertSceneFit(await page.locator('.dock-scene pre').textContent());
   await page.getByRole('tab', {name: /^이벤트/}).click();
   await page.evaluate(() => document.activeElement?.blur());
   await walkUntil('ArrowLeft', '트리거 나감robot ↔ inner_b');
@@ -407,6 +440,7 @@ try {
   await page.getByRole('button', {name: '넓게'}).click();
   await page.getByRole('tab', {name: '씬 파일'}).click();
   await page.waitForFunction(() => /"width": 112/.test(document.querySelector('.dock-panel').textContent));
+  assertSceneFit(await page.locator('.dock-scene pre').textContent());
   await statusShows(/점수 0.*목숨 3.*벽돌 50/);
   await page.getByRole('button', {name: '처음 값으로'}).click();
   await page.waitForTimeout(100);

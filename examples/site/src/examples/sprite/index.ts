@@ -1,4 +1,4 @@
-import { AssetLoader, createDataSceneView, createFerrumRuntime, createRenderer, type DataSceneView } from "@ferrum2d/ferrum-web/core";
+import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
 import type { SceneAuthoringDocumentSpec } from "@ferrum2d/ferrum-web/authoring";
 import { createOwner, type ExampleHost, type ExampleSession } from "../../example";
 import { spriteControls as text } from "./messages";
@@ -30,7 +30,10 @@ interface Instance {
   scale?: number;
   props: { components: { visual: { originY?: number; tint?: string } } };
 }
-interface SceneDocument { sceneComposition: { fragments: { main: { instances: Instance[] } } } }
+interface SceneDocument {
+  display: { fit: typeof WORLD };
+  sceneComposition: { fragments: { main: { instances: Instance[] } } };
+}
 
 /** The scene with these values: drawing properties are scene data, the engine draws them. */
 function documentFor(values: Values): SceneDocument {
@@ -45,7 +48,7 @@ function documentFor(values: Values): SceneDocument {
   visual.originY = values.origin === "feet" ? 1 : 0.5;
   visual.tint = values.color + Math.round(values.opacity / 100 * 255).toString(16).padStart(2, "0");
   if (!values.ghost) fragment.instances = fragment.instances.filter(instance => instance.id !== "origin");
-  return document;
+  return { ...document, display: { fit: WORLD } };
 }
 const spec = (document: SceneDocument) => document as unknown as SceneAuthoringDocumentSpec;
 
@@ -54,50 +57,41 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
   const owner = createOwner(signal);
   try {
     const clearColor: [number, number, number, number] = [0.027, 0.039, 0.059, 1];
-    const renderer = await createRenderer(canvas, { preferred: host.renderer, webgl2: { clearColor }, webgpu: { clearColor } });
-    owner.own(() => renderer.destroy());
-    owner.check();
-    const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
-
-    // Two small textures, read once. Changing a setting never reloads them.
-    const assets = new AssetLoader(renderer);
     const url = (file: string) => new URL(`examples/sprite/${file}`, document.baseURI).href;
-    await assets.loadAssets({ textures: { robot: url("robot.png"), panel: url("panel.png") } }, undefined, { signal });
-    owner.check();
-
     let values: Values = { ...FIRST }, last = 0;
     const runtime = await createFerrumRuntime({
-      canvas, renderer, assetHost: assets, dataScene: spec(documentFor(values)), autostart: false,
+      canvas, rendererPreference: host.renderer, signal, releaseCanvasContext: true,
+      webgl2: { clearColor }, webgpu: { clearColor },
+      assets: { textures: { robot: url("robot.png"), panel: url("panel.png") } },
+      dataScene: spec(documentFor(values)), autostart: false,
       onFrame: ({ frame, rendererStats, fps }) => {
         const now = performance.now();
         if (now - last < 200) return;
         last = now;
-        const resources = renderer.resourceStats?.();
-        host.report({ renderer: backend, fps, entities: frame.entityCount, commands: rendererStats.renderCommandCount,
+        const resources = runtime.renderer.resourceStats?.();
+        host.report({ renderer, fps, entities: frame.entityCount, commands: rendererStats.renderCommandCount,
           drawCalls: rendererStats.drawCalls, textures: resources?.textureCount, textureBytes: resources?.textureBytes });
       },
     });
     owner.own(() => runtime.destroy());
-    owner.check();
-
-    // Fit the 640 × 384 world to the canvas and keep the camera on its center.
-    let view: DataSceneView = createDataSceneView(runtime.engine, renderer, canvas, { x: WORLD.width / 2, y: WORLD.height / 2 });
-    const fit = () => {
-      if (canvas.clientWidth > 0 && canvas.clientHeight > 0) view.setZoom(Math.min(canvas.clientWidth / WORLD.width, canvas.clientHeight / WORLD.height));
-    };
+    signal.throwIfAborted();
+    const { dataScene, rendererBackend } = runtime;
+    if (!dataScene || rendererBackend === "custom") throw new Error("Expected a Data Scene and an owned renderer.");
+    const renderer = rendererBackend;
+    const { view } = dataScene;
 
     // The pivot: position, rotation and scale all apply around this point.
     const pivot = document.createElement("span"); pivot.className = "pivot";
     overlay.append(pivot);
     const place = () => {
-      if (canvas.clientWidth <= 0) return;
+      if (canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return;
       const point = view.worldToScreen({ x: values.x, y: values.y });
       pivot.style.transform = `translate(${point.x}px, ${point.y}px)`;
     };
-    const resize = new ResizeObserver(() => { fit(); place(); });
+    const resize = new ResizeObserver(place);
     resize.observe(canvas);
     owner.own(() => resize.disconnect());
-    fit(); place();
+    place();
 
     // Setting changes edit the scene document and apply it again, at most once a frame.
     let queued = 0;
@@ -107,9 +101,8 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
         queued = 0;
         if (signal.aborted) return;
         const document = documentFor(values);
-        runtime.dataScene!.reapply(spec(document));
-        view = createDataSceneView(runtime.engine, renderer, canvas, { x: WORLD.width / 2, y: WORLD.height / 2 });
-        fit(); place();
+        dataScene.reapply(spec(document));
+        place();
         host.showScene(document, "robot");
       });
     };
