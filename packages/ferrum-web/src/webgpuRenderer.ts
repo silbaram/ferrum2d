@@ -16,6 +16,20 @@ import type { PostProcessStackInput } from "./cameraPostProcessing.js";
 import type { RenderCommandBufferView, PhysicsDebugLineBufferView } from "./wasmBridge.js";
 import type { PixelMaskTerrain, PixelMaskTerrainAlphaPatch, PixelMaskTerrainTextureUploadOptions } from "./pixelMaskTerrain.js";
 import { rgbaFromAlpha } from "./webgpuTextureStore.js";
+
+const deviceRecoveryEvents = new WeakMap<WebGPURenderer, EventTarget>();
+
+/** Internal hook for runtime layout once the replacement backend is ready. */
+export function observeWebGpuDeviceRecovery(renderer: WebGPURenderer, ready: () => void): () => void {
+    let events = deviceRecoveryEvents.get(renderer);
+    if (!events) {
+        events = new EventTarget();
+        deviceRecoveryEvents.set(renderer, events);
+    }
+    events.addEventListener("ready", ready);
+    return () => events.removeEventListener("ready", ready);
+}
+
 /** Stable renderer facade. GPU objects belong to a replaceable backend; simulation stays in Rust. */
 export class WebGPURenderer implements Renderer {
     readonly supportsSpatialScene = true;
@@ -170,6 +184,7 @@ export class WebGPURenderer implements Renderer {
             this.loss = undefined;
             this.status = "ready";
             this.watch(next);
+            deviceRecoveryEvents.get(this)?.dispatchEvent(new Event("ready"));
             return true;
         }
         catch (error) {

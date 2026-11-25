@@ -87,7 +87,7 @@ import { UiOverlay } from "./uiOverlay.js";
 import type { UiOverlayActionEvent, UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
 import { WebGL2Renderer, type WebGL2RendererOptions } from "./webgl2Renderer.js";
 import type { ColorManagementMode } from "./colorManagement.js";
-import { WebGPURenderer, type WebGPURendererOptions } from "./webgpuRenderer.js";
+import { observeWebGpuDeviceRecovery, WebGPURenderer, type WebGPURendererOptions } from "./webgpuRenderer.js";
 import type { PhysicsDebugLineBufferView } from "./wasmBridge.js";
 import { RuntimeFrameRenderer } from "./runtimeFrameRenderer.js";
 import { playRuntimeCutsceneAudio } from "./runtimeCutsceneAudio.js";
@@ -721,14 +721,28 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     }
 
     throwIfRuntimeStartupAborted(signal);
-    detachRendererResize = observeRendererResize(canvas, () => {
+    let fitResizePending = false;
+    const resize = (): void => {
       if (!activeFit) {
         runtimeRenderer.resize();
         return;
       }
+      if (runtimeRenderer.isRenderReady?.() === false) {
+        fitResizePending = true;
+        return;
+      }
+      fitResizePending = false;
       const zoom = fitDataSceneZoom(canvas, activeFit);
       if (zoom !== undefined) viewBinding.view.setZoom(zoom);
-    });
+    };
+    detachRendererResize = observeRendererResize(canvas, resize);
+    if (dataScene && runtimeRenderer instanceof WebGPURenderer) {
+      const detachResize = detachRendererResize;
+      const detachRecovery = observeWebGpuDeviceRecovery(runtimeRenderer, () => {
+        if (fitResizePending && activeFit) resize();
+      });
+      detachRendererResize = () => disposeRuntimeResources([detachRecovery, detachResize]);
+    }
     return runtime;
   } catch (error) {
     const startupError = signal?.aborted && !(error instanceof DOMException && error.name === "AbortError")

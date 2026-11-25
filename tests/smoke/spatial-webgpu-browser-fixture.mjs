@@ -660,3 +660,53 @@ export async function probeSpatialRecovery(){
   const canvas=document.createElement('canvas');document.body.replaceChildren(canvas);
   const {data,...result}=await probe(canvas,'webgpu','orthographic',true);return result;
 }
+
+export async function probeFlatFitRecovery() {
+  const canvas = document.createElement("canvas");
+  if (window.disposeSpatialGpuTarget) canvas.dataset.spatialGpuTarget = "true";
+  const resize = (width, height) => {
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    window.dispatchEvent(new Event("resize"));
+  };
+  document.body.replaceChildren(canvas);
+  resize(640, 360);
+  const fit = { width: 320, height: 180 };
+  let frames = 0;
+  const runtime = await createFerrumRuntime({
+    canvas, rendererPreference: "webgpu", fit, onFrame: () => { frames++; },
+    dataScene: {
+      format: "ferrum2d.consumer.scene-authoring",
+      version: 1,
+      sceneComposition: { initialFragment: "main", prefabs: {}, fragments: { main: { instances: [] } } },
+      behaviorRecipes: { entities: {} },
+    },
+  });
+  try {
+    const renderer = runtime.renderer;
+    check(runtime.rendererBackend === "webgpu", "Fit recovery requires a real WebGPU device");
+    runtime.start();
+    runtime.pause();
+    const view = runtime.dataScene.view;
+    const center = { x: 37, y: 52 };
+    view.setCamera({ ...center, smoothTimeSeconds: 0 });
+    const device = renderer.gpuDevice();
+    device.destroy();
+    await device.lost;
+    check(renderer.deviceState().status === "lost", "WebGPU device loss was not observed");
+    resize(480, 240);
+    const recovered = renderer.recoverDevice();
+    check(renderer.deviceState().status === "recovering", "WebGPU recovery was not pending");
+    resize(350, 460);
+    await recovered;
+    const logicalViewport = renderer.viewportSize();
+    const camera = { x: runtime.engine.cameraX(), y: runtime.engine.cameraY() };
+    const point = view.worldToScreen(center);
+    const snapshot = view.snapshot();
+    return { generation: renderer.deviceState().generation, frames, camera, point, logicalViewport, zoom: snapshot.zoom };
+  } finally {
+    runtime.destroy();
+    window.disposeSpatialGpuTarget?.(canvas);
+    canvas.remove();
+  }
+}

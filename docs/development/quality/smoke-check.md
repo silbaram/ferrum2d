@@ -605,6 +605,9 @@ packed Chromium은 64개 mixed query/65 hits, closest/truncation, 대기 target 
 
 `pnpm smoke:webgpu-recovery`는 실제 장치 손실 후 명시적 복구, 새 backend와 캐시 재준비,
 픽셀 일치·기존 참조/handle 수명·재실패와 terminal destroy를 검사한다.
+일시 정지한 평면 런타임에서 장치 손실 및 복구 중 캔버스 크기를 바꿔 복구 직후
+최신 맞춤 배율·좌표 변환과 게임 카메라 위치를 확인한다.
+빌드가 준비되어 있으면 화면 맞춤 사례만 `node tests/smoke/spatial-webgpu-browser-smoke.mjs --fit-recovery-only --offscreen-target`로 실행할 수 있다.
 자동 재시도 UI나 모든 실제 드라이버의 복구 성공을 보장하는 검사는 아니다.
 
 ## Studio 작성·저장·업데이트
