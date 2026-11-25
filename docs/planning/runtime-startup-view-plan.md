@@ -14,10 +14,14 @@
 - WebGPU 복구 중 화면 맞춤 수정 완료(`a917965`, 후보 표의 항목): 일시정지한 런타임의 복구 사례가 창 크기 2개 × DPR 1·2에서 통과했다.
 - [선행 수정 F3](#선행-수정-f3-webgpu-공간-smoke의-진행-저장-거절) 완료(`a9046ee`, 2026-11-25): SDK·Rust 소스 변경 없음.
   통합 검증에서 공식 WebGPU 복구 smoke, 공간 조명 보고서 테스트 8종, 평면 조명 smoke, HD-2D 전투 8개 모드 통과.
-  CI 오프스크린 smoke는 원래 실패 지점을 지나 30분 동안 오류가 없었다. 화면 조합 4개의 전체 실행은 통합 검증에서 진행 중이다(Codex는 조합별 실행 통과).
+  CI 오프스크린 smoke의 화면 조합 4개(1280×720·390×844, DPR 1·2)도 통합 검증에서 모두 통과했다.
 - F3 중 찾은 별개 실패 6개는 [선행 수정 F4](#선행-수정-f4-기존-smoke-6개-진단)에서 진단한다.
-- [예제 반영 E1](#예제-반영-e1-세-예제를-새-api로) 완료. 스프라이트 그리기, 충돌과 트리거, 벽돌 깨기의 시작과 화면 맞춤을 새 API로 이관했다.
-- 다음: F4 → [C1](#c1-pr에서-ci-자동-실행-d5-b). 전체 통합 검증은 통합 담당이 진행한다.
+- [예제 반영 E1](#예제-반영-e1-세-예제를-새-api로) 완료(`bb6b6f1a`). 스프라이트 그리기, 충돌과 트리거, 벽돌 깨기의 시작과 화면 맞춤을 새 API로 이관했다.
+  예제 시작 코드는 176→169, 280→269, 303→292줄. 런타임 view는 다시 적용해도 같은 객체라 예제가 한 번 받아 쓴다.
+- 전체 끝 검증(2026-11-26, E1을 합친 상태): `pnpm build`, `pnpm lint`, `pnpm package:check:ferrum-web`, `pnpm smoke:example-site` 통과.
+  처음에는 `pnpm lint`가 빌드 전의 오래된 `packages/ferrum-web/dist` 타입을 읽어 실패했고, 빌드 뒤 통과했다.
+  `dist`가 없으면 예제 타입 검사가 실패하므로 CI의 단계 순서 문제로 [C1](#c1-pr에서-ci-자동-실행-d5-b)에 넣었다.
+- 다음: F4 → [C1](#c1-pr에서-ci-자동-실행-d5-b).
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
 
@@ -272,6 +276,10 @@ F4 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smoke
 - `.github/workflows/ci.yml`의 `on`에 `main` 대상 `pull_request`를 더한다. `workflow_dispatch` 입력, 태그 조건, 두 수동 job의 조건은 그대로 둔다.
   PR에서는 `validate`만 돌고 두 수동 job은 건너뛰는지 확인한다. Pages 워크플로(`pages.yml`)는 바꾸지 않는다.
 - 같은 PR에 새 커밋이 오면 이전 실행을 취소하도록 `concurrency`(PR 번호 기준, `cancel-in-progress`)를 둔다.
+- `validate`의 단계 순서를 고친다. 예제 패키지의 타입 검사는 `@ferrum2d/ferrum-web`의 빌드된 `dist` 타입을 읽는데,
+  지금 `Lint TypeScript packages`(`pnpm lint`)는 `build:web`보다 앞에 있어 새 checkout에서 실패한다(2026-11-26 `dist`를 치우고 재현).
+  웹 패키지를 lint 전에 빌드하거나 lint를 빌드 뒤로 옮기고, 같은 빌드를 두 번 하지 않게 한다.
+  다른 단계도 앞 단계의 산출물에 기대는지 확인하고, 깨끗한 작업 폴더에서 CI 단계 순서대로 재현한 결과를 보고한다.
 - 문서: AGENTS.md "CI 정합 검증", `docs/development/operations/demo-deploy.md`, `docs/development/operations/npm-release.md`,
   `docs/development/architecture/flat-lighting-composition.md`의 "수동 실행 전용·push/PR 자동 실행 아님" 문구를 바꾼다.
 - 검증: 워크플로 문법 검사(가능하면 `actionlint`)와 job별 실행 조건 표(수동·PR·태그)를 보고한다.
@@ -423,6 +431,7 @@ E1 다음에는 사이트 전용 공통 도우미(수치 보내기·'표시' 메
 | 전투 모드 없는 충돌 시 제거 | `collisionDespawn` 레시피는 씬 문서에서 HD-2D 전투 모드(`gameplay.combat`)가 필요하다. | 탐험 모드에서도 쓸 수 있게 할지 검토. |
 | 입력의 편집 대상 판정 | `InputManager`는 `input·textarea·select·button`만 제외한다. 키로 조작하는 `role="separator"`·슬라이더 등에 초점이 있어도 게임 키로 받는다. | 제외 규칙 확장 또는 옵션 검토. |
 | 충돌체 기본값이 트리거인 함정 | Data Scene 충돌체는 `isTrigger`를 생략하면 트리거다. body를 붙이고 `isTrigger: false`를 잊으면 막지도 않고 HD-2D 이동도 거절된다(F1의 원인). | body가 있는 충돌체의 기본값을 solid로 바꿀지(기존 문서 동작이 바뀌므로 제품 결정) 또는 body+트리거 조합에 진단을 낼지 검토. |
+| 런타임 결과 타입 | `dataScene`을 넘겨도 `runtime.dataScene`이 선택 타입이고, 런타임이 만든 렌더러여도 `rendererBackend`에 `"custom"`이 들어 있어 세 예제가 같은 확인 줄을 반복한다(E1). | 옵션에 따라 반환 타입을 좁힐지 검토(우선 낮음). |
 | 이동 실패 이유 | `moveHd2dKinematicBodyWithTilemap`은 actor가 조건(단일 solid AABB kinematic, 높이 정보)에 맞지 않으면 이유 없이 결과 없음으로 돌아온다. | 거절 이유를 돌려주거나 개발 모드 진단을 낸다. |
 | WebGPU 복구 중 화면 맞춤 크기 변화 | WebGPU 장치가 준비되기 전에 화면 맞춤 배율을 적용하면 `setViewportZoom`에서 오류가 발생했다. | 완료. 크기 변경은 보류하고 복구 직후 최신 크기로 배율을 적용한다. 일시 정지 상태에서도 게임 카메라 위치를 유지한다. |
 
@@ -448,7 +457,7 @@ F3·F4는 고칠 사례가 많으면 smoke 묶음별로, E1은 예제별로 커�
 - 단계 끝: `pnpm --filter @ferrum2d/ferrum-web test`, `pnpm validate:public-api-surface`, `pnpm validate:docs-links`,
   해당 브라우저 smoke(R1 `pnpm smoke:data-scene`·`pnpm smoke:asset-loading`, R2 `pnpm smoke:flat-pixel-perfect`, R3 추가한 smoke).
   R2b는 `pnpm --filter @ferrum2d/studio build`와 Studio viewer smoke. F4·E1은 각 절의 검증.
-- 전체 끝(통합 담당이 한 번): `pnpm lint`, `pnpm build`, `pnpm package:check:ferrum-web`, `pnpm smoke:example-site`(기존 예제 회귀).
+- 전체 끝(통합 담당이 한 번): `pnpm build`, `pnpm lint`(빌드된 타입을 읽으므로 빌드 뒤), `pnpm package:check:ferrum-web`, `pnpm smoke:example-site`(기존 예제 회귀).
 - Rust를 바꾸지 않으므로 `cargo` 검사는 생략하고 그 사유를 보고에 적는다.
 
 **보고:** AGENTS "Review Rule" 형식(변경 파일, 이유, 실행한 명령, 못 한 명령과 사유, 위험·후속). 이 문서의 "결정"과 다르게 구현해야 했던 것이 있으면 함께 적는다.
