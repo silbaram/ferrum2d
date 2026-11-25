@@ -1,6 +1,6 @@
 # 런타임 시작·화면 맞춤 개선
 
-상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→F1→R2a→F2→R2b→R3→F3→E1→F4)마다 Codex가 구현하고 통합 담당이 검증한다.
+상태: 사용자 승인·결정 D1~D4 확정(2026-11-24), D5 확정(2026-11-25). 단계(R1→F1→R2a→F2→R2b→R3→F3→E1→F4→C1)마다 Codex가 구현하고 통합 담당이 검증한다.
 - R1 완료(`77f94fa`): 통합 검증에서 SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과.
 - [선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패) 완료(`e09767d`): Data Scene smoke 전체 통과.
 - R2a 완료(`fd200dd`, 2026-11-25): 통합 검증에서 SDK 테스트 2,061개, Data Scene smoke 전체(화면 맞춤 사례 포함), 예제 사이트 smoke 통과.
@@ -16,7 +16,7 @@
   통합 검증에서 공식 WebGPU 복구 smoke, 공간 조명 보고서 테스트 8종, 평면 조명 smoke, HD-2D 전투 8개 모드 통과.
   CI 오프스크린 smoke는 원래 실패 지점을 지나 30분 동안 오류가 없었다. 화면 조합 4개의 전체 실행은 통합 검증에서 진행 중이다(Codex는 조합별 실행 통과).
 - F3 중 찾은 별개 실패 6개는 [선행 수정 F4](#선행-수정-f4-기존-smoke-6개-진단)에서 진단한다.
-- 다음(2026-11-25 사용자 결정): 통합 담당의 전체 끝 검증 → [예제 반영 E1](#예제-반영-e1-세-예제를-새-api로) → F4.
+- 다음(2026-11-25 사용자 결정): 통합 담당의 전체 끝 검증 → [예제 반영 E1](#예제-반영-e1-세-예제를-새-api로) → F4 → [C1](#c1-pr에서-ci-자동-실행-d5-b).
   E1과 F4는 다루는 파일이 겹치지 않아 순서를 바꿀 수 있다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
@@ -254,7 +254,7 @@ CI(`.github/workflows/ci.yml`)는 수동 실행만 있어 2026-06-15 이후 돈 
 
 **검증:** 테스트를 고친 smoke는 전체 통과. 나머지는 보고에 재현 명령·원인·제안을 적고, 이 문서의 표에 결과를 남긴다.
 
-**결정 D5 (사용자 결정 대기): CI 실행 방식**
+**결정 D5 (2026-11-25 확정: B): CI 실행 방식**
 
 CI는 `c0ad85a`(2026-06-16)부터 수동 실행 전용이다(AGENTS.md "CI 정합 검증"과 운영 문서에 기록). 저장소가 공개라 GitHub Actions 비용은 없다.
 
@@ -264,7 +264,19 @@ CI는 `c0ad85a`(2026-06-16)부터 수동 실행 전용이다(AGENTS.md "CI 정�
 | B. PR 자동 실행 추가 | `main` 대상 `pull_request`에 기본 검사를 자동 실행하고, 확장 브라우저 묶음은 수동으로 둔다. | 머지 전에 자동으로 확인한다. AGENTS.md와 운영 문서의 "자동 실행 아님" 문구를 고친다. |
 | C. 주기 실행 추가 | 주 1회 `schedule`로 `main`을 검사한다. | 머지가 드물어도 실패를 잡는다. 작업 브랜치는 검사하지 않는다. |
 
-통합 담당 추천은 F4 뒤 B다. CI 설정과 문서 변경은 사용자 결정 뒤 별도 커밋으로 한다.
+사용자가 B를 골랐다(2026-11-25). F4로 깨진 검사를 먼저 고친 뒤 [C1](#c1-pr에서-ci-자동-실행-d5-b)에서 적용한다.
+
+## C1: PR에서 CI 자동 실행 (D5-B)
+
+F4 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smoke`·`extended-browser-smoke`는 태그나 수동 입력일 때만 돈다.
+
+- `.github/workflows/ci.yml`의 `on`에 `main` 대상 `pull_request`를 더한다. `workflow_dispatch` 입력, 태그 조건, 두 수동 job의 조건은 그대로 둔다.
+  PR에서는 `validate`만 돌고 두 수동 job은 건너뛰는지 확인한다. Pages 워크플로(`pages.yml`)는 바꾸지 않는다.
+- 같은 PR에 새 커밋이 오면 이전 실행을 취소하도록 `concurrency`(PR 번호 기준, `cancel-in-progress`)를 둔다.
+- 문서: AGENTS.md "CI 정합 검증", `docs/development/operations/demo-deploy.md`, `docs/development/operations/npm-release.md`,
+  `docs/development/architecture/flat-lighting-composition.md`의 "수동 실행 전용·push/PR 자동 실행 아님" 문구를 바꾼다.
+- 검증: 워크플로 문법 검사(가능하면 `actionlint`)와 job별 실행 조건 표(수동·PR·태그)를 보고한다.
+  실제 실행 확인은 브랜치를 푸시하고 PR을 열어야 하므로 사용자가 정한 시점에 한다.
 
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
@@ -421,7 +433,7 @@ E1 다음에는 사이트 전용 공통 도우미(수치 보내기·'표시' 메
 `docs/engine/data-scene-authoring.md`("기본 2D 표시 설정"), `packages/ferrum-web/src/`의 `createFerrumRuntime.ts`·`createRenderer.ts`·
 `browserPlatformHost.ts`·`assetLoader.ts`·`sceneDisplay.ts`·`dataSceneView.ts`, `packages/ferrum-web/test/createFerrumRuntime.integration.test.ts`·`dataSceneView.test.ts`.
 
-**작업 단위:** R1, F1~F4(선행 수정), R2a(SDK), R2b(Studio), R3, E1(예제)을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
+**작업 단위:** R1, F1~F4(선행 수정), R2a(SDK), R2b(Studio), R3, E1(예제), C1(CI)을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
 F3·F4는 고칠 사례가 많으면 smoke 묶음별로, E1은 예제별로 커밋을 나눠도 된다.
 앞 단계가 검증을 통과한 뒤 다음 단계로 간다.
 
