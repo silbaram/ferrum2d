@@ -1,6 +1,6 @@
 # 런타임 시작·화면 맞춤 개선
 
-상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→F1→R2a→F2→R2b→R3)마다 Codex가 구현하고 통합 담당이 검증한다.
+상태: 사용자 승인·결정 D1~D4 확정(2026-11-24). 단계(R1→F1→R2a→F2→R2b→R3→F3)마다 Codex가 구현하고 통합 담당이 검증한다.
 - R1 완료(`77f94fa`): 통합 검증에서 SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과.
 - [선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패) 완료(`e09767d`): Data Scene smoke 전체 통과.
 - R2a 완료(`fd200dd`, 2026-11-25): 통합 검증에서 SDK 테스트 2,061개, Data Scene smoke 전체(화면 맞춤 사례 포함), 예제 사이트 smoke 통과.
@@ -9,8 +9,12 @@
   크기 변경 시 게임 카메라 유지, 2D 편집 카메라와 선택 좌표계 복원, 작성 이력 보존), 공식 Studio 브라우저 smoke(`--mode=studio`) 통과.
   공식 Studio 브라우저 smoke는 Codex 환경에서만 390×500의 조명 탭 열기에서 시간 초과했다(R2b 이전 `d6e7f63`에서도 같음).
   통합 검증에서는 재현되지 않았으므로 R2b와 무관한 간헐적 시간 초과로 본다. 다시 나타나면 후보로 올린다.
-- R3에서 전용 캔버스 컨텍스트 해제를 추가했다. WebGPU 복구 중 화면 맞춤 수정도 별도 커밋으로 완료했다.
-  일시 정지한 런타임의 맞춤 복구는 DPR 1·2의 두 창 크기에서 통과했다. 종합 WebGPU 회귀는 공간 씬의 네이티브 물리 스냅샷 미지원으로 기존 사례에서 중단됐으며, 수정 전 SDK에서도 같은 실패가 재현됐다.
+- R3 완료(`17f5439`, 2026-11-25): 통합 검증에서 SDK 테스트 2,068개, 공개 API 범위·문서 링크 검사, Data Scene smoke 통과.
+  전용 캔버스로 런타임 20개를 만들고 없앤 뒤 활성 WebGL2 컨텍스트 0, 시작 실패·취소 때도 0, 옵션이 없으면 기존처럼 남고 재사용된다.
+- WebGPU 복구 중 화면 맞춤 수정 완료(`a917965`, 후보 표의 항목): 일시정지한 런타임의 복구 사례가 창 크기 2개 × DPR 1·2에서 통과했다.
+- 공식 WebGPU 복구 smoke와 기본 WebGPU 공간 smoke는 물리 진행 저장 거절로 멈춘다(R3 이전 `844b0ab`에서도 같음).
+  [선행 수정 F3](#선행-수정-f3-webgpu-공간-smoke의-진행-저장-거절)에서 고친다.
+- 다음은 F3, 그다음 통합 담당의 전체 끝 검증(아래 "Codex 작업 지시"의 검증), 그다음 예제 반영이다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
 새 API로 예제를 옮기는 일부터 다시 시작한다.
@@ -165,6 +169,33 @@ R2b보다 먼저 고친다.
   `node tests/smoke/flat-pixel-perfect-smoke.mjs`를 실행했다. WebGL2·WebGPU 각각 DPR 1·1.5·2와 조합별 타일 위상 16개,
   WebGPU `linear-srgb` 사례가 통과했다. SDK 테스트 2,061개, 문서 링크·공개 API 검사도 통과했다.
 
+## 선행 수정 F3: WebGPU 공간 smoke의 진행 저장 거절
+
+R3 통합 검증에서 찾은 기존 결함이다. 통합 담당의 전체 끝 검증과 예제 반영보다 먼저 고친다.
+
+- **증상:** `pnpm smoke:webgpu-recovery`(`spatial-webgpu-browser-smoke.mjs --recovery-only --offscreen-target`)가
+  `Data Scene physics capture/restore requires native physics snapshots, which are not yet supported.`로 멈춘다.
+  `tests/smoke/spatial-webgpu-browser-fixture.mjs`의 `probe`가 기본 엔진으로 `captureGameStateSnapshot(..., { includeDataSceneProgress: true })`를 부른다.
+  같은 smoke의 기본 실행(`node tests/smoke/spatial-webgpu-browser-smoke.mjs`)도 `spatial-light-probes-browser-fixture.mjs`의 `probe`에서 같은 오류로 멈춘다.
+  두 실행 모두 CI의 WebGPU 단계에 있다.
+- **R3와 무관함:** R3 이전 `844b0ab`에서도 같은 오류로 실패한다(같은 Wasm, Rust 마지막 변경 뒤 빌드).
+- **확인한 원인:** `4213a0a`(2026-11-21, 통합 물리를 SDK에 연결)부터 `dataSceneProgress.ts`의 `assertDataScenePhysicsProgressSupported`가
+  엔진이 `unified-3d`이거나 문서에 `physics`가 있으면 진행 저장·복원을 거절한다. 새 물리의 snapshot/restore는
+  [통합 3D 물리](unified-3d-physics-plan.md)의 미완료 항목이라 이 거절은 의도된 계약이다. 그런데 `includeDataSceneProgress`를 쓰는
+  smoke fixture 20여 개가 기본 엔진(`unified-3d`)으로 진행을 저장한다.
+- **CI가 못 잡은 이유:** `.github/workflows/ci.yml`은 수동 실행(`workflow_dispatch`)만 있고 2026-06-15 이후 실행 기록이 없다. `origin/main`에도 같은 결함이 있다.
+
+**수정 방향 (테스트만 고친다. SDK·Rust 소스와 거절 규칙은 바꾸지 않는다):**
+1. 목록: `includeDataSceneProgress`를 쓰는 fixture를 실행하는 공식 smoke(`package.json` 스크립트와 CI 단계)를 돌려 이 오류로 멈추는 사례를 모두 적는다.
+2. 렌더링·장치 복구가 주제이고 진행 저장은 수단인 사례: 저장 범위를 그 사례가 실제로 검사하는 것으로 줄이거나(예: 진행 대신 상태만 저장),
+   레거시 물리 엔진으로 띄운다. 단 `spatial-webgpu-browser-fixture.mjs`의 `probe`는 같은 엔진으로 native 물리 debug 선(`probeNativeDebugGeometry`)도
+   검사하므로 레거시로 바꾸지 않는다. 기존 렌더링·handle·픽셀 단언은 줄이지 않는다.
+3. 진행 저장 자체가 주제인 사례(예: HD-2D 전투 저장): 레거시 엔진으로 같은 의미를 검사할 수 있으면 그렇게 한다.
+   새 물리에서만 의미가 있으면 고치지 않고 목록에 남겨 통합 3D 물리 계획의 snapshot 항목으로 넘긴다.
+
+**검증:** 고친 공식 smoke가 모두 통과한다(`pnpm smoke:webgpu-recovery`와 기본 `spatial-webgpu-browser-smoke.mjs` 포함).
+SDK·Rust 소스 변경이 없음을 확인한다. 넘긴 사례 목록은 보고와 이 문서에 적는다.
+
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
 ### 문서 형식
@@ -296,7 +327,8 @@ interface FerrumRuntimeOptions {
 `docs/engine/data-scene-authoring.md`("기본 2D 표시 설정"), `packages/ferrum-web/src/`의 `createFerrumRuntime.ts`·`createRenderer.ts`·
 `browserPlatformHost.ts`·`assetLoader.ts`·`sceneDisplay.ts`·`dataSceneView.ts`, `packages/ferrum-web/test/createFerrumRuntime.integration.test.ts`·`dataSceneView.test.ts`.
 
-**작업 단위:** R1, F1·F2(선행 수정), R2a(SDK), R2b(Studio), R3을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
+**작업 단위:** R1, F1·F2·F3(선행 수정), R2a(SDK), R2b(Studio), R3을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
+F3는 고칠 사례가 많으면 smoke 묶음별로 커밋을 나눠도 된다.
 앞 단계가 검증을 통과한 뒤 다음 단계로 간다.
 
 **지킬 것:**

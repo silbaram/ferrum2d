@@ -15,7 +15,7 @@
 
 | 문서 | 상태 | 다음 작업 또는 판단 |
 | --- | --- | --- |
-| [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) | R1, F1, R2a, F2, R2b, R3와 WebGPU 복구 중 화면 맞춤 수정 완료 | 다음은 예제 이관. |
+| [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) | 사용자 승인·R1, F1, R2a, F2, R2b, R3 완료(엔진 개선 1순위) | 다음은 기존 smoke 수정(F3), 통합 검증, 그다음 예제 이관. |
 | [통합 3D 물리](unified-3d-physics-plan.md) | 사용자 승인·개발 진행 중 | 오픈소스 비교, Rust/Wasm 3D 백엔드 도입, 2D 평면·HD-2D 통합 및 수용 검증. 회전 상자 접촉의 운동 증명 한계(물리 실험실 4개 시나리오, 벽돌 깨기 CCD 멈춤) 제품 결정 대기 |
 | [게임 개발 편의성](game-development-convenience-review.md) | 설계 후보·미착수 / 제품 결정 대기 | 외부 맵·실행 진단·reload의 실제 필요와 저장 경계 확정 |
 | [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 연동 미착수 | VX-00 최소 출력·실게임 검증 후 공용 리소스화. 외부 VFX 제작 도구와 Ferrum2D Studio를 구분 |
