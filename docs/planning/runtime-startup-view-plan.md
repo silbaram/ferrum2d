@@ -15,13 +15,14 @@
 - [선행 수정 F3](#선행-수정-f3-webgpu-공간-smoke의-진행-저장-거절) 완료(`a9046ee`, 2026-11-25): SDK·Rust 소스 변경 없음.
   통합 검증에서 공식 WebGPU 복구 smoke, 공간 조명 보고서 테스트 8종, 평면 조명 smoke, HD-2D 전투 8개 모드 통과.
   CI 오프스크린 smoke의 화면 조합 4개(1280×720·390×844, DPR 1·2)도 통합 검증에서 모두 통과했다.
-- F3 중 찾은 별개 실패 6개는 [선행 수정 F4](#선행-수정-f4-기존-smoke-6개-진단)에서 진단한다.
 - [예제 반영 E1](#예제-반영-e1-세-예제를-새-api로) 완료(`bb6b6f1a`). 스프라이트 그리기, 충돌과 트리거, 벽돌 깨기의 시작과 화면 맞춤을 새 API로 이관했다.
   예제 시작 코드는 176→169, 280→269, 303→292줄. 런타임 view는 다시 적용해도 같은 객체라 예제가 한 번 받아 쓴다.
 - 전체 끝 검증(2026-11-26, E1을 합친 상태): `pnpm build`, `pnpm lint`, `pnpm package:check:ferrum-web`, `pnpm smoke:example-site` 통과.
   처음에는 `pnpm lint`가 빌드 전의 오래된 `packages/ferrum-web/dist` 타입을 읽어 실패했고, 빌드 뒤 통과했다.
   `dist`가 없으면 예제 타입 검사가 실패하므로 CI의 단계 순서 문제로 [C1](#c1-pr에서-ci-자동-실행-d5-b)에 넣었다.
-- 다음: F4 → [C1](#c1-pr에서-ci-자동-실행-d5-b).
+- [선행 수정 F4](#선행-수정-f4-기존-smoke-6개-진단) 완료(2026-11-26). 여섯 실패를 재현하고 오래된 애니메이션 검사 두 개를 고쳐 전체 통과했다.
+  Data Scene 적용, 통합 물리 성능과 소프트웨어 렌더링 두 사례의 후속은 F4 표에 기록했다.
+- 다음은 [C1](#c1-pr에서-ci-자동-실행-d5-b).
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
 
@@ -234,17 +235,19 @@ HD-2D `--actions-only`, `--visuals-only`, `--input-only`, `--spawn-only`도 두 
 
 ## 선행 수정 F4: 기존 smoke 6개 진단
 
-F3 검증 중 찾은 별개 실패다(위 "재현 목록과 조치"의 별개 검증 후속). 진행 저장과 무관하며, 6개 중 5개는 CI 단계에 있다.
+F3 검증 중 찾은 별개 실패다(위 "재현 목록과 조치"의 별개 검증 후속). 처음 관찰한 여섯 실패 중 5개는 CI 단계에 있다.
 CI(`.github/workflows/ci.yml`)는 수동 실행만 있어 2026-06-15 이후 돈 적이 없으므로 언제부터 실패했는지 알 수 없다.
 
-| smoke | 증상(F3 기록) | CI 단계 |
-| --- | --- | --- |
-| `smoke:spatial-scene` | 애니메이션 프레임 단언 | 있음 |
-| `smoke:sprite-animation-runtime` | 애니메이션 프레임 단언 | 있음(`--require-webgpu`) |
-| `smoke:data-scene-gameplay` | 장애물의 인스턴스 참조 검증 | 있음 |
-| `smoke:unified-physics-web` | 네이티브 탐색 단언 | 있음 |
-| `smoke:hd2d-combat`(기본) | 적 128명에서 9프레임을 그려 기준 10프레임 미달 | 있음 |
-| `smoke:spatial-webgpu`(기본, 오프스크린 아님) | 소프트웨어 Chromium의 캔버스 공유 이미지 생성 실패 뒤 픽셀 읽기에서 중단 | 없음(CI는 `--offscreen-target`) |
+| smoke | Rust 재빌드 없는 재현 명령 | CI 단계 | 분류와 재현 결과 | 수정 또는 후속 |
+| --- | --- | --- | --- | --- |
+| `smoke:spatial-scene` | `node tests/smoke/spatial-scene-browser-smoke.mjs` | 있음 | 오래된 테스트. 아틀라스 재생 구간의 RAF 간격을 약 525ms로 늦추면 F3와 같은 0.20초·프레임 0이 나온다. 프레임 1에는 시뮬레이션 0.25초가 필요한데, 실제 시간 2초를 기다려도 50ms 입력 상한 때문에 부족했다. | `spatial-visibility-browser-fixture.mjs`가 실제 GameLoop에 50ms 간격 6개를 전달한다. 프레임 번호, 렌더 픽셀, 일시 정지 시각과 저장 복원 검사를 유지했다. 1280×720·390×844 × DPR 1·2 네 조합이 모두 통과했다. |
+| `smoke:sprite-animation-runtime` | `node --test tests/smoke/sprite-animation-runtime-report.test.mjs` 및 `node tests/smoke/sprite-animation-runtime-smoke.mjs --require-webgpu` | 있음 | 오래된 테스트. `0fbbc7f6`부터 GameLoop가 0.1ms 미만 간격을 누적해, 89.99ms 뒤 0.02ms 입력에서 프레임 1을 기다리던 검사가 프레임 0에서 실패했다. 시간 입력을 고치니 `4213a0a2`의 기본 native 물리에서 기존 JSON 진행 저장도 거절됐다. | `sprite-animation-runtime-fixture.mjs`에서 경계 전후 프레임을 지원되는 입력으로 검사하고 누적도 단언한다. 애니메이션 진행 저장에는 레거시 물리를 명시했다. 보고서 테스트와 필수 WebGL2·오프스크린 WebGPU 통과(각 186렌더·프레임 이벤트 331개·완료 4개·픽셀 22개). |
+| `smoke:data-scene-gameplay` | `node tests/smoke/data-scene-gameplay-smoke.mjs` | 있음 | 엔진 결함. 빈 초기 프래그먼트를 가진 문서에서 `{ fragment: "island" }`로 적용해도 조명 사전 검증이 옵션을 전달하지 않아 `site`를 빈 프래그먼트에서 찾다가 거절한다. `d31b85ac`가 이 경로에 프래그먼트 옵션 없는 resolve 호출을 추가했다. | `packages/ferrum-web/src/dataSceneRuntimeTarget.ts`의 `preflightDataSceneLighting`에서 문서 해석과 binding이 같은 프래그먼트 선택을 쓰도록 고친다. `sceneAuthoringDocument.ts`의 장애물 참조 검증과 기존 적용 단언을 유지한다. |
+| `smoke:unified-physics-web` | `pnpm smoke:unified-physics-web` | 있음 | 엔진 성능 예산 초과. 64명·50ms 고정 입력에서 81프레임·405스텝을 마쳤고 위치·탐색 통계 해시가 기준 `da6e9fd4…`와 일치했다. Rust warm p95는 Chromium 148에서 69.8/13.96ms와 65.0/13.0ms(프레임/스텝), Chromium 153에서 86.0/17.2ms로 기준 43/11ms를 넘었다. | [통합 3D 물리의 군중 성능 단계](unified-3d-physics-plan.md#코드-리뷰-후속-수정-2026-11-22)로 넘긴다. 캐릭터 접촉 `physics3d/character_contacts.rs`와 회피 `engine/unified_physics/combat_navigation/crowd.rs`를 같은 빌드·기기에서 프로파일링해 비용과 환경 영향의 비중을 확인한다. 최초 실패 커밋과 비용 증가 위치는 미확정이다. |
+| `smoke:hd2d-combat`(기본) | `node tests/smoke/hd2d-combat-browser-smoke.mjs` | 있음 | 환경 한계. Chromium 148의 ANGLE SwiftShader에서 1280×720·DPR 1·적 128명은 2.5초 샘플에 11프레임(4.31fps)이었고, DPR 2·적 0명은 3프레임(1.10fps)으로 기준 10에 못 미쳤다. 후자의 RAF 간격 p95는 955.1ms, Rust 업데이트와 렌더 호출 p95는 각각 0.4ms, 7.2ms였다. | 프레임 기준을 유지한다. 실제 GPU에서 같은 네 화면 조합을 다시 측정한다. |
+| `smoke:spatial-webgpu`(기본 캔버스) | `node tests/smoke/spatial-webgpu-browser-smoke.mjs` (로그 축소 재현은 `DEBUG=pw:browser`와 `--light-probes-only`) | 없음(CI는 `--offscreen-target`) | 환경 한계. Chromium 148의 SwiftShader가 1280×720·DPR 1의 640×480 RGBA8 WebGPU swap-chain 텍스처용 `SharedImageBackingFactory`를 찾지 못했다. 장치 오류 뒤 `mapAsync`가 중단됐다. | 같은 1280×720·DPR 1의 `--offscreen-target --light-probes-only`는 두 색 모드에서 통과했다. 실제 GPU의 캔버스에서 기본 검사를 다시 실행한다. |
+
+2026-11-26에 `b5cfff83`의 기존 SDK와 Wasm(SHA-256 `16203669b538…`)으로 재현했다.
 
 **할 일:**
 1. 각 실패를 지금 브랜치에서 재현하고 원인을 좁힌다. 가능하면 처음 실패한 커밋을 찾는다.

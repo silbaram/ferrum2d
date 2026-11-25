@@ -586,6 +586,10 @@ packed Chromium은 64개 mixed query/65 hits, closest/truncation, 대기 target 
 | 물리 작성·solver | `pnpm validate:physics-authoring`, `pnpm smoke:physics`, `pnpm smoke:physics-replay`, `pnpm smoke:physics-demo-suite` | 입력 검증, fixed step·query·joint/CCD 예산, 저장/replay 결정성 |
 | gameplay 데이터·report | `pnpm validate:game-spec`, `pnpm validate:gameplay-authoring:report`, `pnpm smoke:gameplay-replay:report`, `pnpm validate:gameplay-report-artifacts` | report와 실제 실행·seed/hash·source/patch 근거 일치 |
 
+`smoke:spatial-scene`의 아틀라스 재생은 실제 GameLoop에 50ms 간격을 여섯 번 입력해 프레임 1의 픽셀과 일시 정지를 검사한다.
+`smoke:sprite-animation-runtime`은 0.1ms 미만 간격을 다음 RAF에 누적하는 동작과 경계의 프레임·이벤트를 검증한다.
+이 검사의 JSON 애니메이션 진행 저장은 레거시 물리에서 실행한다.
+
 물리의 상세 기능과 제외 범위는 [물리 기능 맵](../architecture/physics-engine.md)을 따른다.
 선택형 replay Worker의 취소·stale 결과·종료 검증을 전체 게임 루프 Worker 이전의 증거로 사용하지 않는다.
 

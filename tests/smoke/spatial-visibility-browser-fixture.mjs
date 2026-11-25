@@ -351,14 +351,35 @@ export async function probeSpatialVisibility(scene, canvas) {
     ]),
     "atlas resume rejected",
   );
-  engine.resumeDataScene();
-  const deadline = performance.now() + 2000;
-  while (
-    engine.dataSceneSpriteAnimationState(handles.subject).frame !== 1 &&
-    performance.now() < deadline
-  )
-    await wait();
-  engine.pauseDataScene();
+  // The 4 fps clip needs 250ms of simulation, which slow browser frames can undershoot
+  // even after two wall-clock seconds because GameLoop clamps each elapsed interval to 50ms.
+  engine.pause();
+  const originalRaf = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  const pending = new Map();
+  let requestId = 0;
+  globalThis.requestAnimationFrame = (callback) => {
+    pending.set(++requestId, callback);
+    return requestId;
+  };
+  globalThis.cancelAnimationFrame = (id) => { pending.delete(id); };
+  try {
+    check(engine.resumeDataScene(), "atlas scene resume rejected");
+    engine.resume();
+    // The first timestamp initializes GameLoop. Six 50ms intervals advance to frame 1.
+    for (let tick = 0; tick <= 6; tick++) {
+      check(pending.size === 1, "atlas expected one pending GameLoop frame", pending.size);
+      const [id, callback] = pending.entries().next().value;
+      pending.delete(id);
+      callback(tick * 50);
+    }
+    check(engine.pauseDataScene(), "atlas scene pause rejected");
+  } finally {
+    engine.pause();
+    globalThis.requestAnimationFrame = originalRaf;
+    globalThis.cancelAnimationFrame = originalCancel;
+    engine.resume();
+  }
   check(
     engine.updateDataSceneSpriteAnimations([
       { entity: handles.subject, paused: true },

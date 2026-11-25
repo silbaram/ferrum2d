@@ -189,7 +189,10 @@ export async function probeSpriteAnimationRuntime(preferred = 'webgl2') {
       renders++;
       maxDrawCalls = Math.max(maxDrawCalls, stats.drawCalls);
       check(gpuErrors.length === 0, 'WebGPU validation errors', gpuErrors);
-    }, () => ({}), undefined, () => renderer.viewportSize(), { fixedTimestep: false });
+    }, () => ({}), undefined, () => renderer.viewportSize(), {
+      fixedTimestep: false,
+      physicsBackend: 'legacy', // Authored animation progress uses the legacy physics snapshot path.
+    });
     const viewport = renderer.viewportSize();
     engine.setViewportSize(viewport.width, viewport.height);
     const set = resolveDataSceneSpriteAnimationSet(animationSet());
@@ -201,11 +204,16 @@ export async function probeSpriteAnimationRuntime(preferred = 'webgl2') {
     select(100);
     const forwardMark = events.length;
     await visible('timed-frame-0', 0, 0, true);
-    advance(89.99); expect(100, 0);
-    advance(0.02); expect(100, 1);
+    // Keep both samples close to the edge using an interval above GameLoop's 0.1ms floor.
+    // The short gap below must be deferred, then counted: discarding it leaves us at 89.99ms.
+    advance(89.89);
+    const beforeBoundary = expect(100, 0);
+    advance(0.02);
+    same(state(), beforeBoundary, 'Sub-0.1ms RAF advanced animation before accumulation');
+    advance(0.10); expect(100, 1);
     await visible('timed-frame-1', 1, 0, true);
-    advance(179.98); expect(100, 1);
-    advance(0.02); expect(100, 0);
+    advance(179.88); expect(100, 1);
+    advance(0.12); expect(100, 0);
     same(frameIndices(forwardMark), [1, 0], '90/180ms boundaries produced incorrect original-frame events');
     same(completions(forwardMark), [], 'Looping clip emitted completion');
     checks.push('variable90And180msBoundaryPixels');
@@ -214,10 +222,10 @@ export async function probeSpriteAnimationRuntime(preferred = 'webgl2') {
     select(101); expect(101, 1);
     await visible('reverse-start', 1);
     const reverseMark = events.length;
-    advance(179.99); expect(101, 1);
-    advance(0.02); expect(101, 0);
-    advance(89.98); expect(101, 0);
-    advance(0.02); expect(101, 0, true);
+    advance(179.89); expect(101, 1);
+    advance(0.12); expect(101, 0);
+    advance(89.88); expect(101, 0);
+    advance(0.12); expect(101, 0, true);
     same(frameIndices(reverseMark), [0], 'Reverse order differs');
     check(completions(reverseMark).length === 1 && completions(reverseMark)[0].payloadBits === 0, 'Reverse completion differs');
     checks.push('reverseOriginalFrameDurations');
@@ -230,8 +238,8 @@ export async function probeSpriteAnimationRuntime(preferred = 'webgl2') {
     advance(90); expect(103, 1);
     advance(180); expect(103, 0);
     await visible('pingpong-return', 0);
-    advance(89.98); expect(103, 0);
-    advance(0.02); expect(103, 0, true);
+    advance(89.88); expect(103, 0);
+    advance(0.12); expect(103, 0, true);
     same(frameIndices(pingpongMark), [1, 2, 1, 0], 'Pingpong duplicated endpoints or skipped return frames');
     check(completions(pingpongMark).length === 1 && completions(pingpongMark)[0].payloadBits === 0, 'Pingpong completion differs');
     checks.push('pingpongReturnZeroFullDuration');
@@ -239,8 +247,8 @@ export async function probeSpriteAnimationRuntime(preferred = 'webgl2') {
     stage('single-frame');
     select(104);
     const singleMark = events.length;
-    advance(89.99); expect(104, 0);
-    advance(0.02); expect(104, 0, true);
+    advance(89.89); expect(104, 0);
+    advance(0.12); expect(104, 0, true);
     same(frameIndices(singleMark), [], 'One-frame nonloop emitted a duplicate frame');
     check(completions(singleMark).length === 1, 'One-frame nonloop completion differs');
     select(105);
@@ -293,8 +301,8 @@ export async function probeSpriteAnimationRuntime(preferred = 'webgl2') {
     advance(25); same(state(), returnState, 'Paused restored animation advanced');
     update({ paused: false, flipX: false }); pump();
     const resumeMark = events.length;
-    advance(139.98); expect(102, 1);
-    advance(0.02); expect(102, 0);
+    advance(139.88); expect(102, 1);
+    advance(0.12); expect(102, 0);
     same(frameIndices(resumeMark), [0], 'Restored return leg did not continue from its elapsed phase');
     checks.push('authoredSaveRestoresPingpongReturnPhasePauseAndFlip');
 
@@ -322,8 +330,8 @@ export async function probeSpriteAnimationRuntime(preferred = 'webgl2') {
     const legacySave = capture(), legacyState = state();
     advance(25);
     restore(legacySave); same(state(), legacyState, 'Legacy fps elapsed time changed on restore');
-    advance(49.99); expect(200, 1);
-    advance(0.02); expect(200, 0);
+    advance(49.89); expect(200, 1);
+    advance(0.12); expect(200, 0);
     same(latestEvents, [], 'Default-disabled legacy clip emitted animation events');
     await visible('legacy-restored', 0);
     checks.push('legacyFpsNormalizationAndSaveRemainCompatible');
