@@ -99,7 +99,7 @@ async function checkRuntimeStartup(browser, address) {
           try {
             const unexpected = await createFerrumRuntime({
               ...options, canvas: abortCanvas, assets: { textures: { hero: "/startup-texture.png?slow" } },
-              signal, autostart: true, onFrame: () => { frames++; },
+              signal, releaseCanvasContext: true, autostart: true, onFrame: () => { frames++; },
             });
             unexpected.destroy();
           } catch (error) {
@@ -108,8 +108,9 @@ async function checkRuntimeStartup(browser, address) {
           }
           await new Promise(requestAnimationFrame);
           await new Promise(requestAnimationFrame);
+          const contextLost = abortCanvas.getContext("webgl2")?.isContextLost();
           abortCanvas.remove();
-          return { errorName, abortError, frames };
+          return { errorName, abortError, frames, contextLost };
         };
         return {
           backend: runtime.rendererBackend, webgl2: runtime.renderer instanceof WebGL2Renderer,
@@ -140,9 +141,77 @@ async function checkRuntimeStartup(browser, address) {
       cancelled, failed,
     ]);
     assert.match(request.failure()?.errorText ?? "", /ERR_ABORTED/);
-    assert.deepEqual(abort, { errorName: "AbortError", abortError: true, frames: 0 });
+    assert.deepEqual(abort, { errorName: "AbortError", abortError: true, frames: 0, contextLost: true });
     assert.deepEqual(errors, []);
     return { rendered, abort, failedRequest: request.failure()?.errorText };
+  } finally {
+    await page.close();
+  }
+}
+
+async function checkRuntimeCanvasRelease(browser, address) {
+  const page = await browser.newPage({ viewport: { width: 200, height: 160 } });
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(() => {
+    const contexts = window.webglContexts = new Set();
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+      const context = getContext.call(this, type, ...args);
+      if (type === "webgl2" && context) contexts.add(context);
+      return context;
+    };
+  });
+  try {
+    await page.goto(`${address}?runtime-startup`);
+    const result = await page.evaluate(async () => {
+      const { createFerrumRuntime } = await import("@ferrum2d/ferrum-web/core");
+      const newCanvas = () => document.body.appendChild(document.createElement("canvas"));
+      const liveContexts = () => [...window.webglContexts].filter(context => !context.isContextLost()).length;
+      let peakAfterDestroy = 0;
+      const cycles = 20;
+      for (let i = 0; i < cycles; i++) {
+        const canvas = newCanvas();
+        const runtime = await createFerrumRuntime({ canvas, releaseCanvasContext: true });
+        if (canvas.getContext("webgl2").isContextLost()) throw new Error("Runtime started with a lost context");
+        runtime.destroy();
+        peakAfterDestroy = Math.max(peakAfterDestroy, liveContexts());
+        canvas.remove();
+      }
+      const cycleContexts = window.webglContexts.size;
+      const canvas = newCanvas();
+      let shaderError;
+      try {
+        const unexpected = await createFerrumRuntime({
+          canvas, shaderPreparation: { timeoutMs: 0 }, releaseCanvasContext: true,
+        });
+        unexpected.destroy();
+      } catch (error) {
+        shaderError = error.message;
+      }
+      const liveAfterFailure = liveContexts();
+      canvas.remove();
+
+      const reusableCanvas = newCanvas();
+      const normal = await createFerrumRuntime({ canvas: reusableCanvas });
+      normal.destroy();
+      const liveAfterDefaultDestroy = liveContexts();
+      const reopened = await createFerrumRuntime({ canvas: reusableCanvas, releaseCanvasContext: false });
+      reopened.destroy();
+      const liveAfterFalseDestroy = liveContexts();
+      const defaultContextReused = window.webglContexts.size === cycleContexts + 2;
+      reopened.renderer.releaseContext();
+      reusableCanvas.remove();
+      return { cycles, cycleContexts, peakAfterDestroy, shaderError, liveAfterFailure,
+        liveAfterDefaultDestroy, liveAfterFalseDestroy, defaultContextReused, finalLiveContexts: liveContexts() };
+    });
+    assert.deepEqual(result, {
+      cycles: 20, cycleContexts: 20, peakAfterDestroy: 0,
+      shaderError: "shaderPreparation.timeoutMs must be in (0, 120000].", liveAfterFailure: 0,
+      liveAfterDefaultDestroy: 1, liveAfterFalseDestroy: 1, defaultContextReused: true, finalLiveContexts: 0,
+    });
+    assert.deepEqual(errors, []);
+    return result;
   } finally {
     await page.close();
   }
@@ -254,6 +323,7 @@ try {
   else { try { browser = await chromium.launch({ ...options, channel: process.env.FERRUM_BROWSER_CHANNEL ?? "chrome" }); }
     catch (error) { if (process.env.FERRUM_BROWSER_CHANNEL) throw error; browser = await chromium.launch(options); } }
   report.runtimeStartup = await checkRuntimeStartup(browser, address);
+  report.runtimeCanvasRelease = await checkRuntimeCanvasRelease(browser, address);
   report.runtimeFit = await checkRuntimeFit(browser, address);
   for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) for (const deviceScaleFactor of [1, 2]) {
     const page = await browser.newPage({ viewport, deviceScaleFactor }); const errors = [];

@@ -13,6 +13,7 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 - 평면 Data Scene에서 `display.fit`이나 런타임 `fit` 기본값으로 월드 사각형을 캔버스에 맞출 수 있다.
   `runtime.dataScene.view`는 씬을 다시 적용하거나 전환한 뒤에도 현재 카메라와 배율로 좌표를 변환한다.
 - Ferrum2D Studio의 게임 미리보기와 실행에서 씬의 `display.fit`을 적용한다. 2D로 돌아오면 편집 카메라와 배율을 복원한다.
+- `createFerrumRuntime({ releaseCanvasContext: true })`는 런타임 전용 캔버스의 GPU 컨텍스트를 종료하거나 시작에 실패할 때 해제한다.
 
 ### Fixed
 

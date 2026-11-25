@@ -20,6 +20,7 @@ import type { PlayBgmOptions } from "../src/audioManager.js";
 import type { DataSceneGameState } from "../src/gameState.js";
 import { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, type PixelPerfectPresentation } from "../src/pixelPerfect.js";
 import { emptyRendererStats } from "../src/renderer.js";
+import { WebGPURenderer } from "../src/webgpuRenderer.js";
 import {
   attachDataSceneRuntimeEngineAdapter,
   type DataSceneRuntimeSpawnRequest,
@@ -780,6 +781,55 @@ test("owned createFerrumRuntime without physics options selects the same native 
 function startupOptions(renderer = fakeRuntimeRenderer()) {
   return { canvas: {} as HTMLCanvasElement, renderer, input: {} as InputManager, ui: false as const };
 }
+
+test("releaseCanvasContext rejects a caller-owned renderer before touching the canvas or renderer", async (t) => {
+  const renderer = fakeRuntimeRenderer();
+  const releaseContext = renderer.releaseContext = t.mock.fn();
+  const resize = t.mock.method(renderer, "resize");
+  const getContext = t.mock.fn();
+  await rejects(createFerrumRuntime({
+    ...startupOptions(renderer), canvas: { getContext } as unknown as HTMLCanvasElement,
+    releaseCanvasContext: true,
+  }), /releaseCanvasContext requires a runtime-owned renderer/);
+  equal(getContext.mock.callCount(), 0);
+  equal(resize.mock.callCount(), 0);
+  equal(releaseContext.mock.callCount(), 0);
+});
+
+for (const releaseCanvasContext of [undefined, false, true]) {
+  test(`runtime destroys before releasing its canvas (opt-in: ${releaseCanvasContext})`, async (t) => {
+    const calls: string[] = [];
+    const renderer = Object.assign(fakeRuntimeRenderer(), {
+      destroy: () => { calls.push("destroy"); },
+      releaseContext: () => { calls.push("release"); },
+    });
+    t.mock.method(WebGPURenderer, "create", async () => renderer as unknown as WebGPURenderer);
+    const runtime = await createFerrumRuntime({
+      ...startupOptions(), renderer: undefined, rendererPreference: "webgpu", releaseCanvasContext,
+      engineInstance: fakeEngine([]), assetHost: fakeAssetHost([]),
+    });
+    runtime.destroy();
+    runtime.destroy();
+    deepEqual(calls, releaseCanvasContext ? ["destroy", "release"] : ["destroy"]);
+  });
+}
+
+test("startup cleanup releases the canvas after a renderer destroy error and preserves the startup failure", async (t) => {
+  const calls: string[] = [];
+  const startupError = new Error("start failed");
+  const engine = fakeEngine([]);
+  engine.start = () => { throw startupError; };
+  const renderer = Object.assign(fakeRuntimeRenderer(), {
+    destroy: () => { calls.push("destroy"); throw new Error("destroy failed"); },
+    releaseContext: () => { calls.push("release"); },
+  });
+  t.mock.method(WebGPURenderer, "create", async () => renderer as unknown as WebGPURenderer);
+  await rejects(createFerrumRuntime({
+    ...startupOptions(), renderer: undefined, rendererPreference: "webgpu", releaseCanvasContext: true,
+    engineInstance: engine, assetHost: fakeAssetHost([]), autostart: true,
+  }), error => error === startupError);
+  deepEqual(calls, ["destroy", "release"]);
+});
 
 function fitFixture(width = 1000, height = 500) {
   const size = { clientWidth: width, clientHeight: height, width, height };

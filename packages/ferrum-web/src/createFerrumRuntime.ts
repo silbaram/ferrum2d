@@ -30,7 +30,7 @@ import type {
   FerrumRuntimeLevelStreamingTarget,
 } from "./levelStreamingRuntime.js";
 import { LevelChunkStreamer } from "./levelStreamingStreamer.js";
-import { createRenderer, resolveRendererColorManagement, resolveRendererPixelPerfect } from "./createRenderer.js";
+import { createRuntimeRenderer, resolveRendererColorManagement, resolveRendererPixelPerfect } from "./createRenderer.js";
 import type { RendererFallbackInfo } from "./createRenderer.js";
 import { pixelPerfectPointToViewport, type PixelPerfectOptions } from "./pixelPerfect.js";
 import { resolveSceneDisplay, resolveSceneFit, type SceneFitSpec } from "./sceneDisplay.js";
@@ -293,6 +293,8 @@ export interface FerrumRuntimeOptions {
   /** Reports WebGPU fallback when the runtime creates its renderer. */
   onRendererFallback?: (info: RendererFallbackInfo) => void;
   renderer?: FerrumRuntimeRenderer;
+  /** Release the dedicated canvas context on destroy or failed startup. Defaults to false. */
+  releaseCanvasContext?: boolean;
   input?: InputManager;
   inputOptions?: InputManagerOptions;
   assetHost?: AssetHost;
@@ -373,6 +375,9 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   const { signal } = options;
   throwIfRuntimeStartupAborted(signal);
   const ownsRenderer = options.renderer === undefined;
+  const releaseCanvasContext = options.releaseCanvasContext === true;
+  if (releaseCanvasContext && !ownsRenderer)
+    throw new Error("releaseCanvasContext requires a runtime-owned renderer.");
   const ownsInput = options.input === undefined;
   const ownsAssetHost = options.assetHost === undefined;
   const ownsUiOverlay = options.uiOverlay === undefined;
@@ -415,7 +420,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const initialPath = initialScene?.path ?? "dataScene";
     const initialDisplay = sceneDisplay(initialDocument, `${initialPath}.display`);
     const initialPixel = initialDisplay.pixelPerfect;
-    renderer ??= await createRenderer(options.canvas, {
+    renderer ??= await createRuntimeRenderer(options.canvas, {
       preferred: options.rendererPreference ?? "webgl2",
       onFallback: options.onRendererFallback,
       colorManagement: options.colorManagement,
@@ -424,7 +429,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       shaderPreparation: options.shaderPreparation,
       webgpu: {...webGpuOptionsWithStaticPostProcess(options),pixelPerfect:initialPixel},
       spatial: initialDocument?.spatial,
-    });
+    }, releaseCanvasContext);
     throwIfRuntimeStartupAborted(signal);
     const runtimeRenderer = renderer;
     const rendererBackend = runtimeRenderer instanceof WebGPURenderer ? "webgpu"
@@ -705,6 +710,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
           () => { if (ownsInput) runtimeInput.destroy(); },
           () => { if (ownsAssetHost) destroyAssetHost(runtimeAssetHost); },
           () => { if (ownsRenderer) runtimeRenderer.destroy(); },
+          () => { if (releaseCanvasContext) runtimeRenderer.releaseContext?.(); },
         ]);
       },
     };
@@ -742,6 +748,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       () => { if (ownsInput) input?.destroy(); },
       () => { if (ownsAssetHost && assetHost) destroyAssetHost(assetHost); },
       () => { if (ownsRenderer) renderer?.destroy(); },
+      () => { if (releaseCanvasContext) renderer?.releaseContext?.(); },
       () => { if (ownsEngine) engine?.destroy(); },
     ], false);
     throw startupError;

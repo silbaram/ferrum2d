@@ -5,7 +5,7 @@ import type { ShaderPreparationOptions } from "./shaderPreparation";
 import type { Renderer } from "./renderer";
 import type { WebGPURendererOptions } from "./webgpuRenderer";
 import { WebGPURenderer, WebGpuCanvasCommitError } from "./webgpuRenderer";
-import { WebGL2Renderer } from "./webgl2Renderer";
+import { createPreparedWebGL2Renderer, WebGL2Renderer } from "./webgl2Renderer";
 import { resolveColorManagementMode } from "./colorManagement";
 import type { ColorManagementMode } from "./colorManagement";
 import { resolvePixelPerfectOptions, type PixelPerfectOptions } from "./pixelPerfect.js";
@@ -33,9 +33,18 @@ export interface CreateRendererOptions {
   fallbackBehavior?: "silent" | "warn";
 }
 
-export async function createRenderer(
+export function createRenderer(
   canvas: HTMLCanvasElement,
   options: CreateRendererOptions = {},
+): Promise<CreatedRenderer & Renderer> {
+  return createRuntimeRenderer(canvas, options);
+}
+
+/** Internal factory with opt-in cleanup for a runtime's dedicated canvas. */
+export async function createRuntimeRenderer(
+  canvas: HTMLCanvasElement,
+  options: CreateRendererOptions,
+  releaseOnFailure = false,
 ): Promise<CreatedRenderer & Renderer> {
   if (options.shaderPreparation?.signal?.aborted)
     throw new DOMException("Renderer creation was cancelled.", "AbortError");
@@ -49,12 +58,19 @@ export async function createRenderer(
       if (spatial) assertWebGpuSpatialSpecSupported(spatial);
       const renderer = await WebGPURenderer.create(canvas, { ...options.webgpu, colorManagement, pixelPerfect });
       if (options.shaderPreparation?.signal?.aborted) {
-        renderer.destroy();
+        try { renderer.destroy(); }
+        finally { if (releaseOnFailure) renderer.releaseContext(); }
         throw new DOMException("Renderer creation was cancelled.", "AbortError");
       }
       return renderer;
     } catch (reason) {
-      if (reason instanceof WebGpuCanvasCommitError) throw reason;
+      if (reason instanceof WebGpuCanvasCommitError) {
+        if (releaseOnFailure) {
+          // A canvas commit error guarantees the WebGPU context was already selected.
+          try { canvas.getContext("webgpu")?.unconfigure(); } catch { /* Preserve the creation error. */ }
+        }
+        throw reason;
+      }
       if (options.shaderPreparation?.signal?.aborted)
         throw new DOMException("Renderer creation was cancelled.", "AbortError");
       options.onFallback?.({
@@ -72,6 +88,7 @@ export async function createRenderer(
   }
 
   const webgl2 = { ...options.webgl2, colorManagement, pixelPerfect };
+  if (releaseOnFailure) return createPreparedWebGL2Renderer(canvas, webgl2, options.shaderPreparation, true);
   return options.shaderPreparation === undefined
     ? new WebGL2Renderer(canvas, webgl2)
     : WebGL2Renderer.create(canvas, webgl2, options.shaderPreparation);

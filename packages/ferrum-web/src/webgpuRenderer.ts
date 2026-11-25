@@ -43,6 +43,7 @@ export class WebGPURenderer implements Renderer {
     private visibleModels?: ReadonlyMap<number, SpatialModelAsset>;
     private zoom = 1;
     private groundScale = 1;
+    private contextReleased = false;
     private constructor(private readonly canvas: HTMLCanvasElement, private backend: WebGpuRendererBackend, private options: WebGPURendererOptions) {
         this.watch(backend);
         registerResourceModelCacheOwner(this,{
@@ -116,7 +117,9 @@ export class WebGPURenderer implements Renderer {
     private async restore(signal: AbortSignal): Promise<boolean> {
         let next: WebGpuRendererBackend | undefined;
         try {
-            next = await WebGpuRendererBackend.create(this.canvas, this.options);
+            next = await WebGpuRendererBackend.create(this.canvas, this.options, () => {
+                if (this.contextReleased) signal.throwIfAborted();
+            });
             signal.throwIfAborted();
             let lost = false;
             void next.gpuDevice().lost?.then(() => { lost = true; });
@@ -344,6 +347,12 @@ export class WebGPURenderer implements Renderer {
         this.textureRequests.clear();
         this.preparedModels.clear();
         this.visibleModels = undefined;
+    }
+    /** Unconfigure the dedicated WebGPU canvas after renderer resources have been freed. */
+    releaseContext(): void {
+        if (this.status !== "destroyed") throw new Error("Destroy the renderer before releasing its canvas context.");
+        this.contextReleased = true;
+        this.backend.releaseContext();
     }
     private alive(): void { if (this.status === "destroyed")
         throw new Error("WebGPURenderer has been destroyed."); }

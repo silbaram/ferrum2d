@@ -202,6 +202,7 @@ export class WebGpuRendererBackend implements Renderer {
   static async create(
     canvas?: HTMLCanvasElement,
     options: WebGPURendererOptions = {},
+    beforeCanvasCommit?: () => void,
   ): Promise<WebGpuRendererBackend> {
     resolvePixelPerfectOptions(options.pixelPerfect);
     resolveColorManagementMode(options.colorManagement);
@@ -238,6 +239,7 @@ export class WebGpuRendererBackend implements Renderer {
         if (allocation || validation) throw Error((allocation ?? validation)!.message);
       }
       if (initialLoss) throw Error("WebGPU device was lost before canvas commit: "+initialLoss.message);
+      beforeCanvasCommit?.();
       const context = canvas.getContext("webgpu");
       if (!context) throw Error("WebGPU canvas context is not available.");
       bound = true; renderer.context = context; renderer.configureContext(); renderer.resize();
@@ -602,6 +604,12 @@ export class WebGpuRendererBackend implements Renderer {
     this.pixelPass?.release();this.managedFrame?.release();
     webGpuResources(this.device).destroy(this.resolutionBuffer);
     webGpuResources(this.device).destroyAll();
+  }
+
+  releaseContext(): void {
+    const context = this.context;
+    this.context = undefined;
+    context?.unconfigure();
   }
 
   private requireContext(): GPUCanvasContext {

@@ -578,6 +578,7 @@ packed Chromium은 64개 mixed query/65 hits, closest/truncation, 대기 target 
 | headless·공용 콘텐츠 | `pnpm smoke:headless`, `pnpm smoke:content-runtime` | 실제 native 상태와 lifecycle. mock 결과만으로 실행 성공 판정 금지 |
 | Data Scene | `pnpm validate:data-scene-authoring`, `pnpm smoke:data-scene`, `pnpm smoke:data-scene-gameplay` | 적용/restore·stable instance id·실패 원자성·구 Wasm 진단·solid AABB actor의 HD-2D 이동 |
 | 런타임 시작 | `pnpm smoke:data-scene`, `pnpm smoke:asset-loading` | 포장된 SDK의 이름 텍스처 실제 픽셀, WebGPU 요청의 WebGL2 대체와 실제 백엔드, 느린 요청 취소 뒤 프레임 0 |
+| 런타임 캔버스 해제 | `pnpm smoke:data-scene`, SDK 테스트 | 전용 캔버스 생성·종료 20회 뒤 활성 WebGL2 컨텍스트 0, 시작 실패·취소 시 해제, 기본 경로 캔버스 재사용, WebGPU 구성 해제와 복구 중 재구성 방지 |
 | Data Scene 화면 맞춤 | `pnpm smoke:data-scene`, SDK 테스트 | DPR 2의 두 캔버스 크기에서 사각형 비율·네 모서리 픽셀·포인터 변환·view 재사용, 실패 시 씬과 카메라 추적 복원 |
 | clip·투영·태양 | `pnpm smoke:data-scene-presentation`, `pnpm smoke:sprite-animation-runtime` | 실제 frame UV·시간·이벤트·pause/완료·snapshot과 command/sidecar 정합 |
 | 입력 context | `pnpm smoke:input-context`, `pnpm smoke:mobile-input` | packed 입력·modal 우선순위·release/cancel·pointer/viewport 좌표 |

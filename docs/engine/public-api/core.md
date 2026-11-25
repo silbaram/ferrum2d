@@ -268,6 +268,10 @@ ID 기반 `loadTexture`를 제공한다. 디버그 라인·모델 준비·픽셀
 프레임 소비자는 그리기 method만 사용하며 asset 로딩·canvas resize·renderer 수명을 관리하지 않는다.
 요청한 디버그 라인 또는 공간 geometry를 지원하지 않으면 frame clear 전에 명시적 오류를 반환한다.
 외부에서 주입한 renderer의 수명은 호출자가 소유하며 `runtime.destroy()`로 해제하지 않는다.
+`releaseCanvasContext: true`는 런타임이 렌더러를 만드는 전용 캔버스에만 쓸 수 있다. 주입한 렌더러와 함께 지정하면 시작 전에 오류로 거절한다.
+종료 또는 시작 실패·취소 시 렌더러 자원을 정리한 뒤 WebGL2의 `WEBGL_lose_context` 확장이 있으면 컨텍스트를 잃게 하고, WebGPU는 캔버스 구성을 해제한다.
+기본값은 `false`이며 캔버스 컨텍스트가 유지된다. 컨텍스트를 해제한 캔버스는 다시 쓰지 않고 새 런타임에 새 캔버스를 제공한다.
+렌더러를 직접 소유한 호출자는 `destroy()` 뒤 선택 capability인 `releaseContext()`로 전용 캔버스를 해제할 수 있다.
 기본 생성 경로와 `createRenderer()`의 구체 반환형은 유지한다.
 직접 backend 기능을 쓰던 consumer는 [custom renderer 이전 방법](migration-guide.md#custom-renderer-계약-이전)을 따른다.
 

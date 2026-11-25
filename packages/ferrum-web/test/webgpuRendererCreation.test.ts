@@ -6,6 +6,7 @@ import { createSpatialModelAsset } from "../src/spatialModel.js";
 import { emptyRendererStats } from "../src/renderer.js";
 import type { RenderCommandBufferView } from "../src/wasmBridge.js";
 import { WebGpuRendererBackend } from "../src/webgpuRendererBackend.js";
+import { createFerrumRuntime } from "../src/createFerrumRuntime.js";
 import type { TextureLoadOptions } from "../src/colorManagement.js";
 class Buffer {
   destroy() {}
@@ -106,6 +107,9 @@ function canvas(device: Device, fails = false) {
           device.events.push("configure");
           if (fails) throw Error("configuration failed");
         },
+        unconfigure() {
+          device.events.push(device.destroyed ? "unconfigure after destroy" : "unconfigure");
+        },
       };
     },
   } as unknown as HTMLCanvasElement;
@@ -195,6 +199,39 @@ test("lost WebGPU stops submitting, coalesces recovery and preserves renderer id
     renderer.destroy();renderer.destroy();equal(second.destroyed,true);
     throws(()=>renderer.recoverDevice(),/destroyed/);
   } finally {restore();}
+});
+
+test("a released WebGPU canvas stays unconfigured when a pending replacement device arrives", async () => {
+  const first = new Device(), next = new Device();
+  let requests = 0;
+  let provideDevice!: (device: Device) => void;
+  const restore = install(() => ++requests === 1 ? first : new Promise<Device>(resolve => { provideDevice = resolve; }));
+  try {
+    const renderer = await WebGPURenderer.create(canvas(first));
+    first.resolveLost({ reason: "unknown", message: "reset" });
+    await Promise.resolve();
+    const recovery = renderer.recoverDevice();
+    renderer.destroy();
+    renderer.releaseContext();
+    renderer.releaseContext();
+    await Promise.resolve();
+    provideDevice(next);
+    await rejects(recovery, /abort/i);
+    equal(next.destroyed, true);
+    equal(first.events.filter(event => event === "configure").length, 1);
+    equal(first.events.filter(event => event === "unconfigure after destroy").length, 1);
+  } finally { restore(); }
+});
+
+test("runtime unconfigures a dedicated WebGPU canvas if configuration fails", async () => {
+  const device = new Device();
+  const restore = install(device);
+  try {
+    await rejects(createFerrumRuntime({
+      canvas: canvas(device, true), rendererPreference: "webgpu", releaseCanvasContext: true,
+    }), error => error instanceof WebGpuCanvasCommitError && /configuration failed/.test(String(error.cause)));
+    deepEqual(device.events.slice(-4), ["webgpu", "configure", "webgpu", "unconfigure after destroy"]);
+  } finally { restore(); }
 });
 test("replacement validation failure is retryable and never reports ready", async () => {
   const first=new Device(),bad=new Device(),good=new Device();bad.queue.onSubmittedWorkDone=async()=>{bad.error=true;};let requests=0;
