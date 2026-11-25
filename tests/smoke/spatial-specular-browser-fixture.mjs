@@ -103,7 +103,7 @@ export async function probeSpecularMaterials(configure, current, reread, engine,
     comparisons.push({kind:`${kind}-turned`,differentPixels:turnedDiff,pixelCount:count});
   }
   const savedRow=await run("save","color-transformed"),before=current().slice();
-  const snapshot=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:savedRow.doc})));
+  const snapshot=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,dataSceneAuthoringDocument:savedRow.doc})));
   const old=registry.entries().find(row=>row.instanceId==="tree").handle;
   restoreGameStateSnapshot(engine,snapshot,{dataSceneAuthoringApplyOptions:apply});
   const fresh=registry.entries().find(row=>row.instanceId==="tree").handle;

@@ -392,10 +392,10 @@ async function probe(canvas, backend, projection, recover=false) {
     const first = await read(),
       warm = await read();
     check(warm.stats.spatial.terrainUploadBytes === 0, "static terrain reuploaded");
+    // Reapply the authored scene without requesting a native physics checkpoint.
     const capture = () =>
       captureGameStateSnapshot(engine, {
         includeDataSceneState: true,
-        includeDataSceneProgress: true,
         dataSceneAuthoringDocument: doc,
       });
     const saved = JSON.parse(JSON.stringify(capture())),

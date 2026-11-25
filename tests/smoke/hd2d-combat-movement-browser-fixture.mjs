@@ -247,7 +247,7 @@ async function movementProbe(canvas, kind) {
       undefined,
       undefined,
       () => renderer.viewportSize(),
-      { fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
+      { physicsBackend: "legacy", fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
     );
     check(engine.supportsDataSceneCombatMovement(), "packed Wasm lacks native combat movement");
     renderer.resize();

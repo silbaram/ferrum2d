@@ -335,7 +335,7 @@ async function probe(canvas, projection, pixelArt) {
       undefined,
       undefined,
       () => renderer.viewportSize(),
-      { fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
+      { physicsBackend: "legacy", fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
     );
     view = createDataSceneSpatialView(engine, canvas);
     check(engine.supportsDataSceneProjectileVisuals(), "packed Wasm lacks C5 capability");

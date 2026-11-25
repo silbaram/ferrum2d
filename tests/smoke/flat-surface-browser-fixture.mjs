@@ -135,7 +135,7 @@ export async function probeFlatSurface(preferred,colorManagement='legacy'){
    }
    check(samples.size===2&&engine.dataSceneSpriteAnimationState(first).finished,'native material animation did not finish');
    for(const [frame,pixels]of samples){const doc=structuredClone(authored),visual=doc.sceneComposition.fragments.main.instances[0].props.components.visual;delete visual.animationSet;visual.frame=frames[frame];apply(doc);await pump();const actual=await pump();sameFrame(actual,pixels,'native animation/static map UV',0);record('native-static-frame-'+frame,actual);}
-   const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:scene})));
+   const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,dataSceneAuthoringDocument:scene})));
    check(JSON.stringify(saved).includes('"emissionTexture":"emission"'),'saved material lost stable asset reference');
    check(restoreGameStateSnapshot(engine,saved,{dataSceneAuthoringApplyOptions:options}).dataSceneAuthoringDocumentApplied,'surface JSON restore failed');
    check(!engine.configureSpriteSurfaceMaterials([{entity:first,surface:{emission:[1,0,0]}}]),'restored surface accepted stale native handle');

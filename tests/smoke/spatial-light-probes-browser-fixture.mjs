@@ -20,7 +20,7 @@ async function probe(backend,projection,colorManagement){
     packet={...state.renderCommandBuffer,buffer:state.renderCommandBuffer.buffer.slice(),spatial:source&&ownedSpatial(source)};
     if(previous&&source&&nativeTerrain?.memory===source.terrain.buffer&&nativeTerrain.offset===source.terrain.byteOffset&&nativeTerrain.length===source.terrain.length&&nativeTerrain.revision===source.terrainRevision)packet.spatial.terrain=previous.terrain;
     nativeTerrain=source&&{memory:source.terrain.buffer,offset:source.terrain.byteOffset,length:source.terrain.length,revision:source.terrainRevision};
-   },undefined,undefined,()=>renderer.viewportSize());e.configureFixedTimestep(false);engines.push(e);return e;
+   },undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });e.configureFixedTimestep(false);engines.push(e);return e;
   };
   const doc={format:"ferrum2d.consumer.scene-authoring",version:1,sceneComposition:{initialFragment:"lab",prefabs:{body:{}},fragments:{lab:{instances:[{id:"body",prefab:"body",x:0,y:0,props:{components:{visual:{kind:"sprite",texture:0,width:1,height:1,color:"#ffffff00"},collider:"none",layer:"wall"}}}]}}},behaviorRecipes:{entities:{}},
    spatial:{camera:probeCamera(projection),terrain:PROBE_TERRAIN,billboards:{},environment:{composition:"separated"}}};

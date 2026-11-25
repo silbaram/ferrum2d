@@ -605,7 +605,7 @@ async function probe(canvas, backend, projection, { pointContactOnly = false, re
     }
     const pointPixels = lastPixels, pointOld = handles.actor,
       pointSaved = JSON.parse(JSON.stringify(captureGameStateSnapshot(engine, {
-        includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: pointLast.doc,
+        includeDataSceneState: true, dataSceneAuthoringDocument: pointLast.doc,
       })));
     restoreGameStateSnapshot(engine, pointSaved, { dataSceneAuthoringApplyOptions: apply });
     handles = Object.fromEntries(registry.entries().map(e => [e.instanceId, e.handle]));
@@ -1065,7 +1065,6 @@ async function probe(canvas, backend, projection, { pointContactOnly = false, re
         JSON.stringify(
           captureGameStateSnapshot(engine, {
             includeDataSceneState: true,
-            includeDataSceneProgress: true,
             dataSceneAuthoringDocument: combined.doc,
           }),
         ),

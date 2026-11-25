@@ -14,7 +14,7 @@
 - WebGPU 복구 중 화면 맞춤 수정 완료(`a917965`, 후보 표의 항목): 일시정지한 런타임의 복구 사례가 창 크기 2개 × DPR 1·2에서 통과했다.
 - 공식 WebGPU 복구 smoke와 기본 WebGPU 공간 smoke는 물리 진행 저장 거절로 멈춘다(R3 이전 `844b0ab`에서도 같음).
   [선행 수정 F3](#선행-수정-f3-webgpu-공간-smoke의-진행-저장-거절)에서 고친다.
-- 다음은 F3, 그다음 통합 담당의 전체 끝 검증(아래 "Codex 작업 지시"의 검증), 그다음 예제 반영이다.
+- F3에서 스모크의 진행 저장 경로를 수정했다. 검증과 남은 항목은 [재현 목록과 조치](#재현-목록과-조치)에 기록한다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md) 작업은 이 계획의 R1~R3을 마친 뒤
 새 API로 예제를 옮기는 일부터 다시 시작한다.
@@ -195,6 +195,36 @@ R3 통합 검증에서 찾은 기존 결함이다. 통합 담당의 전체 끝 �
 
 **검증:** 고친 공식 smoke가 모두 통과한다(`pnpm smoke:webgpu-recovery`와 기본 `spatial-webgpu-browser-smoke.mjs` 포함).
 SDK·Rust 소스 변경이 없음을 확인한다. 넘긴 사례 목록은 보고와 이 문서에 적는다.
+
+### 재현 목록과 조치
+
+준비된 Wasm과 SDK로 `package.json`과 CI의 브라우저 명령을 실행했다. 아래 명령과 하위 모드에서 동일한 진행 저장 거절을 확인했다.
+
+| 범위 | 변경 전 재현 | 조치 |
+| --- | --- | --- |
+| 공간 기본·CI 오프스크린·장치 복구 | `smoke:spatial-webgpu`, `smoke:spatial-webgpu-offscreen`, `smoke:webgpu-recovery` | 정적 작성 씬은 문서와 장면 상태를 저장한다. 기본 공간 probe의 통합 물리 디버그 선, 새 핸들, 렌더링·픽셀·장치 복구 단언을 유지한다. |
+| 공간 조명 세부 모드 | `smoke:spatial-light-probes`, `smoke:spatial-light-shafts`, `smoke:spatial-height-fog`, `smoke:spatial-light-selection`, `smoke:spatial-point-pcss`, `smoke:spatial-sun-pcss`, `smoke:spatial-point-shadows`, `smoke:spatial-wide-bloom` | 카메라, 라이브 조명, 선택 이력과 스냅샷 버전 검사는 레거시 물리에서 기존 진행 저장을 사용한다. |
+| 평면 조명 | `smoke:flat-lit`, 같은 러너의 `--surface-only`, `--masks-only` | 시험이 저장하는 정적 프레임과 수신 마스크의 작성 문서·장면 상태를 복원한다. 애니메이션, 픽셀, 오래된 핸들 거절 단언을 유지한다. |
+| HD-2D 전투 체크포인트 | `hd2d-combat-browser-smoke.mjs --actions-only`, `--visuals-only`, `--input-only` | 액션, 투사체 애니메이션, 비행 중 투사체 체크포인트는 레거시 물리를 명시한다. 입력 모드의 시간 초과 아래에서 실제 진행 저장 거절을 관찰했다. |
+
+HD-2D의 탐색·군집·스케줄러·이동·스폰은 변경 전에 gameplay 설정 단계에서 막혔다.
+이 fixture들도 레거시 진행 저장을 검사하므로 레거시 물리를 명시하고 기존 이동·전투·저장 단언을 유지한다.
+WebGPU 폴백 전용 모드는 사전 검사에서 통과했다.
+
+통합 3D 물리의 JSON 진행 스냅샷 후속 항목으로 넘긴 fixture는 없다. 공간 디버그 선은 기존과 같이 통합 물리에서 검사하며
+Village의 네이티브 런타임 체크포인트와 `smoke:unified-physics-web`의 JSON 저장 거절 검사는 그대로 둔다.
+
+준비된 Wasm으로 SDK 테스트 2,068개, CI 공간 조명 보고서 테스트 38개, `smoke:webgpu-recovery`, `smoke:flat-lit`가 통과했다.
+CI 오프스크린 스모크의 1280×720·390×844, DPR 1·2 네 조합은 기존 단언을 그대로 두고 화면 조합별로 나눠 실행해 모두 통과했다.
+HD-2D `--actions-only`, `--visuals-only`, `--input-only`, `--spawn-only`도 두 창 크기와 DPR 1·2에서 통과했다.
+스폰의 복원 타이머는 소프트웨어 렌더링의 DPR 2에서 감소하는 것을 확인한 뒤 해당 대기 한도만 15초에서 30초로 늘렸다.
+
+별개 검증 후속은 다음과 같다.
+
+- 기본 `smoke:spatial-webgpu`는 소프트웨어 Chromium의 네이티브 캔버스 공유 이미지 생성 실패 후 픽셀 읽기에서 중단됐다.
+- 기본 `smoke:hd2d-combat`은 적 128명에서 9프레임을 그려 기존 10프레임 기준에 미달했다. 같은 사례의 revision 9 체크포인트는 복원됐다.
+- 사전 실행의 `smoke:spatial-scene`과 `smoke:sprite-animation-runtime`은 애니메이션 프레임 단언,
+  `smoke:data-scene-gameplay`는 장애물의 인스턴스 참조 검증, `smoke:unified-physics-web`은 네이티브 탐색 단언에서 각각 중단됐다.
 
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 

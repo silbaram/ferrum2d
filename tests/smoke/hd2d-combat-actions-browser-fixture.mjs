@@ -241,7 +241,7 @@ async function actionProbe(canvas, kind, projection) {
       () => input.snapshot(),
       undefined,
       () => renderer.viewportSize(),
-      { fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
+      { physicsBackend: "legacy", fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
     );
     check(engine.supportsDataSceneCombatActions(), "packed Wasm lacks melee/dash capability");
     renderer.resize();
