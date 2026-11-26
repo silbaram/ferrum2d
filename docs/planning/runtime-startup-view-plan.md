@@ -484,6 +484,24 @@ PR #113 재실행(run 45782027817)은 Rust 포맷·Clippy·테스트, `unified-p
 3D 뷰어·모델 선택·게임 카메라(30분)·에셋 새로고침·여섯 패널이 통과했고, 변환은 고친 뒤 orthographic DPR 1 회차가 통과했다.
 이 smoke는 로컬에서만 1시간이 넘으므로 PR CI의 실행 시간을 첫 완주 결과로 판단한다.
 
+**PR #113 세 번째 실행(run 45816254388, `1a764ae`)과 중단 상태(2026-11-26)**
+
+- 앞 45단계는 약 47분에 통과했고, HD-2D 작성 화면 smoke가 71분 뒤 `placement-asset-usage-smoke.mjs:82`에서 실패했다.
+  스캔 뒤 `**/levels/closed.json` 요청을 15초 안에 받지 못했다. 같은 부분은 로컬 전체 실행에서 통과했으므로 느린 러너의 시간 한도로 본다(미확정).
+- 로컬에서 하위 검사 시간을 합치면 이 smoke 하나가 약 2시간이다(게임 카메라 저장 30분, 변환 42분, 1440×1000·DPR 2 소프트웨어 렌더링).
+  Rust 빌드 캐시가 없어 브라우저 검사 전에도 약 20분이 걸린다. `validate` 한 번이 4~6시간(GitHub 기본 job 한도 6시간)에 이를 수 있다.
+- step 47 이후를 로컬에서 CI 순서로 일부 실행했다. 배치 계약, 입력 context, Data Scene gameplay·runtime, Spatial Scene(17분)은 통과했다.
+  Blender HD-2D village smoke는 62분 뒤 DPR 2 구간에서 실패했지만, 실패 스크린샷이 30초 한도를 넘어 원래 오류를 가렸다.
+  실패 스크린샷 오류가 원래 오류를 덮지 않도록 고쳤고(`placement-village-smoke.mjs`), 원래 원인은 다시 실행해 확인한다.
+  Spatial WebGPU offscreen 단계 실행 중에 중단했다.
+
+**다음에 이어서 할 일**
+
+1. 결정: PR CI를 나눌지 정한다. 제안은 PR에서는 Rust·SDK·빌드·lint·패키지와 가벼운 브라우저 smoke만 돌리고(목표 30~40분, Rust 캐시 추가),
+   HD-2D 작성 화면·Blender village·Placement workspace 같은 무거운 Studio smoke는 수동 입력 또는 야간 실행으로 옮기는 것이다(D5-B의 PR 범위 조정).
+2. 결정에 따라 `ci.yml`을 고치고, 에셋 사용처 시간 한도와 village DPR 2 실패를 무거운 검사 쪽에서 확인한다.
+3. 그 뒤 PR #113을 다시 실행한다. CI용으로 설치한 Rust 1.97.1·1.100.0 toolchain과 `~/.cache/ferrum2d-ci-rust-1.100`은 CI가 안정된 뒤 정리한다.
+
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
 ### 문서 형식
