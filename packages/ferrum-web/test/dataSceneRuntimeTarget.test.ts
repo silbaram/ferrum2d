@@ -1265,6 +1265,56 @@ test("Data Scene progress snapshots still reject custom fragment restore options
   });
 });
 
+test("Data Scene apply resolves lit authoring once before preparing assets", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
+    try {
+      let formatReads = 0;
+      let prepares = 0;
+      const { format, ...fields } = fragmentLightingDocument("lit");
+      const document = { ...fields, get format() { formatReads++; return format; } };
+      const applied = applyDataSceneAuthoringDocument(engine, document, {
+        fragment: "island",
+        flatLightingPreparer: { prepareFlatLighting() {
+          equal(formatReads, 1);
+          prepares++;
+        } },
+      });
+      equal(prepares, 1);
+      ok(engine.getPhysicsEntity(applied.entityHandles.door));
+    } finally {
+      engine.destroy();
+    }
+  });
+});
+
+test("Data Scene lit apply and restore retain lighting error precedence", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
+    try {
+      const document = fragmentLightingDocument("lit");
+      const flatLightingPreparer = { prepareFlatLighting() {} };
+      const { entityHandles } = applyDataSceneAuthoringDocument(engine, document, {
+        fragment: "island",
+        flatLightingPreparer,
+      });
+      const snapshot = captureGameStateSnapshot(engine, {
+        includeDataSceneState: true,
+        dataSceneAuthoringDocument: document,
+      });
+      throws(() => applyDataSceneAuthoringDocument(engine, document), missingFragmentObstacle);
+      throws(() => restoreGameStateSnapshot(engine, snapshot), error => error instanceof Error &&
+        error.message === "Invalid scene composition: kind=scene-composition path='dataSceneAuthoring.flatLightingPreparer' detail='lit requires a renderer asset preflight before activation'.");
+      throws(() => restoreGameStateSnapshot(engine, snapshot, {
+        dataSceneAuthoringApplyOptions: { flatLightingPreparer },
+      }), missingFragmentObstacle);
+      equal(engine.getPhysicsEntity(entityHandles.door)?.x, 36);
+    } finally {
+      engine.destroy();
+    }
+  });
+});
+
 test("Data Scene view clamps its initial bounded camera using the zoomed viewport", async () => {
   await withNodeWasmFileFetch(async () => {
     const engine = await createEngine();

@@ -313,12 +313,21 @@ function dataSceneAuthoringResolutionOptions(options: ApplyDataSceneAuthoringDoc
 }
 
 export function preflightDataSceneLighting(engine: FerrumEngine, document: unknown, options: ApplyDataSceneAuthoringDocumentOptions = {}): void {
+  preflightDataSceneLightingWithResolution(engine, document, options);
+}
+
+function preflightDataSceneLightingWithResolution(
+  engine: FerrumEngine,
+  document: unknown,
+  options: ApplyDataSceneAuthoringDocumentOptions,
+  resolvedDocument?: ResolvedSceneAuthoringDocument,
+): void {
   if(!document || typeof document!=="object")return;
   const { resolveOptions } = dataSceneAuthoringResolutionOptions(options);
   const { path } = resolveOptions;
   if((document as {lighting?:{profile?:string}}).lighting?.profile!=="lit"){
     // Validate a restored surface declaration before any saved native state is changed.
-    const resolved = resolveSceneAuthoringDocument(document, resolveOptions);
+    const resolved = resolvedDocument ?? resolveSceneAuthoringDocument(document, resolveOptions);
     preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
     const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
     for(const instance of plan.instances){
@@ -341,7 +350,7 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
   if(!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.lighting.profile`,"lit requires native sprite lighting v1 support");
   const preparer=options.flatLightingPreparer;
   if(!preparer||typeof preparer.prepareFlatLighting!=="function")throw sceneCompositionDiagnosticError(`${path}.flatLightingPreparer`,"lit requires a renderer asset preflight before activation");
-  const resolved = resolveSceneAuthoringDocument(document, resolveOptions);
+  const resolved = resolvedDocument ?? resolveSceneAuthoringDocument(document, resolveOptions);
     preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
   if (resolved.lighting?.pointLights?.some(light => light.cookie !== undefined) && preparer.flatLightingCookieVersion?.() !== 1)
     throw sceneCompositionDiagnosticError(`${path}.lighting`, "cookies require renderer cookie v1 support");
@@ -486,7 +495,7 @@ export function applyDataSceneAuthoringDocumentWithCommit(
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, `supports at most ${MAX_SPRITE_LIGHTING_UPDATES} sprite lighting materials`);
   if (lightingMaterials.length && (!runtimeAdapter.supportsSpriteLightingMaterials?.() || typeof engine.configureSpriteLightingMaterials !== "function"))
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "sprite lighting requires native v1 support");
-  preflightDataSceneLighting(engine, document, runtimeOptions);
+  preflightDataSceneLightingWithResolution(engine, document, runtimeOptions, resolved);
   const normalMaterials = spriteBindings.filter((b): b is typeof b & {normalTextureId:number} => b.normalTextureId !== undefined);
   const nineSlices = spriteBindings.filter((b): b is typeof b & {nineSlice:SpriteNineSliceSpec} => b.nineSlice !== undefined);
   if(normalMaterials.length>MAX_SPRITE_NORMAL_UPDATES)
