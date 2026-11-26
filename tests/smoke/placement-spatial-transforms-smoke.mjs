@@ -179,6 +179,13 @@ export async function smokePlacementSpatialTransforms(parent, timeoutMs) {
       const moved = await source();
       const instances = doc => doc.sceneComposition.fragments.village.instances;
       const instance = (doc, id) => instances(doc).find(item => item.id === id);
+      // The village uses native bodies, whose physical height is `body.elevation`.
+      const bodyElevation = (doc, id) => {
+        const body = instance(doc, id).props.components.body;
+        assert.equal(body.type, undefined, `${id} must keep its native body`);
+        assert.equal(typeof body.elevation, "number", `${id} must author a native body elevation`);
+        return body.elevation;
+      };
       assert.deepEqual(instance(moved, "village_landscape"), instance(baseline, "village_landscape"));
       assert.notDeepEqual(instance(moved, "west_cottage"), instance(baseline, "west_cottage"));
       assert.deepEqual(await camera(), originalCamera);
@@ -225,13 +232,11 @@ export async function smokePlacementSpatialTransforms(parent, timeoutMs) {
       assert.deepEqual(await source(), iconRotated);
       const beforeHeight = await source();
       await heightIcon.press("ArrowUp"); await paint();
-      assert.equal(instance(await source(), "west_cottage").props.components.body.heightSpan.elevation,
-        instance(beforeHeight, "west_cottage").props.components.body.heightSpan.elevation + 1);
+      assert.equal(bodyElevation(await source(), "west_cottage"), bodyElevation(beforeHeight, "west_cottage") + 1);
       await page.locator("[data-placement-action=undo]").click(); await paint();
       assert.deepEqual(await source(), beforeHeight);
       await dragIcon(heightIcon, 0, -24);
-      assert.notEqual(instance(await source(), "west_cottage").props.components.body.heightSpan.elevation,
-        instance(beforeHeight, "west_cottage").props.components.body.heightSpan.elevation);
+      assert.notEqual(bodyElevation(await source(), "west_cottage"), bodyElevation(beforeHeight, "west_cottage"));
       await page.locator("[data-placement-action=undo]").click(); await paint();
       assert.deepEqual(await source(), beforeHeight);
       await page.locator("[data-placement-action=undo]").click(); await paint();

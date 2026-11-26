@@ -478,9 +478,10 @@ PR #113 재실행(run 45782027817)은 Rust 포맷·Clippy·테스트, `unified-p
 | --- | --- | --- |
 | `placement-lighting-upgrade-smoke.mjs`의 `followActor` | `physics` 없이 `spatial.actor`를 쓰는 문서는 새 Engine의 첫 Data Scene일 때만 legacy 경로로 적용된다([공간 문서](../engine/data-scene-spatial.md#통합-3d-물리의-캐릭터-이동)). Studio 탭은 Engine 하나를 공유하므로 두 번째 탭으로 연 문서가 `runtime rejected spatial scene configuration`으로 거절됐다. 오류는 작업 공간 상태 메시지에만 표시된다. | 같은 문서를 새 Studio 페이지의 첫 HD-2D 장면으로 열어 연결 해제 위치·Undo 단언을 그대로 검사한다. 새 페이지의 스크립트 오류도 확인한다. |
 | `placement-threejs-upgrades-smoke.mjs`의 우물 충돌체 | `581c3aa1`이 village를 native 물리로 옮기면서 우물이 원형 legacy 충돌체에서 native `convexHull` 고정 body가 됐다. native body의 실행 정보는 legacy 충돌체 목록 대신 body 종류와 충돌체 개수를 보고한다. | native body·`fixed`·충돌체 1개를 실행 정보와 패널 문구에서 확인한다. |
+| `placement-spatial-transforms-smoke.mjs`의 높이 아이콘 | 같은 전환으로 `west_cottage`도 native body가 됐다. Studio는 native body의 높이를 `body.elevation`에 쓰지만 테스트는 legacy `body.heightSpan.elevation`을 읽었다. | native body인지 확인한 뒤 `body.elevation`의 증가·Undo를 검사한다. |
 
-통합 검증: 고친 조명 단계를 포함한 전체 smoke는 3D 뷰어 단계까지 진행했고(로컬 46분), 3D 뷰어와 모델 선택 하위 검사는 단독 실행에서 통과했다.
-게임 카메라 저장 검사는 1440×1000·DPR 2의 소프트웨어 렌더링으로 25분이 넘게 걸려 로컬 확인을 이어 간다.
+통합 검증: 고친 조명 단계를 포함한 전체 smoke는 3D 뷰어 단계까지 진행했고(로컬 46분), 그 뒤 하위 검사는 단독 실행했다.
+3D 뷰어·모델 선택·게임 카메라(30분)·에셋 새로고침·여섯 패널이 통과했고, 변환은 고친 뒤 orthographic DPR 1 회차가 통과했다.
 이 smoke는 로컬에서만 1시간이 넘으므로 PR CI의 실행 시간을 첫 완주 결과로 판단한다.
 
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
