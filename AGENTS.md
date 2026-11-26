@@ -181,12 +181,17 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - package 변경 시 `pnpm package:check:<package>` 또는 `pnpm package:check`
 - create-game/agents template 변경 시 필요한 범위의 `pnpm package:consumer-smoke`와 `pnpm validate:consumer-smoke-report`
 
-CI 정합 검증(GitHub Actions `ci.yml`, 현재 `workflow_dispatch` 수동 실행이며 push/PR 자동 실행이 아니다):
+GitHub Actions `ci.yml`의 `validate`는 `main` 대상 PR과 수동 실행에서 검증한다. 같은 PR의 새 실행은 이전 실행을 취소한다.
+`consumer-smoke`와 `extended-browser-smoke`는 기존 수동 입력 또는 `ferrum-web-v*` 태그 ref 수동 실행에서 검증한다.
+
+CI 정합 검증 순서
 
 - `pnpm install`
 - `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
 - `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
-- `pnpm build`
+- `pnpm test:web`으로 SDK 빌드 및 테스트
+- 나머지 TypeScript 패키지와 예제 빌드
+- `pnpm lint`
 
 Wasm 브리지 변경 후 추가:
 

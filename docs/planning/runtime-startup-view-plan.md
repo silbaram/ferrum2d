@@ -27,7 +27,8 @@
   통합 검증에서 SDK 테스트 2,073개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
 - [리뷰 후속 F5b](#리뷰-후속-f5b-적용-경로의-중복-해석) 완료(`10a4dc5`). 적용 중 조명 사전 검증이 이미 해석한 문서를 재사용한다.
   통합 검증에서 SDK 테스트 2,075개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
-- 다음은 [C1](#c1-pr에서-ci-자동-실행-d5-b)과 사용자의 푸시·draft PR로 진행하는 첫 실제 CI 실행이다.
+- [C1](#c1-pr에서-ci-자동-실행-d5-b)의 트리거와 빌드 순서 변경을 마쳤다. 로컬의 깨끗한 checkout에서 새 순서의 TypeScript lint가 통과했다.
+  기존 예제 하네스 검사에 남은 예제 사이트 등록 문제와 원격 실행 확인은 C1에 기록했다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
 
@@ -353,7 +354,7 @@ F5 전부터 있던 사전 검증의 바인딩(기본 진단 경로 `gameplayAut
 
 ## 결정 D5: CI 실행 방식 (2026-11-25 확정: B)
 
-CI는 `c0ad85a`(2026-06-16)부터 수동 실행 전용이다(AGENTS.md "CI 정합 검증"과 운영 문서에 기록). 저장소가 공개라 GitHub Actions 비용은 없다.
+결정 D5 당시 CI는 `c0ad85a`(2026-06-16)부터 수동 실행 전용이었다. 저장소가 공개라 GitHub Actions 비용은 없다.
 
 | 안 | 내용 | 장단점 |
 | --- | --- | --- |
@@ -380,6 +381,25 @@ F5b 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smok
   `docs/development/architecture/flat-lighting-composition.md`의 "수동 실행 전용·push/PR 자동 실행 아님" 문구를 바꾼다.
 - 검증: 워크플로 문법 검사(가능하면 `actionlint`)와 job별 실행 조건 표(수동·PR·태그)를 보고한다.
   실제 실행 확인은 브랜치를 푸시하고 PR을 열어야 하므로 사용자가 정한 시점에 한다.
+
+
+**로컬 검증 결과**
+
+- `actionlint` 1.7.7과 문서 링크 검사 통과. 두 선택형 job, 수동 입력 및 `pages.yml`은 비교 결과 변경이 없었다.
+- 별도 checkout에 `pnpm install --frozen-lockfile --offline`로 의존성을 설치하고 개인 npm 설정을 분리했다. `dist`와 `dist-test`가 없는 상태에서 기존 Wasm을 복사하고, 이전의 Studio Kit → lint 순서가 예제의 SDK 선언 누락(TS2307)으로 실패하는 것을 재현했다.
+- 이전 순서에서 만든 Studio Kit 산출물을 치운 뒤 새 순서로 적용했다. `test:web`이 SDK를 한 번 빌드하고, 나머지 패키지 빌드에서 Studio가 Studio Kit을 한 번 빌드했다. 예제 빌드 뒤 `pnpm lint`가 통과했다. 공통 빌드를 쓰는 후속 검사는 독립 실행용 빌드 절차를 반복하지 않는다.
+- Studio의 저장 활성화 번들과 테스트 모드 두 변형을 각각 한 번 빌드했다. 테스트는 자기 임시 복사본에 장면 픽스처를 추가하며 공유 번들을 그대로 둔다.
+  하네스 실패와 분리해 실행한 Studio 저장·배치 그리드·Aseprite 트림·예제 사이트 브라우저 검사와 Data Scene 샘플·gameplay 작성 보고서 검사가 통과했다.
+- lint 다음의 `pnpm report:example-demo-harness`는 `examples/site/src/main.ts`가 목록에 없어 실패했다. C1 이전에 추가된 예제 사이트의 하네스 분류가 후속으로 남았다. Rust/WASI 빌드와 전체 브라우저 행렬은 이 로컬 순서 검증에서 제외했다.
+
+| 실행 방식 | `validate` | `consumer-smoke` | `extended-browser-smoke` |
+| --- | --- | --- | --- |
+| 브랜치 ref 수동 실행 | 실행 | `consumer_smoke` 입력 시 | `extended_browser_smoke` 입력 시 |
+| `main` 대상 PR | 실행 | 건너뜀 | 건너뜀 |
+| `ferrum-web-v*` 태그 ref 수동 실행 | 실행 | 실행 | 실행 |
+| 태그 push | 트리거 없음 | 트리거 없음 | 트리거 없음 |
+
+두 선택형 job은 `validate` 성공 뒤 실행한다. 실제 GitHub 실행은 푸시와 draft PR 이후 확인한다.
 
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 

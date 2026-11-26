@@ -88,9 +88,8 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 ## GitHub Actions
 
 `.github/workflows/pages.yml`의 **Pages 배포는 수동 실행(`workflow_dispatch`) 전용**이다.
-일반 push/PR로 사이트를 배포하지 않는다. `CI`도 수동 실행 전용이지만,
+`CI`의 기본 검증은 `main` 대상 PR과 수동 실행에서 돌아간다.
 `Language boundaries`는 PR 생성·갱신과 `main` push에서 Rust/TypeScript 책임 경계·Wasm ABI·SDK 회귀를 자동 검증한다.
-자동 검증의 성공은 Pages 배포 완료를 뜻하지 않는다.
 
 문서 변경이 `main`에 병합되고 배포 승인을 받으면 Actions UI에서 `Pages` workflow의 `main`을 선택해 실행한다.
 로컬 소스와 원격 배포가 같은 버전인지 보려면 workflow의 `headSha`를 확인하고, 성공 후 공개 URL을 다시 연다.
@@ -103,4 +102,5 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/studio/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/pixel-art/` route를 `curl --fail`로 확인한다.
 
 이 workflow는 build·artifact 검증·배포·공개 route 확인을 담당한다.
-PR 자동 검증은 `Language boundaries`, 전체 검증은 수동 `CI`와 [Smoke Check](../quality/smoke-check.md)를 기준으로 한다.
+PR 자동 검증은 `CI`의 `validate`와 `Language boundaries`가 담당한다.
+선택형 브라우저·패키지 검사는 [Smoke Check](../quality/smoke-check.md)의 수동 입력과 태그 ref 조건을 따른다.

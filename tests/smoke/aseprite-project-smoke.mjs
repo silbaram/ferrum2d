@@ -53,7 +53,7 @@ const artifact = resolve(
 );
 await mkdir(artifact, { recursive: true });
 const run = await mkdtemp(join(artifact, "run-")),
-  app = resolve("apps/studio/dist");
+  app = resolve(process.env.FERRUM_STUDIO_SMOKE_DIST ?? "apps/studio/dist");
 const compiled = spawnSync(
   "cargo",
   [

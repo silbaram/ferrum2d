@@ -22,10 +22,15 @@ async function create(dist, save) {
   const cleanup = () => rmSync(root, { recursive: true, force: true });
   process.once("exit", cleanup);
   try {
-    await runReleaseCommand("pnpm", ["exec", "vite", "build", "--base=./", "--mode", "test", "--outDir", root], {
-      cwd: app, timeoutMs: 120_000,
-      env: { ...process.env, VITE_FERRUM_STUDIO_SAVE: String(save) },
-    });
+    const prepared = save ? process.env.FERRUM_STUDIO_SAVE_TEST_DIST : process.env.FERRUM_STUDIO_TEST_DIST;
+    if (prepared) {
+      await cp(prepared, root, { recursive: true });
+    } else {
+      await runReleaseCommand("pnpm", ["exec", "vite", "build", "--base=./", "--mode", "test", "--outDir", root], {
+        cwd: app, timeoutMs: 120_000,
+        env: { ...process.env, VITE_FERRUM_STUDIO_SAVE: String(save) },
+      });
+    }
     const catalog = JSON.parse(await readFile(path.join(root, "placement-scenes.json"), "utf8"));
     for (const [source, relativePath, mode] of [
       [placementRegressionFixture, "placement.scene-authoring.json", "2d"],

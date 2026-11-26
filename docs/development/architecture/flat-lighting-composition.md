@@ -109,7 +109,7 @@ renderer·capture target·canvas의 해제를 각각 시도한다. renderer를 �
 실제 새 경로의 검증은 `pnpm smoke:flat-lit`과 분리한다.
 참조 벡터 검산이 새 렌더 경로의 GPU 검증을 대신하지 않는다.
 
-CI의 수동 `workflow_dispatch` validate job에서 해당 명령을 실행한다. 일반 push/PR trigger를 새로 추가하지 않는다.
+`CI`의 `validate`에서 해당 명령을 실행한다. `validate`는 `main` 대상 PR과 수동 `workflow_dispatch`에서 시작한다.
 
 ## 구현 경계와 비용
 

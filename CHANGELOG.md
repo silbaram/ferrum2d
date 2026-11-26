@@ -53,6 +53,7 @@ GitHub staging의 네 설치 package는 `0.1.0-beta.10`으로 맞춘다.
 
 ### Changed
 
+- `main` 대상 PR에서 CI 기본 검증을 실행하고, TypeScript 검사와 스모크가 같은 빌드 산출물을 사용한다.
 - 예제 사이트의 스프라이트 그리기, 충돌과 트리거, 벽돌 깨기가 렌더러·에셋 준비, 화면 맞춤, 캔버스 컨텍스트 해제를 런타임에 맡긴다.
 - Ferrum2D 개발·CI와 게임 생성·에이전트 CLI의 최소 버전을 Node.js 24로 올렸다.
   개발 저장소와 GitHub Actions는 Node.js 24 LTS를 사용한다.
