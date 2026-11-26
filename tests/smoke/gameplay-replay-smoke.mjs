@@ -384,8 +384,18 @@ function replayWithScenarioMetadata(replay, scenario) {
   };
 }
 
-function runTopdownGoldenReplay(scenario) {
+function createLegacyShooterReplayEngine() {
+  // Shooter golden fixtures compare snapshots from the legacy physics backend.
   const engine = new Engine();
+  if (!engine.configure_legacy_physics_defaults()) {
+    engine.free();
+    throw new Error("Shooter replay requires the legacy physics backend");
+  }
+  return engine;
+}
+
+function runTopdownGoldenReplay(scenario) {
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -425,7 +435,7 @@ function runTopdownGoldenReplay(scenario) {
 }
 
 function runTopdownAuthoredBehaviorReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -479,7 +489,7 @@ function runTopdownAuthoredBehaviorReplay(scenario) {
 }
 
 function runTopdownAuthoredPlayerDamageCollisionReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -533,7 +543,7 @@ function runTopdownAuthoredPlayerDamageCollisionReplay(scenario) {
 }
 
 function runTopdownAuthoredProjectileTileImpactFsmReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -584,7 +594,7 @@ function runTopdownAuthoredProjectileTileImpactFsmReplay(scenario) {
 }
 
 function runTopdownHomingMissileReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -635,7 +645,7 @@ function runTopdownHomingMissileReplay(scenario) {
 }
 
 function runTopdownExplosiveProjectileReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -686,7 +696,7 @@ function runTopdownExplosiveProjectileReplay(scenario) {
 }
 
 function runTopdownTileImpactAreaDamageReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -737,7 +747,7 @@ function runTopdownTileImpactAreaDamageReplay(scenario) {
 }
 
 function runTopdownWaveActionTriggerReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -793,7 +803,7 @@ function runTopdownWaveActionTriggerReplay(scenario) {
 }
 
 function runTopdownStateEnterActionTriggerReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -844,7 +854,7 @@ function runTopdownStateEnterActionTriggerReplay(scenario) {
 }
 
 function runTopdownStateEnterDashActionTriggerReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -895,7 +905,7 @@ function runTopdownStateEnterDashActionTriggerReplay(scenario) {
 }
 
 function runTopdownStateEnterProjectileActionTriggerReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
@@ -946,7 +956,7 @@ function runTopdownStateEnterProjectileActionTriggerReplay(scenario) {
 }
 
 function runTopdownStateEnterMeleeActionTriggerReplay(scenario) {
-  const engine = new Engine();
+  const engine = createLegacyShooterReplayEngine();
   try {
     engine.set_viewport_size(800, 480);
     engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);

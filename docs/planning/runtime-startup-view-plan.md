@@ -29,7 +29,8 @@
   통합 검증에서 SDK 테스트 2,075개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
 - [C1](#c1-pr에서-ci-자동-실행-d5-b)의 트리거와 빌드 순서 변경을 마쳤다. 로컬의 깨끗한 checkout에서 새 순서의 TypeScript lint가 통과했다.
   [리뷰 후속 C1b](#리뷰-후속-c1b)는 Aseprite 슬라이스 테스트를 복구하고 예제 사이트를 독립 셸로 등록했다.
-  첫 PR CI를 막는 추가 실패와 아직 실행하지 않은 검사는 C1b에 기록했다.
+  [리뷰 후속 C1c](#리뷰-후속-c1c)는 C1b에서 찾은 실패를 고쳤다. 로컬에서 선택한 `validate` 단계는 모두 통과했다.
+  첫 실제 PR에서 브라우저·Rust 검증을 확인한다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
 
@@ -431,6 +432,23 @@ F5b 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smok
 
 추가 실패는 이번 변경 범위에서 진단 결과만 남겼다. 브라우저와 Rust를 사용하는 검사, GitHub 러너에서의 실행 및 artifact 업로드는
 실제 PR 검증에 남아 있다. 위 순서에서 재현한 첫 실패는 런타임 예산 문서 검사다.
+
+### 리뷰 후속 C1c
+
+- 런타임 예산 검사는 문서에서 PR·수동 실행의 기본 gate와 선택형 job 분류를 안내하는지 확인한다. [smoke-check.md](../development/quality/smoke-check.md)에
+  `tag/manual opt-in`을 복구해 브랜치 ref 수동 입력과 `ferrum-web-v*` 태그 ref 수동 실행의 의미를 설명했다. 검사 조건은 기존대로다.
+- minimal·topdown·breakout·platformer를 CLI로 생성하고 각 프로젝트에서 `node scripts/ferrum-runtime-replay.mjs update-fixture`를 실행했다.
+  해시 값만 가리고 JSON 전체를 비교했다. 총 18개 스냅샷에서 Native 파일의 `sha256`과 파생 `snapshotHash`·`replayHash` 58개만 달라졌다.
+  현재 SDK로 네 프로젝트의 runtime replay 보고서를 확인했다.
+- `cb110be7`이 `Engine::new()`의 기본값을 통합 물리로 바꾸면서 `capture_shooter_snapshot()`에 레거시 스냅샷 거절을 추가했다.
+  해당 커밋의 부모에서 Shooter replay는 기본 엔진을 만들고 같은 메서드를 호출했다. `cb110be7`은 `origin/main`에 포함되어 있다.
+  Shooter 시나리오가 쓰는 12개 실행 함수의 초기화에만 레거시 물리를 명시했다. 기존 Shooter golden, 단언, 별도 Data Scene 작성·복원
+  경로는 유지했다. 이 검사의 Shooter 범위는 레거시 물리다. 네 create-game 템플릿의 Native replay는 통합 물리에서 확인했다.
+- 산출물이 없는 별도 checkout에서 기존 Wasm을 재사용해 C1b와 동일한 순서의 45개 단계와 67개 명령이 모두 통과했다.
+  `pnpm validate:runtime-budget-product`, `node scripts/package/check-create-game-package.mjs --verify-pack --skip-build`,
+  `node tests/smoke/create-game-template-report-envelope-smoke.mjs`, Gameplay replay 17개 시나리오·94개 스냅샷,
+  `pnpm validate:gameplay-report-artifacts`가 통과했다. 패키지 라이선스 검사는 읽기 전용 `cargo metadata`를 호출했다.
+  실제 PR의 브라우저 smoke와 Rust 검증 결과는 GitHub 러너에서 확인한다.
 
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 

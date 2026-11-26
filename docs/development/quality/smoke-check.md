@@ -99,8 +99,9 @@ pnpm validate:pages-artifact
 | `github-release-prepare.yml` | 수동 SDK·Studio 빌드 및 설치 검증. `attach_to_draft` 선택 시 세 OS 설치 파일과 SDK를 릴리스 초안에 첨부하고 원격 파일 목록·크기·해시를 대조 |
 
 아래의 **CI 기본 gate**는 `main` 대상 PR과 수동 실행에서 돌아가는 `validate` 검사다.
-브랜치 ref 수동 실행에서는 `consumer_smoke`, `extended_browser_smoke` 입력으로 해당 job을 켠다.
-`ferrum-web-v*` 태그 ref를 선택해 수동 실행하면 두 job이 활성화된다. 실제 trigger와 실행 입력을 보고서에 남긴다.
+**tag/manual opt-in**은 선택형 `consumer-smoke`와 `extended-browser-smoke`를 가리킨다. 브랜치 ref 수동 실행에서는
+`consumer_smoke`, `extended_browser_smoke` 입력으로 해당 job을 켜고, `ferrum-web-v*` 태그 ref로 수동 실행하면
+두 job이 활성화된다. PR에서는 두 job을 건너뛴다. 실제 trigger와 실행 입력을 보고서에 남긴다.
 
 ## 제품 Runtime Budget Readiness
 
@@ -588,6 +589,8 @@ packed Chromium은 64개 mixed query/65 hits, closest/truncation, 대기 target 
 `smoke:spatial-scene`의 아틀라스 재생은 실제 GameLoop에 50ms 간격을 여섯 번 입력해 프레임 1의 픽셀과 일시 정지를 검사한다.
 `smoke:sprite-animation-runtime`은 0.1ms 미만 간격을 다음 RAF에 누적하는 동작과 경계의 프레임·이벤트를 검증한다.
 이 검사의 JSON 애니메이션 진행 저장은 레거시 물리에서 실행한다.
+`smoke:gameplay-replay:report`의 Shooter golden 시나리오는 레거시 물리에서 프레임 상태와 스냅샷 해시를 비교한다.
+Data Scene 작성·복원 시나리오는 별도의 SDK 경로에서 실행한다.
 
 물리의 상세 기능과 제외 범위는 [물리 기능 맵](../architecture/physics-engine.md)을 따른다.
 선택형 replay Worker의 취소·stale 결과·종료 검증을 전체 게임 루프 Worker 이전의 증거로 사용하지 않는다.
