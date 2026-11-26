@@ -22,8 +22,11 @@
   `dist`가 없으면 예제 타입 검사가 실패하므로 CI의 단계 순서 문제로 [C1](#c1-pr에서-ci-자동-실행-d5-b)에 넣었다.
 - [선행 수정 F4](#선행-수정-f4-기존-smoke-6개-진단) 완료(2026-11-26). 여섯 실패를 재현하고 오래된 애니메이션 검사 두 개를 고쳐 전체 통과했다.
   Data Scene 적용, 통합 물리 성능과 소프트웨어 렌더링 두 사례의 후속은 F4 표에 기록했다.
-- [선행 수정 F5](#선행-수정-f5-조명-사전-검증의-프래그먼트-누락) 완료(2026-11-26). Data Scene 적용·장면 상태 복원에서 조명 사전 검증이 선택한 프래그먼트를 해석한다.
-- 다음(2026-11-26 사용자 결정): [C1](#c1-pr에서-ci-자동-실행-d5-b) → 사용자의 푸시·draft PR로 첫 실제 CI 실행.
+  통합 검증에서 고친 두 smoke(`smoke:spatial-scene` 4개 사례, `smoke:sprite-animation-runtime` WebGL2·WebGPU)가 통과했다.
+- [선행 수정 F5](#선행-수정-f5-조명-사전-검증의-프래그먼트-누락) 완료(`2199a9d`, 2026-11-26). Data Scene 적용·장면 상태 복원에서 조명 사전 검증이 선택한 프래그먼트를 해석한다.
+  통합 검증에서 SDK 테스트 2,073개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
+  리뷰에서 적용할 때마다 같은 문서를 전체 검증으로 두 번 해석하는 비용을 찾아 [F5b](#리뷰-후속-f5b-적용-경로의-중복-해석)로 고친다.
+- 다음: [F5b](#리뷰-후속-f5b-적용-경로의-중복-해석) → [C1](#c1-pr에서-ci-자동-실행-d5-b) → 사용자의 푸시·draft PR로 첫 실제 CI 실행.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
 
@@ -294,6 +297,29 @@ Data Scene gameplay 37개, Data Scene 브라우저의 네 화면 조합과 화�
 `dataSceneAuthoring`을 전달한다. 컴포넌트 직접 해석은 `allowTemplate: true`와 문서 경로를 사용한다.
 적용 경로는 템플릿 허용 정책과 `instances.<id>` 경로를 전달한다. 이 호출들은 F5의 문서 해석 옵션 수정 범위 밖이다.
 
+### 리뷰 후속 F5b: 적용 경로의 중복 해석
+
+F5 뒤 `preflightDataSceneLighting`은 적용 경로와 같은 옵션(`validateBindings`·`validateComponents` 기본 true 포함)으로 문서를 해석한다.
+적용 경로(`applyDataSceneAuthoringDocumentWithCommit`)는 바로 앞에서 같은 문서를 같은 옵션으로 이미 해석했으므로 같은 일을 두 번 한다.
+F5 전 사전 검증은 가벼운 해석이었다. 통합 검증에서 `resolveSceneAuthoringDocument`만 잰 비용(중앙값)은 다음과 같다.
+
+| 인스턴스 | 가벼운 해석(F5 전 사전 검증) | 전체 검증(F5 뒤 사전 검증) | 적용마다 늘어난 비용 |
+| --- | ---: | ---: | ---: |
+| 100 | 0.05ms | 0.65ms | 0.59ms |
+| 1,000 | 0.08ms | 4.49ms | 4.41ms |
+| 5,000 | 0.49ms | 9.75ms | 9.26ms |
+
+예제 사이트처럼 조작값을 바꿀 때 프레임마다 `reapply`하면 프레임 예산의 상당 부분이 된다.
+
+**할 일:**
+1. 적용 경로는 이미 해석한 문서를 사전 검증에 넘겨 다시 해석하지 않게 한다. 예: 내부 함수가 해석된 문서와 옵션을 받고,
+   공개 `preflightDataSceneLighting`은 F5의 같은 옵션으로 해석한 뒤 그 함수를 부른다. 저장 복원 경로는 지금처럼 해석해 변경 전에 거절한다.
+2. 공개 API·오류 문구·오류 순서(어떤 오류가 먼저 나는지)는 바꾸지 않는다. F5의 노드 테스트 5개는 그대로 통과해야 한다.
+3. F5 전부터 있던 중복(사전 검증 안의 `bindSceneBehaviorRecipes`·컴포넌트 재해석, 기본 경로가 `gameplayAuthoring`인 바인딩 호출)은 고치지 않고,
+   비용을 같은 방식으로 재서 보고한다.
+
+**검증:** F5 검증 명령 전체. 보고에 위 표와 같은 방식으로 잰 적용 1회 비용(F5 뒤 → F5b 뒤, 1,000·5,000개)을 적는다.
+
 ## 결정 D5: CI 실행 방식 (2026-11-25 확정: B)
 
 CI는 `c0ad85a`(2026-06-16)부터 수동 실행 전용이다(AGENTS.md "CI 정합 검증"과 운영 문서에 기록). 저장소가 공개라 GitHub Actions 비용은 없다.
@@ -304,13 +330,13 @@ CI는 `c0ad85a`(2026-06-16)부터 수동 실행 전용이다(AGENTS.md "CI 정�
 | B. PR 자동 실행 추가 | `main` 대상 `pull_request`에 기본 검사를 자동 실행하고, 확장 브라우저 묶음은 수동으로 둔다. | 머지 전에 자동으로 확인한다. AGENTS.md와 운영 문서의 "자동 실행 아님" 문구를 고친다. |
 | C. 주기 실행 추가 | 주 1회 `schedule`로 `main`을 검사한다. | 머지가 드물어도 실패를 잡는다. 작업 브랜치는 검사하지 않는다. |
 
-사용자가 B를 골랐다(2026-11-25). F4·F5로 깨진 검사를 먼저 고친 뒤 [C1](#c1-pr에서-ci-자동-실행-d5-b)에서 적용한다.
+사용자가 B를 골랐다(2026-11-25). F4·F5·F5b로 깨진 검사와 F5의 비용 증가를 먼저 고친 뒤 [C1](#c1-pr에서-ci-자동-실행-d5-b)에서 적용한다.
 성능 예산 초과(`smoke:unified-physics-web`)와 소프트웨어 렌더링 한계(`smoke:hd2d-combat`)를 PR 검사에서 어떻게 다룰지는
 C1 뒤 첫 실제 CI 실행에서 GitHub 러너의 수치를 보고 정한다.
 
 ## C1: PR에서 CI 자동 실행 (D5-B)
 
-F5 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smoke`·`extended-browser-smoke`는 태그나 수동 입력일 때만 돈다.
+F5b 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smoke`·`extended-browser-smoke`는 태그나 수동 입력일 때만 돈다.
 
 - `.github/workflows/ci.yml`의 `on`에 `main` 대상 `pull_request`를 더한다. `workflow_dispatch` 입력, 태그 조건, 두 수동 job의 조건은 그대로 둔다.
   PR에서는 `validate`만 돌고 두 수동 job은 건너뛰는지 확인한다. Pages 워크플로(`pages.yml`)는 바꾸지 않는다.
@@ -480,7 +506,7 @@ E1 다음에는 사이트 전용 공통 도우미(수치 보내기·'표시' 메
 `docs/engine/data-scene-authoring.md`("기본 2D 표시 설정"), `packages/ferrum-web/src/`의 `createFerrumRuntime.ts`·`createRenderer.ts`·
 `browserPlatformHost.ts`·`assetLoader.ts`·`sceneDisplay.ts`·`dataSceneView.ts`, `packages/ferrum-web/test/createFerrumRuntime.integration.test.ts`·`dataSceneView.test.ts`.
 
-**작업 단위:** R1, F1~F5(선행 수정), R2a(SDK), R2b(Studio), R3, E1(예제), C1(CI)을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
+**작업 단위:** R1, F1~F5·F5b(선행 수정), R2a(SDK), R2b(Studio), R3, E1(예제), C1(CI)을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
 F3·F4는 고칠 사례가 많으면 smoke 묶음별로, E1은 예제별로 커밋을 나눠도 된다.
 앞 단계가 검증을 통과한 뒤 다음 단계로 간다.
 
