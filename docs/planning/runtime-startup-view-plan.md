@@ -32,7 +32,7 @@
   [리뷰 후속 C1c](#리뷰-후속-c1c)는 C1b에서 찾은 실패를 고쳤다(런타임 예산 문서 문구, 템플릿 replay 픽스처, Shooter replay의 레거시 물리).
   통합 검증에서 TypeScript 빌드 결과를 모두 지우고 CI 순서로 SDK 테스트 2,075개, 나머지 패키지 빌드, lint, 예제 하네스 보고서,
   런타임 예산 문서 검사, 슬라이스 테스트, create-game 패키지 검사, 템플릿 보고서, Gameplay 작성 보고서·replay 17개 시나리오·보고서 검사 통과.
-  첫 실제 PR에서 브라우저·Rust 검증을 확인한다.
+  첫 PR #113은 Core Rust 포맷 검사에서 멈췄다. [리뷰 후속 C1d](#리뷰-후속-c1d)의 로컬 포맷 검증은 통과했으며 PR 재실행 결과를 확인한다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
 
@@ -452,6 +452,20 @@ F5b 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smok
   `pnpm validate:gameplay-report-artifacts`가 통과했다. 패키지 라이선스 검사는 읽기 전용 `cargo metadata`를 호출했다.
   실제 PR의 브라우저 smoke와 Rust 검증 결과는 GitHub 러너에서 확인한다.
 
+### 리뷰 후속 C1d
+
+- 첫 PR #113의 `validate`는 `Check Ferrum core Rust formatting`에서 멈췄다. 로컬에서 설정 추가 전 Core 포맷 검사 실패를
+  재현했다. 1.97.1은 Rapier의 `geometry/narrow_phase/validation/tests.rs`에서, 1.100.0은 해당 파일과 Parry의
+  `query/query_dispatcher.rs`에서 차이를 냈다.
+- `ci.yml`의 세 job이 `CI_RUST_TOOLCHAIN` 값 1.97.1을 쓴다. 통합 담당의 1.97.1 Clippy 통과 결과를 기준으로 고정했다.
+  `rustfmt`·`clippy`와 `wasm32-wasip1` 설치, 별도 `wasm32-unknown-unknown` 추가 단계는 유지했다.
+- `crates/ferrum-core/vendor/rustfmt.toml`에서 `disable_all_formatting = true`로 vendor를 제외했다. 상류 코드와 이미 기록한 패치의
+  바이트를 보존했다. 두 Rust 버전에서 Core·Studio Desktop의 `cargo fmt --manifest-path … --all -- --check`가 모두 통과했다.
+  별도 checkout에 Core `src/lib.rs` 포맷 위반을 추가하면 두 버전 모두 같은 파일을 지목하고 종료 코드 1을 반환했다.
+- `actionlint` 1.7.7과 Wasm 소스 지문·라이선스 고지 Node 계약 검사가 통과했다. 기존 Wasm의 Core 지문 `b6d68fd5e63aa8c8`과
+  라이선스 고지 SHA-256은 변경 전과 같았다. 고지 검사는 읽기 전용 `cargo metadata`를 사용했다.
+  요청 범위에 따라 Clippy와 Cargo 빌드를 실행하지 않았다. 1.100 전환은 아래 후보에 기록했다.
+
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
 ### 문서 형식
@@ -600,6 +614,7 @@ E1 다음에는 사이트 전용 공통 도우미(수치 보내기·'표시' 메
 | 충돌체 기본값이 트리거인 함정 | Data Scene 충돌체는 `isTrigger`를 생략하면 트리거다. body를 붙이고 `isTrigger: false`를 잊으면 막지도 않고 HD-2D 이동도 거절된다(F1의 원인). | body가 있는 충돌체의 기본값을 solid로 바꿀지(기존 문서 동작이 바뀌므로 제품 결정) 또는 body+트리거 조합에 진단을 낼지 검토. |
 | 런타임 결과 타입 | `dataScene`을 넘겨도 `runtime.dataScene`이 선택 타입이고, 런타임이 만든 렌더러여도 `rendererBackend`에 `"custom"`이 들어 있어 세 예제가 같은 확인 줄을 반복한다(E1). | 옵션에 따라 반환 타입을 좁힐지 검토(우선 낮음). |
 | 템플릿 replay 픽스처의 SDK 식별자 | create-game 템플릿의 runtime replay 픽스처는 Native 저장 파일의 해시를 비교한다. 이 파일에 SDK 빌드 식별자가 들어 있어, 게임 상태가 같아도 SDK를 바꿀 때마다 픽스처가 깨진다(`4a7ef591`, [C1c](#리뷰-후속-c1c)). PR CI가 도는 지금은 SDK를 바꾸는 PR마다 픽스처를 다시 만들어야 한다. | 비교 해시에서 빌드 식별자를 분리해 게임 상태만 비교할지 검토(우선 중간). |
+| CI Rust 1.100 전환 | Core Clippy에서 `chunks_exact_to_as_chunks` 176건, bool을 반환하는 if guard 19건, 폐기된 `fetch_update` 2건, `needless_range_loop` 3건이 보고됐다. 보고 총계는 199개, 항목 합계는 200건이다. C1d에서는 집계를 재검증하지 않았다. | 각 lint와 폐기 API를 정리한 뒤 새 버전으로 포맷·Clippy·Wasm 검증을 통과하고 `CI_RUST_TOOLCHAIN`을 올린다. |
 | 사전 검증 안의 재해석 | F5b 뒤에도 조명 사전 검증은 적용 경로가 이미 만든 바인딩과 컴포넌트를 다시 계산한다(5,000개 `lit` 문서에서 적용 1회당 약 10ms, [F5b 측정](#리뷰-후속-f5b-적용-경로의-중복-해석)). | 적용 경로의 바인딩 결과를 넘겨 재사용할지 검토(우선 낮음, 큰 문서를 자주 `reapply`할 때). |
 | 이동 실패 이유 | `moveHd2dKinematicBodyWithTilemap`은 actor가 조건(단일 solid AABB kinematic, 높이 정보)에 맞지 않으면 이유 없이 결과 없음으로 돌아온다. | 거절 이유를 돌려주거나 개발 모드 진단을 낸다. |
 | WebGPU 복구 중 화면 맞춤 크기 변화 | WebGPU 장치가 준비되기 전에 화면 맞춤 배율을 적용하면 `setViewportZoom`에서 오류가 발생했다. | 완료. 크기 변경은 보류하고 복구 직후 최신 크기로 배율을 적용한다. 일시 정지 상태에서도 게임 카메라 위치를 유지한다. |

@@ -20,6 +20,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Rust 1.100 adds Clippy lints that fail -D warnings.
+  # Bump after fixing the new lints and checking rustfmt, Clippy, and Wasm.
+  CI_RUST_TOOLCHAIN: '1.97.1'
+
 jobs:
   validate:
     # Playwright 1.60 supports installing Chromium dependencies on Ubuntu 24.04.
@@ -29,9 +34,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
           components: rustfmt, clippy
           targets: wasm32-wasip1
 
@@ -641,8 +647,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
 
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown
@@ -736,8 +744,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
 
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown

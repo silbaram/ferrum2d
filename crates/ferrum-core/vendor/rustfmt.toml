@@ -1,0 +1,2 @@
+# Keep vendored source bytes aligned with upstream and the recorded patches.
+disable_all_formatting = true
