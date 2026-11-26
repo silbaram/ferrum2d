@@ -27,9 +27,11 @@
   통합 검증에서 SDK 테스트 2,073개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
 - [리뷰 후속 F5b](#리뷰-후속-f5b-적용-경로의-중복-해석) 완료(`10a4dc5`). 적용 중 조명 사전 검증이 이미 해석한 문서를 재사용한다.
   통합 검증에서 SDK 테스트 2,075개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
-- [C1](#c1-pr에서-ci-자동-실행-d5-b)의 트리거와 빌드 순서 변경을 마쳤다. 로컬의 깨끗한 checkout에서 새 순서의 TypeScript lint가 통과했다.
+- [C1](#c1-pr에서-ci-자동-실행-d5-b) 완료(`b2291e6`·`611d39b`·`dec5a8d`, 2026-11-26). `main` 대상 PR에서 `validate`가 돌고, lint는 빌드 뒤에 실행한다.
   [리뷰 후속 C1b](#리뷰-후속-c1b)는 Aseprite 슬라이스 테스트를 복구하고 예제 사이트를 독립 셸로 등록했다.
-  [리뷰 후속 C1c](#리뷰-후속-c1c)는 C1b에서 찾은 실패를 고쳤다. 로컬에서 선택한 `validate` 단계는 모두 통과했다.
+  [리뷰 후속 C1c](#리뷰-후속-c1c)는 C1b에서 찾은 실패를 고쳤다(런타임 예산 문서 문구, 템플릿 replay 픽스처, Shooter replay의 레거시 물리).
+  통합 검증에서 TypeScript 빌드 결과를 모두 지우고 CI 순서로 SDK 테스트 2,075개, 나머지 패키지 빌드, lint, 예제 하네스 보고서,
+  런타임 예산 문서 검사, 슬라이스 테스트, create-game 패키지 검사, 템플릿 보고서, Gameplay 작성 보고서·replay 17개 시나리오·보고서 검사 통과.
   첫 실제 PR에서 브라우저·Rust 검증을 확인한다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
@@ -597,6 +599,7 @@ E1 다음에는 사이트 전용 공통 도우미(수치 보내기·'표시' 메
 | 입력의 편집 대상 판정 | `InputManager`는 `input·textarea·select·button`만 제외한다. 키로 조작하는 `role="separator"`·슬라이더 등에 초점이 있어도 게임 키로 받는다. | 제외 규칙 확장 또는 옵션 검토. |
 | 충돌체 기본값이 트리거인 함정 | Data Scene 충돌체는 `isTrigger`를 생략하면 트리거다. body를 붙이고 `isTrigger: false`를 잊으면 막지도 않고 HD-2D 이동도 거절된다(F1의 원인). | body가 있는 충돌체의 기본값을 solid로 바꿀지(기존 문서 동작이 바뀌므로 제품 결정) 또는 body+트리거 조합에 진단을 낼지 검토. |
 | 런타임 결과 타입 | `dataScene`을 넘겨도 `runtime.dataScene`이 선택 타입이고, 런타임이 만든 렌더러여도 `rendererBackend`에 `"custom"`이 들어 있어 세 예제가 같은 확인 줄을 반복한다(E1). | 옵션에 따라 반환 타입을 좁힐지 검토(우선 낮음). |
+| 템플릿 replay 픽스처의 SDK 식별자 | create-game 템플릿의 runtime replay 픽스처는 Native 저장 파일의 해시를 비교한다. 이 파일에 SDK 빌드 식별자가 들어 있어, 게임 상태가 같아도 SDK를 바꿀 때마다 픽스처가 깨진다(`4a7ef591`, [C1c](#리뷰-후속-c1c)). PR CI가 도는 지금은 SDK를 바꾸는 PR마다 픽스처를 다시 만들어야 한다. | 비교 해시에서 빌드 식별자를 분리해 게임 상태만 비교할지 검토(우선 중간). |
 | 사전 검증 안의 재해석 | F5b 뒤에도 조명 사전 검증은 적용 경로가 이미 만든 바인딩과 컴포넌트를 다시 계산한다(5,000개 `lit` 문서에서 적용 1회당 약 10ms, [F5b 측정](#리뷰-후속-f5b-적용-경로의-중복-해석)). | 적용 경로의 바인딩 결과를 넘겨 재사용할지 검토(우선 낮음, 큰 문서를 자주 `reapply`할 때). |
 | 이동 실패 이유 | `moveHd2dKinematicBodyWithTilemap`은 actor가 조건(단일 solid AABB kinematic, 높이 정보)에 맞지 않으면 이유 없이 결과 없음으로 돌아온다. | 거절 이유를 돌려주거나 개발 모드 진단을 낸다. |
 | WebGPU 복구 중 화면 맞춤 크기 변화 | WebGPU 장치가 준비되기 전에 화면 맞춤 배율을 적용하면 `setViewportZoom`에서 오류가 발생했다. | 완료. 크기 변경은 보류하고 복구 직후 최신 크기로 배율을 적용한다. 일시 정지 상태에서도 게임 카메라 위치를 유지한다. |
