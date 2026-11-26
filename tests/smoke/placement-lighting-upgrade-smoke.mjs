@@ -50,14 +50,34 @@ export async function smokeLightingUpgrade(page) {
   const actorInstance=Object.values(following.sceneComposition.fragments).flatMap(fragment=>fragment.instances).find(instance=>instance.id==="agent_ground");
   actorInstance.props.components.body.type="kinematic";actorInstance.props.components.collider.enabled=true;
   following.spatial.environment.lighting.lights[0].followActor=true;
-  await page.locator('[data-placement-document-file]').setInputFiles({name:"lighting-follow-actor.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(following))});
-  await page.waitForFunction(()=>window.ferrumPlacementSpatialExportDocument().spatial?.environment?.lighting?.lights[0]?.followActor===true);
-  const followBefore=await source(),actor=await page.evaluate(()=>window.ferrumPlacementViewerState.instances.find(i=>i.instanceId==="agent_ground"));
-  await open();assert.equal(await page.locator('[data-placement-lighting-binding]').inputValue(),"agent_ground");
-  await page.locator('[data-placement-lighting-binding]').selectOption("");await paint();
-  const detached=(await source()).spatial.environment.lighting.lights[0],offset=followBefore.spatial.environment.lighting.lights[0].position;
-  assert.equal(detached.followActor,undefined);
-  assert.deepEqual(detached.position,{x:offset.x+actor.transform.x,y:offset.y+actor.transform.y,elevation:offset.elevation+(actor.body?.heightSpan?.elevation??0)+(followBefore.spatial.billboards.agent_ground?.elevation??0)});
-  await page.keyboard.press("Escape");await page.keyboard.press("Escape");await page.locator('[data-placement-action="undo"]').click();await paint();assert.deepEqual(await source(),followBefore);
+  await withInitialSpatialDocument(page,following,async fresh=>{
+    const source=()=>fresh.evaluate(()=>window.ferrumPlacementSpatialExportDocument()), paint=()=>fresh.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+    await fresh.waitForFunction(()=>window.ferrumPlacementSpatialExportDocument().spatial?.environment?.lighting?.lights[0]?.followActor===true);
+    const followBefore=await source(),actor=await fresh.evaluate(()=>window.ferrumPlacementViewerState.instances.find(i=>i.instanceId==="agent_ground"));
+    const binding=fresh.locator('[data-placement-lighting-binding]');
+    await showPlacementMenu(fresh,"lighting");await openPlacementLightingAdvanced(binding);assert.equal(await binding.inputValue(),"agent_ground");
+    await binding.selectOption("");await paint();
+    const detached=(await source()).spatial.environment.lighting.lights[0],offset=followBefore.spatial.environment.lighting.lights[0].position;
+    assert.equal(detached.followActor,undefined);
+    assert.deepEqual(detached.position,{x:offset.x+actor.transform.x,y:offset.y+actor.transform.y,elevation:offset.elevation+(actor.body?.heightSpan?.elevation??0)+(followBefore.spatial.billboards.agent_ground?.elevation??0)});
+    await fresh.keyboard.press("Escape");await fresh.keyboard.press("Escape");await fresh.locator('[data-placement-action="undo"]').click();await paint();assert.deepEqual(await source(),followBefore);
+  });
   return {presets:4,quality:true,spot:true,bindings:true,followActorDetach:true,drag:true,undoRedo:true,cancel:true,keyboard:true};
+}
+
+// Without `physics`, a `spatial.actor` document runs on the legacy path only as
+// the first Data Scene of a fresh Engine. Studio tabs share one Engine, so the
+// document opens as the initial HD-2D scene of a separate Studio page.
+async function withInitialSpatialDocument(page,document,run){
+  const fresh=await page.context().browser().newPage({viewport:page.viewportSize()}),errors=[];
+  fresh.on("pageerror",error=>errors.push(error.message));
+  try{
+    await fresh.route(/\/placement\.hd2d\.scene-authoring\.json(?:\?.*)?$/,route=>route.fulfill({contentType:"application/json",body:JSON.stringify(document)}));
+    const url=new URL(page.url());url.search="?scene=hd2d";
+    await fresh.goto(url.href,{waitUntil:"networkidle"});
+    await fresh.waitForFunction(()=>window.ferrumPlacementWorkspaceMode==="spatial"&&!!window.ferrumPlacementViewerRuntimeFrame);
+    await fresh.locator('[data-placement-language]').selectOption("en");
+    await run(fresh);
+    assert.deepEqual(errors,[]);
+  }finally{await fresh.close();}
 }

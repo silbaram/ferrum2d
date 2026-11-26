@@ -468,6 +468,21 @@ F5b 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smok
 - 통합 검증(`6109f30`): 1.97.1(기본 stable)과 1.100.0에서 Core·Studio Desktop 포맷 검사, Wasm 소스 지문·라이선스 고지 테스트 11개 통과.
   Rust 소스는 바뀌지 않아 C1d 직전의 1.97.1 Core Clippy(`--all-targets -D warnings`) 통과 결과가 그대로 적용된다.
 
+### 리뷰 후속 C1e: HD-2D 작성 화면 smoke
+
+PR #113 재실행(run 45782027817)은 Rust 포맷·Clippy·테스트, `unified-physics-web`을 포함한 앞 단계를 통과하고
+`HD-2D authoring workspace browser smoke`(`node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/studio/dist`)에서 멈췄다.
+로컬에서도 같은 위치에서 재현했고, C1의 미리 만든 Studio 빌드 없이도 같았다. 두 원인 모두 `origin/main`의 통합 물리 전환(2026-11-21) 뒤 갱신되지 않은 테스트다.
+
+| 위치 | 원인 | 수정 |
+| --- | --- | --- |
+| `placement-lighting-upgrade-smoke.mjs`의 `followActor` | `physics` 없이 `spatial.actor`를 쓰는 문서는 새 Engine의 첫 Data Scene일 때만 legacy 경로로 적용된다([공간 문서](../engine/data-scene-spatial.md#통합-3d-물리의-캐릭터-이동)). Studio 탭은 Engine 하나를 공유하므로 두 번째 탭으로 연 문서가 `runtime rejected spatial scene configuration`으로 거절됐다. 오류는 작업 공간 상태 메시지에만 표시된다. | 같은 문서를 새 Studio 페이지의 첫 HD-2D 장면으로 열어 연결 해제 위치·Undo 단언을 그대로 검사한다. 새 페이지의 스크립트 오류도 확인한다. |
+| `placement-threejs-upgrades-smoke.mjs`의 우물 충돌체 | `581c3aa1`이 village를 native 물리로 옮기면서 우물이 원형 legacy 충돌체에서 native `convexHull` 고정 body가 됐다. native body의 실행 정보는 legacy 충돌체 목록 대신 body 종류와 충돌체 개수를 보고한다. | native body·`fixed`·충돌체 1개를 실행 정보와 패널 문구에서 확인한다. |
+
+통합 검증: 고친 조명 단계를 포함한 전체 smoke는 3D 뷰어 단계까지 진행했고(로컬 46분), 3D 뷰어와 모델 선택 하위 검사는 단독 실행에서 통과했다.
+게임 카메라 저장 검사는 1440×1000·DPR 2의 소프트웨어 렌더링으로 25분이 넘게 걸려 로컬 확인을 이어 간다.
+이 smoke는 로컬에서만 1시간이 넘으므로 PR CI의 실행 시간을 첫 완주 결과로 판단한다.
+
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 
 ### 문서 형식

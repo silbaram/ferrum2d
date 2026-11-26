@@ -70,13 +70,15 @@ export async function smokeThreejsViewerUpgrades(parent, timeoutMs = 30000) {
     await page.mouse.wheel(0,100);await page.waitForFunction(height=>Math.abs(window.ferrumPlacementSpatialCamera.height-height)<1e-6,beforeWheel);
     assert.equal(await authored(),beforeCancel);checks.gizmoWheelNavigation=true;
     console.log("Viewer upgrades: mesh selection and transforms passed");
-    // Physics overlay and native read-only summary include the actual circular well.
+    // Physics overlay and the native read-only summary report the well's actual fixed body.
+    // The village uses native physics, which reports owned colliders instead of legacy collider rows.
     await select("village_well");
     await showPlacementViewOptions(page);await page.locator("[data-placement-proxy-overlay]").check();
     await page.locator("[data-placement-physics-overlay=contacts]").check();await page.locator("[data-placement-physics-overlay=floors]").check();await page.keyboard.press("Escape");
     await showPlacementBottom(page,"runtime");
-    await wait(()=>window.ferrumPlacementSelectedRuntime?.instanceId==="village_well"&&window.ferrumPlacementSelectedRuntime.colliders?.length);
-    assert.match(await page.locator("[data-placement-physics-summary]").textContent(),/circle/);
+    await wait(()=>{const runtime=window.ferrumPlacementSelectedRuntime;return runtime?.instanceId==="village_well"&&runtime.physicsAuthoring?.nativeBody===true&&runtime.shapePhysics?.kind==="fixed"&&runtime.shapePhysics.colliderCount===1;});
+    const physicsSummary=await page.locator("[data-placement-physics-summary]").textContent();
+    assert.match(physicsSummary,/Body\s*fixed/);assert.match(physicsSummary,/Colliders\s*1\b/);
     await page.locator("[data-placement-performance] > summary").click();
     await wait(()=>window.ferrumPlacementPerformance?.resources?.bufferCount>0);
     const resources=await page.evaluate(()=>window.ferrumPlacementPerformance);
