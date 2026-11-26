@@ -28,7 +28,8 @@
 - [리뷰 후속 F5b](#리뷰-후속-f5b-적용-경로의-중복-해석) 완료(`10a4dc5`). 적용 중 조명 사전 검증이 이미 해석한 문서를 재사용한다.
   통합 검증에서 SDK 테스트 2,075개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
 - [C1](#c1-pr에서-ci-자동-실행-d5-b)의 트리거와 빌드 순서 변경을 마쳤다. 로컬의 깨끗한 checkout에서 새 순서의 TypeScript lint가 통과했다.
-  기존 예제 하네스 검사에 남은 예제 사이트 등록 문제와 원격 실행 확인은 C1에 기록했다.
+  [리뷰 후속 C1b](#리뷰-후속-c1b)는 Aseprite 슬라이스 테스트를 복구하고 예제 사이트를 독립 셸로 등록했다.
+  첫 PR CI를 막는 추가 실패와 아직 실행하지 않은 검사는 C1b에 기록했다.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
 
@@ -390,7 +391,7 @@ F5b 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smok
 - 이전 순서에서 만든 Studio Kit 산출물을 치운 뒤 새 순서로 적용했다. `test:web`이 SDK를 한 번 빌드하고, 나머지 패키지 빌드에서 Studio가 Studio Kit을 한 번 빌드했다. 예제 빌드 뒤 `pnpm lint`가 통과했다. 공통 빌드를 쓰는 후속 검사는 독립 실행용 빌드 절차를 반복하지 않는다.
 - Studio의 저장 활성화 번들과 테스트 모드 두 변형을 각각 한 번 빌드했다. 테스트는 자기 임시 복사본에 장면 픽스처를 추가하며 공유 번들을 그대로 둔다.
   하네스 실패와 분리해 실행한 Studio 저장·배치 그리드·Aseprite 트림·예제 사이트 브라우저 검사와 Data Scene 샘플·gameplay 작성 보고서 검사가 통과했다.
-- lint 다음의 `pnpm report:example-demo-harness`는 `examples/site/src/main.ts`가 목록에 없어 실패했다. C1 이전에 추가된 예제 사이트의 하네스 분류가 후속으로 남았다. Rust/WASI 빌드와 전체 브라우저 행렬은 이 로컬 순서 검증에서 제외했다.
+- lint 다음의 `pnpm report:example-demo-harness`는 `examples/site/src/main.ts`가 목록에 없어 실패했다. 예제 사이트 분류는 아래 C1b에서 해결했다. Rust/WASI 빌드와 전체 브라우저 행렬은 이 로컬 순서 검증에서 제외했다.
 
 | 실행 방식 | `validate` | `consumer-smoke` | `extended-browser-smoke` |
 | --- | --- | --- | --- |
@@ -400,6 +401,36 @@ F5b 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smok
 | 태그 push | 트리거 없음 | 트리거 없음 | 트리거 없음 |
 
 두 선택형 job은 `validate` 성공 뒤 실행한다. 실제 GitHub 실행은 푸시와 draft PR 이후 확인한다.
+
+### 리뷰 후속 C1b
+
+- 슬라이스 단계 맨 앞에 `pnpm test:aseprite-slices`를 복구했다. 기존 브라우저 검사 두 개가 뒤따른다.
+- 예제 사이트는 예제 목록·인스펙터·뷰포트를 유지하는 독립 `editor-shell`로 사유와 함께 등록했다. 공유 셸 import 의무는 이 분류에만 면제한다.
+  예제 사이트에 로컬 `createButton`을 넣으면 실패하고, 기존 공유 셸 예제에서 import나 `createRuntimeDemoShell` 호출을 빼면 각각 실패하는 것을 임시 checkout에서 확인했다.
+- [배포 문서](../development/operations/demo-deploy.md)의 “자동 검증의 성공은 Pages 배포 완료를 뜻하지 않는다.” 문장을 복구했다.
+
+**로컬 순서 검증**
+
+`dist`·`dist-test`가 없는 별도 checkout에서 Node.js 24.19.0과 pnpm 10.8.0을 사용했다. 개인 npm 설정을 분리하고
+`pnpm install --frozen-lockfile --offline`로 설치했다. Wasm 빌드 단계에서 기존 산출물을 복사했다. 저장된 Wasm의 Core 소스
+지문(`b6d68fd5e63aa8c8`)은 현재 소스와 일치했다. 브라우저·Rust가 필요한 검사를 건너뛰고 혼합 단계에서는 Node 검사와 빌드만
+실행했다. 패키지 확인의 라이선스 비교는 읽기 전용 `cargo metadata`를 호출했다. Rust 컴파일은 실행하지 않았다.
+
+`validate`의 45개 단계에서 67개 명령을 순서대로 실행했다(설치와 Wasm 복사·해시 확인 포함). 40개 단계가 통과했고 5개가
+실패했다. 실패 뒤에도 나머지 검사를 실행해 추가 실패를 확인했다. `pnpm test:web`의 SDK 테스트 2,075개, 나머지 패키지 빌드,
+`pnpm lint`, `pnpm report:example-demo-harness`, `pnpm test:aseprite-slices` 8개, `pnpm test:pages-build` 및
+`pnpm build:pages`가 통과했다. `actionlint` 1.7.7과 문서 링크 검사도 통과했다.
+
+| 실패 단계 | 재현 명령 | 원인과 후속 |
+| --- | --- | --- |
+| Runtime budget productization guard (lint 앞의 첫 재현 실패) | `pnpm validate:runtime-budget-product` | C1에서 [smoke-check.md](../development/quality/smoke-check.md)의 `tag/manual opt-in` 문구를 뺐지만 `check-runtime-budget-productization.mjs`는 여전히 이 문자열을 요구한다. 임시 checkout에 해당 문구만 복원하면 통과했다. 문서와 검사 조건을 맞춘다. |
+| Package artifact checks | `node scripts/package/check-create-game-package.mjs --verify-pack --skip-build` | breakout의 기존 runtime replay 픽스처와 현재 Native 저장 파일 SHA-256이 다르다(`8af8084d…` → `8f0d410d…`). 아래 템플릿 보고서와 같은 원인이다. 이 단계의 다른 패키지 검사는 통과했다. |
+| Gameplay replay report | `node tests/smoke/gameplay-replay-smoke.mjs --artifact-dir artifacts/gameplay-replay-smoke` | 기본 통합 물리의 `Engine`은 테스트가 쓰는 레거시 `capture_shooter_snapshot()`을 거절한다. 동일 Wasm에서 기본 엔진은 `false`, 레거시 물리 엔진은 `true`를 반환했다. Shooter golden 검사가 사용할 물리와 스냅샷 방식을 정한다. |
+| Gameplay report artifact validation | `pnpm validate:gameplay-report-artifacts` | 직전 Gameplay replay 단계가 실패해 JSON을 만들지 못했다(`ENOENT`). Gameplay replay 수정 뒤 함께 확인한다. |
+| Create-game template report smoke | `node tests/smoke/create-game-template-report-envelope-smoke.mjs` | minimal의 Native 저장 파일 SHA-256이 픽스처와 다르다(`f376e095…` → `2ccbffc5…`). SDK 빌드 식별자가 저장 파일에 포함된다. 임시 checkout에서 `4a7ef591`의 식별자만 되돌리면 minimal·topdown·breakout 보고서가 모두 통과했다. 현재 SDK로 템플릿 픽스처를 다시 생성하고 차이를 확인한다. |
+
+추가 실패는 이번 변경 범위에서 진단 결과만 남겼다. 브라우저와 Rust를 사용하는 검사, GitHub 러너에서의 실행 및 artifact 업로드는
+실제 PR 검증에 남아 있다. 위 순서에서 재현한 첫 실패는 런타임 예산 문서 검사다.
 
 ## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
 

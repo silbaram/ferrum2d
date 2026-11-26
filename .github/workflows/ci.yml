@@ -267,6 +267,7 @@ jobs:
 
       - name: Slice metadata and explicit sprite origin authoring
         run: |
+          pnpm test:aseprite-slices
           node tests/smoke/aseprite-assets-smoke.mjs --trim --slices
           FERRUM_STUDIO_SMOKE_DIST="$RUNNER_TEMP/studio-save" node tests/smoke/aseprite-project-smoke.mjs --trim --slices
 
