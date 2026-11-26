@@ -22,7 +22,8 @@
   `dist`가 없으면 예제 타입 검사가 실패하므로 CI의 단계 순서 문제로 [C1](#c1-pr에서-ci-자동-실행-d5-b)에 넣었다.
 - [선행 수정 F4](#선행-수정-f4-기존-smoke-6개-진단) 완료(2026-11-26). 여섯 실패를 재현하고 오래된 애니메이션 검사 두 개를 고쳐 전체 통과했다.
   Data Scene 적용, 통합 물리 성능과 소프트웨어 렌더링 두 사례의 후속은 F4 표에 기록했다.
-- 다음(2026-11-26 사용자 결정): [F5](#선행-수정-f5-조명-사전-검증의-프래그먼트-누락) → [C1](#c1-pr에서-ci-자동-실행-d5-b) → 사용자의 푸시·draft PR로 첫 실제 CI 실행.
+- [선행 수정 F5](#선행-수정-f5-조명-사전-검증의-프래그먼트-누락) 완료(2026-11-26). Data Scene 적용·장면 상태 복원에서 조명 사전 검증이 선택한 프래그먼트를 해석한다.
+- 다음(2026-11-26 사용자 결정): [C1](#c1-pr에서-ci-자동-실행-d5-b) → 사용자의 푸시·draft PR로 첫 실제 CI 실행.
 
 우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
 
@@ -242,7 +243,7 @@ CI(`.github/workflows/ci.yml`)는 수동 실행만 있어 2026-06-15 이후 돈 
 | --- | --- | --- | --- | --- |
 | `smoke:spatial-scene` | `node tests/smoke/spatial-scene-browser-smoke.mjs` | 있음 | 오래된 테스트. 아틀라스 재생 구간의 RAF 간격을 약 525ms로 늦추면 F3와 같은 0.20초·프레임 0이 나온다. 프레임 1에는 시뮬레이션 0.25초가 필요한데, 실제 시간 2초를 기다려도 50ms 입력 상한 때문에 부족했다. | `spatial-visibility-browser-fixture.mjs`가 실제 GameLoop에 50ms 간격 6개를 전달한다. 프레임 번호, 렌더 픽셀, 일시 정지 시각과 저장 복원 검사를 유지했다. 1280×720·390×844 × DPR 1·2 네 조합이 모두 통과했다. |
 | `smoke:sprite-animation-runtime` | `node --test tests/smoke/sprite-animation-runtime-report.test.mjs` 및 `node tests/smoke/sprite-animation-runtime-smoke.mjs --require-webgpu` | 있음 | 오래된 테스트. `0fbbc7f6`부터 GameLoop가 0.1ms 미만 간격을 누적해, 89.99ms 뒤 0.02ms 입력에서 프레임 1을 기다리던 검사가 프레임 0에서 실패했다. 시간 입력을 고치니 `4213a0a2`의 기본 native 물리에서 기존 JSON 진행 저장도 거절됐다. | `sprite-animation-runtime-fixture.mjs`에서 경계 전후 프레임을 지원되는 입력으로 검사하고 누적도 단언한다. 애니메이션 진행 저장에는 레거시 물리를 명시했다. 보고서 테스트와 필수 WebGL2·오프스크린 WebGPU 통과(각 186렌더·프레임 이벤트 331개·완료 4개·픽셀 22개). |
-| `smoke:data-scene-gameplay` | `node tests/smoke/data-scene-gameplay-smoke.mjs` | 있음 | 엔진 결함. 빈 초기 프래그먼트를 가진 문서에서 `{ fragment: "island" }`로 적용해도 조명 사전 검증이 옵션을 전달하지 않아 `site`를 빈 프래그먼트에서 찾다가 거절한다. `d31b85ac`가 이 경로에 프래그먼트 옵션 없는 resolve 호출을 추가했다. | `packages/ferrum-web/src/dataSceneRuntimeTarget.ts`의 `preflightDataSceneLighting`에서 문서 해석과 binding이 같은 프래그먼트 선택을 쓰도록 고친다. `sceneAuthoringDocument.ts`의 장애물 참조 검증과 기존 적용 단언을 유지한다. [F5](#선행-수정-f5-조명-사전-검증의-프래그먼트-누락)에서 고친다. |
+| `smoke:data-scene-gameplay` | `node tests/smoke/data-scene-gameplay-smoke.mjs` | 있음 | 엔진 결함. 빈 초기 프래그먼트를 가진 문서에서 `{ fragment: "island" }`로 적용해도 조명 사전 검증이 옵션을 전달하지 않아 `site`를 빈 프래그먼트에서 찾다가 거절한다. `d31b85ac`가 이 경로에 프래그먼트 옵션 없는 resolve 호출을 추가했다. | [F5](#선행-수정-f5-조명-사전-검증의-프래그먼트-누락)에서 조명 사전 검증의 두 문서 해석에 적용 경로의 옵션을 공유해 수정했다. 장애물 참조 검증과 기존 적용 단언을 유지했고 소비자 smoke 37개 사례를 통과했다. |
 | `smoke:unified-physics-web` | `pnpm smoke:unified-physics-web` | 있음 | 엔진 성능 예산 초과. 64명·50ms 고정 입력에서 81프레임·405스텝을 마쳤고 위치·탐색 통계 해시가 기준 `da6e9fd4…`와 일치했다. Rust warm p95는 Chromium 148에서 69.8/13.96ms와 65.0/13.0ms(프레임/스텝), Chromium 153에서 86.0/17.2ms로 기준 43/11ms를 넘었다. | [통합 3D 물리의 군중 성능 단계](unified-3d-physics-plan.md#코드-리뷰-후속-수정-2026-11-22)로 넘긴다. 캐릭터 접촉 `physics3d/character_contacts.rs`와 회피 `engine/unified_physics/combat_navigation/crowd.rs`를 같은 빌드·기기에서 프로파일링해 비용과 환경 영향의 비중을 확인한다. 최초 실패 커밋과 비용 증가 위치는 미확정이다. |
 | `smoke:hd2d-combat`(기본) | `node tests/smoke/hd2d-combat-browser-smoke.mjs` | 있음 | 환경 한계. Chromium 148의 ANGLE SwiftShader에서 1280×720·DPR 1·적 128명은 2.5초 샘플에 11프레임(4.31fps)이었고, DPR 2·적 0명은 3프레임(1.10fps)으로 기준 10에 못 미쳤다. 후자의 RAF 간격 p95는 955.1ms, Rust 업데이트와 렌더 호출 p95는 각각 0.4ms, 7.2ms였다. | 프레임 기준을 유지한다. 실제 GPU에서 같은 네 화면 조합을 다시 측정한다. |
 | `smoke:spatial-webgpu`(기본 캔버스) | `node tests/smoke/spatial-webgpu-browser-smoke.mjs` (로그 축소 재현은 `DEBUG=pw:browser`와 `--light-probes-only`) | 없음(CI는 `--offscreen-target`) | 환경 한계. Chromium 148의 SwiftShader가 1280×720·DPR 1의 640×480 RGBA8 WebGPU swap-chain 텍스처용 `SharedImageBackingFactory`를 찾지 못했다. 장치 오류 뒤 `mapAsync`가 중단됐다. | 같은 1280×720·DPR 1의 `--offscreen-target --light-probes-only`는 두 색 모드에서 통과했다. 실제 GPU의 캔버스에서 기본 검사를 다시 실행한다. |
@@ -285,6 +286,13 @@ F4에서 찾은 엔진 결함이다(2026-11-26 사용자 승인). `smoke:data-sc
 **검증:** `pnpm --filter @ferrum2d/ferrum-web lint`, `pnpm --filter @ferrum2d/ferrum-web test`, `pnpm validate:public-api-surface`,
 `node tests/smoke/data-scene-gameplay-smoke.mjs` 전체 통과, 적용 경로 회귀로 `node tests/smoke/data-scene-browser-smoke.mjs`와
 `node tests/smoke/flat-lit-browser-smoke.mjs`. 문서: `CHANGELOG.md`의 Fixed, 이 문서 F4 표의 해당 행.
+
+**결과:** 기존 Wasm으로 새 노드 회귀 5개와 SDK 테스트 2,073개, SDK 타입 검사·공개 API 범위·문서 링크 검사를 통과했다.
+Data Scene gameplay 37개, Data Scene 브라우저의 네 화면 조합과 화면 맞춤 2개, Flat Lit 60개 검증을 통과했다.
+
+**추가 점검:** 같은 함수의 별도 바인딩 호출은 `path`가 없으면 `gameplayAuthoring`을 쓰고 적용 경로는
+`dataSceneAuthoring`을 전달한다. 컴포넌트 직접 해석은 `allowTemplate: true`와 문서 경로를 사용한다.
+적용 경로는 템플릿 허용 정책과 `instances.<id>` 경로를 전달한다. 이 호출들은 F5의 문서 해석 옵션 수정 범위 밖이다.
 
 ## 결정 D5: CI 실행 방식 (2026-11-25 확정: B)
 
