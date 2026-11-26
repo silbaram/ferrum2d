@@ -99,6 +99,10 @@ pnpm validate:pages-artifact
 | `github-release-prepare.yml` | 수동 SDK·Studio 빌드 및 설치 검증. `attach_to_draft` 선택 시 세 OS 설치 파일과 SDK를 릴리스 초안에 첨부하고 원격 파일 목록·크기·해시를 대조 |
 
 아래의 **CI 기본 gate**는 `main` 대상 PR과 수동 실행에서 돌아가는 `validate` 검사다.
+기본 gate에서 제외한 Studio HD-2D 검사는 `pnpm smoke:placement-spatial-workspace`와 `pnpm smoke:placement-village`로
+로컬에서 직접 실행할 수 있으며 `pnpm smoke:check`에도 포함된다. 두 smoke의 로직 단언은
+[S2](../../planning/ci-and-studio-distribution-plan.md#s2-studio-hd-2d-검사의-단위-테스트-전환)에서 단위 테스트로 옮긴다.
+
 **tag/manual opt-in**은 선택형 `consumer-smoke`와 `extended-browser-smoke`를 가리킨다. 브랜치 ref 수동 실행에서는
 `consumer_smoke`, `extended_browser_smoke` 입력으로 해당 job을 켜고, `ferrum-web-v*` 태그 ref로 수동 실행하면
 두 job이 활성화된다. PR에서는 두 job을 건너뛴다. 실제 trigger와 실행 입력을 보고서에 남긴다.
@@ -1075,7 +1079,7 @@ SDK 회귀는 길이만 바뀌는 view도 확인하며, 효과 없는 Spatial fr
 
 `pnpm test:placement-point-shadows`는 광원 삭제 후 인덱스와 설정 보존, 두 owner 상한·활성 예산,
 Low/Balanced/High 품질 전환을 검사한다. `pnpm smoke:studio`와 CI에 이 단위 검증을 포함한다.
-`pnpm smoke:placement-spatial-workspace`는 실제 Spatial 조명 패널 검증을 포함하며 기존 CI에서도 실행한다.
+로컬에서 `pnpm smoke:placement-spatial-workspace`로 실제 Spatial 조명 패널을 검증한다.
 실제 패널에서 독립 offset, 세 번째 제한, Low 품질, owner/nonowner 삭제·Undo/Redo와 native 환경v10/592를 확인한다.
 
 ### Spatial 태양 PCSS 회귀

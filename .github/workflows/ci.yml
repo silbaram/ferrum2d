@@ -41,6 +41,16 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32-wasip1
 
+      - name: Cache Rust build dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/ferrum-core -> target
+            apps/studio-desktop/src-tauri -> target
+            crates/ferrum-core/vendor/rapier3d -> target
+            crates/ferrum-core/vendor/parry3d -> target
+          cache-on-failure: true
+
       - name: Install desktop Linux dependencies
         run: |
           sudo apt-get update
@@ -71,7 +81,12 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        run: |
+          if command -v wasm-pack >/dev/null 2>&1; then
+            wasm-pack --version
+          else
+            cargo install wasm-pack
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -219,13 +234,6 @@ jobs:
           name: native-template-studio
           path: artifacts/physics-3d/goal-closure/studio-native-authoring/browser/
           if-no-files-found: ignore
-
-      - name: HD-2D authoring workspace browser smoke
-        run: node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/studio/dist
-
-      - name: Blender HD-2D village browser smoke
-        # Includes camera pitch, working-plane placement, grid and viewport coverage at DPR 1/2.
-        run: node tests/smoke/placement-village-smoke.mjs
 
       - name: Placement camera, grid, locale, layer and command contracts
         run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers && pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm test:placement-asset-usage && pnpm test:placement-asset-cleanup

@@ -1,6 +1,6 @@
 # PR CI 정리와 Studio 배포 분리
 
-상태: 사용자 결정 완료(2026-11-27), 착수 대기. 작업 단위 S1→S2→S3를 Codex가 구현하고 통합 담당이 검증한다.
+상태: 사용자 결정 완료(2026-11-27), S1 로컬 검증 완료·PR 실행 확인 대기. 작업 단위 S1→S2→S3를 Codex가 구현하고 통합 담당이 검증한다.
 
 ## 배경
 
@@ -42,6 +42,26 @@ PR #113에서 세 번 실행한 결과는 [C1e](runtime-startup-view-plan.md#리
 
 검증: `actionlint`(없으면 YAML 파싱과 사유), 바꾼 단계 목록과 캐시 `workspaces`의 근거, 문서 링크 검사.
 실제 시간 단축은 PR 실행에서 통합 담당이 확인한다.
+
+### S1 구현 및 검증 결과
+
+- `validate`에서 `HD-2D authoring workspace browser smoke`와 `Blender HD-2D village browser smoke`를 제거했다.
+  두 단계 전용 artifact 업로드는 없었다. 두 smoke는 로컬 개별 명령과 `pnpm smoke:check`에서 실행할 수 있다.
+- `Setup Rust` 뒤에 `Cache Rust build dependencies`를 추가했다. `Swatinem/rust-cache@v2`에서 `cache-on-failure: true`를 설정했다.
+  아래 네 경로는 CI와 같은 Rust 1.97.1의 `cargo metadata --locked --offline --no-deps`로 확인했다.
+
+| 캐시 `workspaces` | 사용하는 명령 |
+| --- | --- |
+| `crates/ferrum-core -> target` | Core Clippy·테스트, 물리·대량 객체 smoke, `wasm-pack build`, `test:rust-wasi`. WASI는 `--target-dir` 없이 `--target wasm32-wasip1`을 넘겨 Core `target` 아래에 쓴다. |
+| `apps/studio-desktop/src-tauri -> target` | Studio Desktop Clippy·저장 계약과 native 프로젝트 smoke |
+| `crates/ferrum-core/vendor/rapier3d -> target` | `test:physics3d-storage`의 독립 Rapier 매니페스트 |
+| `crates/ferrum-core/vendor/parry3d -> target` | `test:physics3d-queries`의 독립 Parry 매니페스트 |
+
+- 캐시 액션은 기본값으로 Cargo 바이너리 디렉터리를 복원한다. `Install wasm-pack`은 `PATH`에서 바이너리가 발견되면 버전만 출력한다.
+  격리한 `PATH`에서 바이너리 유무를 모의 실행해 각각 `wasm-pack --version`, `cargo install wasm-pack`만 호출되는 것을 확인했다.
+  [Rust Cache 동작 문서](https://github.com/Swatinem/rust-cache#cache-details)
+- `actionlint` 1.7.12, YAML 변경 범위 비교, `pnpm validate:docs-links`, `pnpm validate:runtime-budget-product`, `git diff --check`가 통과했다.
+  실제 GitHub 캐시 적중과 시간 단축은 PR 실행에서 확인한다. 전체 Rust 빌드와 브라우저 smoke는 S1 로컬 검증 범위에서 제외했다.
 
 ## S2: Studio HD-2D 검사의 단위 테스트 전환
 
