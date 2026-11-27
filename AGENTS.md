@@ -182,7 +182,7 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - create-game/agents template 변경 시 필요한 범위의 `pnpm package:consumer-smoke`와 `pnpm validate:consumer-smoke-report`
 
 GitHub Actions `ci.yml`의 `validate`는 `main` 대상 PR과 수동 실행에서 검증한다. 같은 PR의 새 실행은 이전 실행을 취소한다.
-`consumer-smoke`와 `extended-browser-smoke`는 기존 수동 입력 또는 `ferrum-web-v*` 태그 ref 수동 실행에서 검증한다.
+`browser-smoke`, `consumer-smoke`, `extended-browser-smoke`는 각각의 수동 입력 또는 `ferrum-web-v*` 태그 ref 수동 실행에서 검증한다.
 
 CI 정합 검증 순서
 
@@ -211,6 +211,7 @@ Authoring/create-game/agents 변경 후 추가:
 검증 명령 실행 원칙:
 
 - 개발 중에는 수정한 코드와 직접 영향받는 동작의 검사만 실행한다. 원래 실패의 복구는 해당 원본 사례로 확인하고, 매 수정 단위마다 전체 테스트 묶음을 반복하지 않는다.
+- 개발 중에는 바꾼 기능의 단위 테스트와 관련 smoke를 선별한다. 무거운 브라우저 검사는 PR 병합 전 `browser_smoke`를 켜서 수동 실행하거나 릴리스 태그 ref로 실행한다.
 - 구현 중에는 필요한 컴파일·수정 파일 포맷 확인과 선별 테스트를 우선한다. 전체 lint/test/build/package/browser matrix는 요청된 전체 개발과 통합이 완료된 뒤 한 번 모아 실행한다.
 - 선별 검증 전에는 실행할 테스트 이름과 변경과의 관련성을 정한다. 전체 검증을 아직 실행하지 않았다는 사실과 최종 검증에 남은 범위를 구분해 기록한다.
 - 서브에이전트는 각자 전체 검증을 반복하지 않는다. 작업별 소스와 필요한 회귀를 준비하고, 통합 담당자가 공통 검증을 모아 실행한다.

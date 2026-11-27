@@ -16,7 +16,7 @@
 | 문서 | 상태 | 다음 작업 또는 판단 |
 | --- | --- | --- |
 | [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) | 사용자 승인·R1~R3, F1~F5·F5b, E1, C1(C1b·C1c·C1d 포함) 로컬 검증 완료(엔진 개선 1순위) | 남은 일은 PR CI 정리이며 [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md)로 넘겼다. |
-| [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md) | S1 로컬 검증 완료·PR 실행 확인 대기 | S1의 Rust 캐시 적중과 실행 시간을 PR에서 확인한다. S2에서 Studio HD-2D 검사를 줄이고, S3에서 설치판 Studio의 예제를 제외한다. |
+| [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md) | S1 완료·S1b 로컬 검증 완료·S1c 진행 중 | PR 기본 검사와 수동 브라우저 job을 각각 통합 검증한다. S1c에서 로컬 Rust 빌드 폴더 자동 정리와 디버그 정보 축소를 한다. |
 | [통합 3D 물리](unified-3d-physics-plan.md) | 사용자 승인·개발 진행 중 | 오픈소스 비교, Rust/Wasm 3D 백엔드 도입, 2D 평면·HD-2D 통합 및 수용 검증. 회전 상자 접촉의 운동 증명 한계(물리 실험실 4개 시나리오, 벽돌 깨기 CCD 멈춤) 제품 결정 대기 |
 | [게임 개발 편의성](game-development-convenience-review.md) | 설계 후보·미착수 / 제품 결정 대기 | 외부 맵·실행 진단·reload의 실제 필요와 저장 경계 확정 |
 | [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 연동 미착수 | VX-00 최소 출력·실게임 검증 후 공용 리소스화. 외부 VFX 제작 도구와 Ferrum2D Studio를 구분 |

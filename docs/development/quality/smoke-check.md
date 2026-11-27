@@ -94,18 +94,21 @@ pnpm validate:pages-artifact
 | Workflow | 현재 trigger와 범위 |
 | --- | --- |
 | `language-boundaries.yml` | PR·main push·수동 실행. 소유권 규칙/negative fixture, 현재 Wasm build, SDK tests, 실제 ABI·frame 수명 검사 |
-| `ci.yml` | `main` 대상 PR과 수동 실행에서 기본 검증. 수동 입력·태그 ref에서 소비자·확장 브라우저 검사 |
+| `ci.yml` | `main` 대상 PR과 수동 실행에서 기본 검증. 수동 입력·태그 ref에서 전체 브라우저·소비자·확장 브라우저 검사 |
 | `pages.yml` | 수동 Pages build·artifact 검증·배포 |
 | `github-release-prepare.yml` | 수동 SDK·Studio 빌드 및 설치 검증. `attach_to_draft` 선택 시 세 OS 설치 파일과 SDK를 릴리스 초안에 첨부하고 원격 파일 목록·크기·해시를 대조 |
 
 아래의 **CI 기본 gate**는 `main` 대상 PR과 수동 실행에서 돌아가는 `validate` 검사다.
+Rust·Wasm·SDK·TypeScript·패키지 검사와 짧은 브라우저 검사 여섯 개를 포함한다.
 기본 gate에서 제외한 Studio HD-2D 검사는 `pnpm smoke:placement-spatial-workspace`와 `pnpm smoke:placement-village`로
 로컬에서 직접 실행할 수 있으며 `pnpm smoke:check`에도 포함된다. 두 smoke의 로직 단언은
 [S2](../../planning/ci-and-studio-distribution-plan.md#s2-studio-hd-2d-검사의-단위-테스트-전환)에서 단위 테스트로 옮긴다.
 
-**tag/manual opt-in**은 선택형 `consumer-smoke`와 `extended-browser-smoke`를 가리킨다. 브랜치 ref 수동 실행에서는
-`consumer_smoke`, `extended_browser_smoke` 입력으로 해당 job을 켜고, `ferrum-web-v*` 태그 ref로 수동 실행하면
-두 job이 활성화된다. PR에서는 두 job을 건너뛴다. 실제 trigger와 실행 입력을 보고서에 남긴다.
+**tag/manual opt-in**은 선택형 `browser-smoke`, `consumer-smoke`, `extended-browser-smoke`를 가리킨다.
+`browser-smoke`는 공간 장면, Studio 편집, 조명·렌더링 등 오래 걸리는 브라우저 검사와 증거 업로드를 실행한다.
+브랜치 ref 수동 실행에서는 `browser_smoke`, `consumer_smoke`, `extended_browser_smoke` 입력으로 해당 job을 켠다.
+`ferrum-web-v*` 태그 ref로 수동 실행하면 세 job이 활성화된다. PR에서는 `validate`의 기본 gate만 돈다.
+개발 중에는 관련 단위 테스트와 smoke를 선별하고, 무거운 브라우저 검사는 병합 전 수동 실행이나 릴리스 태그 ref에서 확인한다.
 
 ## 제품 Runtime Budget Readiness
 
@@ -533,7 +536,7 @@ Rust 업데이트 p95가 43ms 이하, native step당 p95가 11ms 이하여야 �
 60fps 수용 근거가 아니다. 405스텝 뒤 64명의 위치와 경로 탐색 통계를
 기준 해시와 대조하고(해석적 군중 회피 적용으로 2026-11-22 갱신) 체크포인트 복원 뒤 6스텝을 재생한다. 보고서의
 `nativeGameplayNavigationFixed50ms`에 첫 프레임 시간과 이후 프레임의 최댓값을 따로 기록한다.
-`CI`의 `validate` job 및 `smoke:check`에 연결하며 원격 실행 성공을 주장하지 않는다.
+`CI`의 `browser-smoke` job과 로컬 `smoke:check`에서 실행한다.
 보고서는 `artifacts/physics-3d/web-bridge-browser/report.json`이다.
 
 저장·복원, 회전 충돌, 지형과 자원 결합은 `pnpm smoke:physics-sdk-integration`으로 검사한다.
@@ -815,7 +818,7 @@ reference-only 수치 벡터와 실제 lit GPU 결과를 구분한다. 실패 �
 최신 Wasm을 `pnpm build:wasm`으로 생성한 뒤 `pnpm smoke:flat-lit`으로 실제 양 backend의 legacy/linear-sRGB × DPR1/2를 검증한다.
 색 수치·receiver/cutout·unlit 전경/HUD·광원별 차폐·OFF 비용·resize·기기 복구·destroy를 확인한다.
 legacy 회귀는 `pnpm smoke:flat-lighting-contract`로 별도 유지한다. 보고서는 `artifacts/flat-lit-m2a/gpu-*/verification.json`이다.
-두 명령은 `CI`의 `validate` job에서 실행하며 보고서를 artifact로 남긴다. 이 headless 검증은 소프트웨어 WebGPU의
+두 명령은 `CI`의 `browser-smoke` job에서 실행하며 보고서를 artifact로 남긴다. 이 headless 검증은 소프트웨어 WebGPU의
 offscreen readback을 사용하므로 실물 GPU 성능·native canvas 표시 보장을 뜻하지 않는다.
 
 Starter Runtime을 빌드한 뒤 `node tests/smoke/feature-examples-smoke.mjs --lighting-only`로 조명 학습 예제만 검사할 수 있다.
@@ -833,7 +836,7 @@ Starter Runtime을 빌드한 뒤 `node tests/smoke/feature-examples-smoke.mjs --
 OFF identity·추가 pass/target0, float target bytes, warm plateau, resize·pixelPerfect·WebGPU recovery,
 destroy 후 자원0을 확인한다. HDR output pass는 HUD 이후에도 프레임 통계에 남아야 한다.
 전체 보고서는 `artifacts/flat-lit-m2a/gpu-*/verification.json`, 좁은 실행은 `artifacts/lighting-remaining/m3b/gpu-*/verification.json`이다.
-`CI`의 `validate` job의 `smoke:flat-lit`에서 실행한다. 실게임·실기기 측정은 개발 완료 후 별도 진행한다.
+`CI`의 `browser-smoke` job의 `smoke:flat-lit`에서 실행한다. 실게임·실기기 측정은 개발 완료 후 별도 진행한다.
 
 
 ### WebGPU 전역 선형 색공간 회귀
@@ -873,18 +876,18 @@ SDK 단위 회귀는 atomic native batch·잘못된 ABI/범위/alias·memory gro
 잘못된 asset/profile 복원 전 기존 씬 보존·patch/Undo/Redo·map cache 무효화를 검사한다.
 placement 사용처·cleanup은 세 map 이름/숫자 참조를 보호하며 desktop native cleanup도 검사한다.
 단독 GPU 보고서는 `artifacts/lighting-remaining/m4b/gpu-*/verification.json`이다.
-전체 명령은 `CI`의 `validate`의 `smoke:flat-lit`에 연결되며 software adapter를 실물 성능 검증으로 세지 않는다.
+전체 명령은 `CI`의 `browser-smoke`의 `smoke:flat-lit`에 연결되며 software adapter를 실물 성능 검증으로 세지 않는다.
 
 
 Placement layer 브라우저 회귀는 개별 predicate뿐 아니라 root/child page의 locator action에도 기존 smoke timeout을 적용한다.
 별도 page 정리는 같은 시간 안에 종료하며 앞선 assertion 오류를 보존한다. `pnpm test:placement-layers`는
-닫기 거절·응답 없는 닫기와 기존 오류 보존을 함께 검사한다. 이 검사는 `CI`의 `validate`에 포함된다.
+닫기 거절·응답 없는 닫기와 기존 오류 보존을 함께 검사한다. 이 검사는 `CI`의 `browser-smoke`에 포함된다.
 
 
 ### Flat 독립 수신 mask 회귀
 
 SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --masks-only`로 좁게 실행한다.
-`pnpm smoke:flat-lit`의 기본 행렬과 `CI`의 `validate`에도 포함된다.
+`pnpm smoke:flat-lit`의 기본 행렬과 `CI`의 `browser-smoke`에도 포함된다.
 양 backend × 두 색공간 × DPR1/2, SDR/HDR에서 light0/shadow0/일부/모든 채널,
 점광원·태양 차폐 독립성, ambient/emission·bounded reflection, cutout/unlit 전경,
 다중 packet·기본/OFF 추가 target/pass0와4-byte identity target 비용, invalid 원자성을 검사한다.
@@ -901,7 +904,7 @@ SDK build가 끝난 `smoke:studio` 단계에서 실행한다. 초기 scene disco
 ### Spatial 독립 수신 mask 회귀
 
 SDK/Wasm build 후 `node tests/smoke/spatial-webgpu-browser-smoke.mjs --receiver-masks-only --offscreen-target`로 실행한다.
-기존 `pnpm smoke:spatial-webgpu-offscreen` 기본 행렬과 CI validate에 같은35개 상태를 포함한다.
+기존 `pnpm smoke:spatial-webgpu-offscreen` 기본 행렬과 CI `browser-smoke`에 같은35개 상태를 포함한다.
 양 backend·legacy/linear-sRGB·직교/원근·가로/세로·DPR1/2에서 terrain/billboard/model의
 light0/shadow0/default255/부분 채널과 점광원/태양 그림자 독립성을 픽셀 기준 참조와 비교한다.
 ambient/hemisphere·emission·GGX·unlit/cutout·separated AO/fog/Bloom·HUD 보존과
@@ -918,7 +921,7 @@ color/shadow model batch 분리를 검사한다.
 ### Flat 2D spot 회귀
 
 SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --spots-only`로 실행한다.
-기존 `pnpm smoke:flat-lit` 기본 행렬과 같은 `CI`의 `validate`에도 포함한다.
+기존 `pnpm smoke:flat-lit` 기본 행렬과 같은 `CI`의 `browser-smoke`에도 포함한다.
 양 backend·두 색공간·DPR1/2·SDR/HDR에서 원형360도 identity, 방향 안/밖과 penumbra,
 타원 반경과 작은 방향의 world→ground projection, diffuse/GGX·emission·cutout/HUD 보존,
 광원별 차폐·독립 수신 mask·선택 해제·실패한 setter 상태 보존·OFF 추가 pass/target0,
@@ -930,7 +933,7 @@ SDK unit은 null/범위/벡터/float32 aspect·비활성 검증, JSON source와 
 ### Flat 2D cookie 회귀
 
 SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --cookies-only`로 실행한다.
-기존 `pnpm smoke:flat-lit`과 `CI`의 `validate`의 기본 행렬에도 포함한다. 보고서는
+기존 `pnpm smoke:flat-lit`과 `CI`의 `browser-smoke`의 기본 행렬에도 포함한다. 보고서는
 `artifacts/lighting-remaining/m4d/cookie/gpu-*/verification.json`이며 양 backend·두 색공간·DPR1/2·SDR/HDR을 검사한다.
 raw R*A의 수치 기대값, white identity·black 직접광0, rotation·UV flip·atlas 경계,
 동일 이미지의 광원별 서로 다른 uniform offset, spot·수신 mask·광원별 그림자,
@@ -949,7 +952,7 @@ role 충돌 뒤 문서/handle/pixels 보존, 탭·Playing·원본 export를 검�
 ### Flat 볼록 다각형 차폐 회귀
 
 SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --polygons-only`로 좁게 실행한다.
-기존 `pnpm smoke:flat-lit`과 `CI`의 `validate`의 기본 행렬에도 포함한다. 전용 보고서는
+기존 `pnpm smoke:flat-lit`과 `CI`의 `browser-smoke`의 기본 행렬에도 포함한다. 전용 보고서는
 `artifacts/lighting-remaining/m4d/polygon/gpu-*/verification.json`이며 두 backend·색공간·DPR1/2·SDR/HDR에서 검사한다.
 독립 ray/edge 교차 기준으로 body·그림자/비차폐 영역의 픽셀을 비교하고 raster edge의 작은 경계는 제외한다.
 양 winding·max-union/부분 투과율·독립 광원/수신 mask·emission/GGX·spot/cookie·cutout/HUD,
@@ -1019,7 +1022,7 @@ Presentation PNG gate는 wide view의 빨간 edge receiver가64pixel보다 많�
 `pnpm smoke:spatial-wide-bloom`은 패키지 public API와 실제 Wasm으로 선택형 `bloom.mode:"wide"`를 검사한다.
 기존 gather는 유지하며 입력·효과 순서·비용은 [넓은 HDR Bloom 계약](../../engine/data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)을 따른다.
 기본 `smoke:spatial-webgpu-offscreen`에도 같은 행렬과 `test:spatial-bloom-report`를 포함한다.
-`CI`의 `validate`가 그 aggregate를 실행한다.
+`CI`의 `browser-smoke`가 그 aggregate를 실행한다.
 
 두 backend·두 색공간·직교/원근·DPR1/2·가로/세로 viewport에서 기본/안개/안개+AO의 각28상태를 검사한다.
 안개 variant도 노출을 낮춘 post-fog HDR source를 독립 기준으로 사용하므로 geometry fog와 AO resolve fog 뒤의
@@ -1053,8 +1056,8 @@ SDK unit은 environment v9 numeric584의 selection 존재 bit·예약 영역·ra
 `pnpm smoke:spatial-point-shadows`는 public 패키지·실제 Wasm과 WebGL2/WebGPU로
 선택형 `lighting.pointShadows` 최대 2개를 검사한다. `test:spatial-point-shadows-report`의 독립 PNG 판정기
 음성 테스트를 먼저 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도 같은 회귀와 판정기를 포함하며,
-`CI`의 `validate` job이 해당 aggregate를 실행한다.
-`validate`는 `extended_browser_smoke` 입력과 무관하게 실행된다.
+`CI`의 `browser-smoke` job이 해당 aggregate를 실행한다.
+`browser-smoke`는 `extended_browser_smoke` 입력과 무관하게 실행된다.
 
 가로/세로 viewport·DPR1/2·두 색공간·직교/원근을 교차한32 backend context에서976개 상태를 검사한다.
 빨강·파랑 광원을 각각 차폐한 기준과 두 그림자 결과를 비교하고, 다른 광원·ambient·초록 발광 재질이 보존되는지
@@ -1086,8 +1089,8 @@ Low/Balanced/High 품질 전환을 검사한다. `pnpm smoke:studio`와 CI에 �
 
 `pnpm smoke:spatial-sun-pcss`는 `test:spatial-sun-pcss-report`의 PNG 판정기 음성 테스트 뒤
 public tarball·실제 Wasm·WebGL2/WebGPU를 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도
-같은 테스트와 PCSS 행렬이 포함된다. `CI`의 `validate` job이
-해당 aggregate를 실행하며 `extended_browser_smoke` 입력과 무관하다.
+같은 테스트와 PCSS 행렬이 포함된다. `CI`의 `browser-smoke` job이
+해당 검사를 실행한다. 브랜치 ref 수동 실행에서는 `browser_smoke` 입력을 켠다.
 브랜치 push만으로 해당 GPU 회귀가 자동 실행된다는 의미는 아니다.
 
 가로/세로 viewport·DPR1/2·두 색공간·직교/원근·두 backend의32 context에서1,040개 상태를 확인한다.
@@ -1115,8 +1118,8 @@ WebGPU 두 uniform record의 PCSS tail·기존 frame 전환 시 초기화·추�
 
 `pnpm smoke:spatial-point-pcss`는 `test:spatial-point-pcss-report`의 독립 PNG 판정기 음성 테스트를
 실행한 뒤 public tarball·실제 Wasm·WebGL2/WebGPU를 검증한다. 전체
-`smoke:spatial-webgpu-offscreen`에도 포함하며 `CI`의 `validate` job에서 실행한다.
-`validate`는 `extended_browser_smoke` 입력과 무관하게 실행된다.
+`smoke:spatial-webgpu-offscreen`에도 포함하며 `CI`의 `browser-smoke` job에서 실행한다.
+`browser-smoke`는 `extended_browser_smoke` 입력과 무관하게 실행된다.
 
 가로/세로 viewport·DPR1/2·두 색공간·직교/원근·두 backend의 32 context에서 1,264개 상태를 확인한다.
 이 fixture의 canvas는 CSS 최대 640×480이며 세로 viewport에서는 390×480으로 좁아진다.
@@ -1149,7 +1152,7 @@ query당 최대 48 depth fetch는 정적 상한이며 GPU 시간 측정값으로
 
 `pnpm smoke:spatial-height-fog`는 report negative audit, Wasm/SDK build와 packed browser matrix를 실행한다.
 기존 `pnpm smoke:spatial-webgpu-offscreen`에도 같은 높이 안개 행렬·DOF 순서 검사와 높이 안개/Bloom 조합이 포함된다.
-`CI`의 `validate` job이 이 aggregate 명령을 실행한다.
+`CI`의 `browser-smoke` job이 이 aggregate 명령을 실행한다.
 좁은 재검증은 runner의 `--height-fog-only`, `--height-fog-precision-only`,
 `--height-fog-composition-only`, `--wide-bloom-height-fog-only`를 사용한다.
 
@@ -1185,7 +1188,7 @@ patch14/state16의 downgrade 거절과 Undo/Redo, 양쪽 GPU uniform tail 초기
 ### 태양광 빛줄기 smoke
 
 `pnpm smoke:spatial-light-shafts`는 독립 이미지 oracle의 negative audit, Wasm/SDK build와 packed browser matrix를 실행한다.
-같은 행렬은 `pnpm smoke:spatial-webgpu-offscreen`과 `CI`의 `validate` job에 포함된다.
+같은 행렬은 `pnpm smoke:spatial-webgpu-offscreen`과 `CI`의 `browser-smoke` job에 포함된다.
 이미 준비된 패키지는 runner의 `--light-shafts-only`로 좁게 재검증할 수 있다.
 
 WebGL2/WebGPU × 원근/직교 × legacy/linear-srgb × desktop/모바일 viewport × DPR1/2에서 검증한다.
@@ -1291,7 +1294,7 @@ Scene 물리 작성 회귀는 `dataScenePhysics.test.ts`에서 실제 Wasm으로
 XYZ 진단, Play의 낙하·바닥 접촉, Stop의 작성 위치 복원, 배치 이동·크기 변경 후
 native pose와 patch 보존을 확인한다. 높이 입력·Undo의 native XYZ 반영, spatial 섹션 없는
 평면 문서의 편집 정지·Play/Stop·배치 수정도 검사한다. 사전에 `pnpm smoke:studio` 또는 전체 빌드가 필요하다.
-CI validate는 전체 빌드 뒤 두 검사를 직접 실행하며 보고서와 Studio 화면을 artifact로 남긴다.
+CI `browser-smoke`는 전체 빌드 뒤 두 검사를 직접 실행하며 보고서와 Studio 화면을 artifact로 남긴다.
 `dataScenePhysicsConstraints.test.ts`는 authored capsule의 planar/spatial 낙하·접지·이동·점프,
 13종 관절의 실제 native 생성과 planar 전용 kind 제한, 모터 이동·반력, endpoint scale,
 잘못된 참조·설정·character/joint 용량 초과 시 기존 씬 보존을 검사한다.
