@@ -1,0 +1,383 @@
+{
+  "prepare": [
+    {
+      "name": "Build wasm package",
+      "run": "pnpm build:wasm"
+    },
+    {
+      "name": "Build Web SDK",
+      "run": "pnpm --filter @ferrum2d/ferrum-web build"
+    },
+    {
+      "name": "Build remaining TypeScript packages",
+      "run": "pnpm pack:textures:if-present\npnpm -r --filter './packages/*' --filter './apps/*' --filter './examples/*' \\\n  --filter '!@ferrum2d/ferrum-web' --filter '!@ferrum2d/studio-kit' build"
+    },
+    {
+      "name": "Fetch native Studio dependencies",
+      "run": "cargo fetch --locked --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --target x86_64-unknown-linux-gnu"
+    },
+    {
+      "name": "Build Studio smoke variants",
+      "run": "VITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --outDir \"$RUNNER_TEMP/studio-save\"\nVITE_FERRUM_STUDIO_SAVE=false pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode test --outDir \"$RUNNER_TEMP/studio-test\"\nVITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode test --outDir \"$RUNNER_TEMP/studio-test-save\"\nprintf 'FERRUM_STUDIO_TEST_DIST=%s\\nFERRUM_STUDIO_SAVE_TEST_DIST=%s\\n' \\\n  \"$RUNNER_TEMP/studio-test\" \"$RUNNER_TEMP/studio-test-save\" >> \"$GITHUB_ENV\""
+    }
+  ],
+  "core": [
+    {
+      "name": "Unified physics public package browser bridge",
+      "run": "pnpm smoke:unified-physics-web\npnpm smoke:scene-physics",
+      "timeoutMinutes": 10
+    },
+    {
+      "name": "Placement workspace browser smoke",
+      "run": "node tests/smoke/browser-render-smoke.mjs --mode=studio apps/studio/dist",
+      "timeoutMinutes": 39
+    },
+    {
+      "name": "Spatial Scene browser smoke",
+      "run": "node tests/smoke/spatial-scene-browser-smoke.mjs",
+      "timeoutMinutes": 106
+    },
+    {
+      "name": "Spatial WebGPU geometry/models offscreen and pre-context fallback",
+      "run": "node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target",
+      "timeoutMinutes": 104
+    },
+    {
+      "name": "WebGPU recovery with GPU timing and resource diagnostics",
+      "run": "node tests/smoke/spatial-webgpu-browser-smoke.mjs --recovery-only --offscreen-target",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Imported Tiled and LDtk whole map authoring",
+      "run": "node tests/smoke/aseprite-assets-smoke.mjs --tiles",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Asset revision cleanup and import diagnostics",
+      "run": "node tests/smoke/aseprite-assets-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Trimmed sprite restoration and native source preservation",
+      "run": "node tests/smoke/aseprite-assets-smoke.mjs --trim\nFERRUM_STUDIO_SMOKE_DIST=\"$RUNNER_TEMP/studio-save\" node tests/smoke/aseprite-project-smoke.mjs --trim",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Slice metadata and explicit sprite origin authoring",
+      "run": "node tests/smoke/aseprite-assets-smoke.mjs --trim --slices\nFERRUM_STUDIO_SMOKE_DIST=\"$RUNNER_TEMP/studio-save\" node tests/smoke/aseprite-project-smoke.mjs --trim --slices",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Ordinary 2D sprite normals on WebGL2 and WebGPU",
+      "run": "pnpm smoke:sprite-normal-2d",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Flat lighting composition contracts on WebGL2 and WebGPU",
+      "run": "node tests/smoke/flat-lighting-contract-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Flat lit receivers on WebGL2 and WebGPU",
+      "run": "node tests/smoke/flat-lit-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Engine Playground movement, physics, lighting and camera",
+      "run": "node tests/smoke/engine-playground-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Independent engine feature examples on WebGL2 and WebGPU",
+      "run": "node tests/smoke/feature-examples-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Example site shell, list and former routes",
+      "run": "pnpm build:pages\nnode tests/smoke/example-site-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Nine-slice native geometry and WebGL2/WebGPU pixel parity",
+      "run": "pnpm smoke:sprite-nine-slice",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Sprite palette RGB parity, native scene and recovery",
+      "run": "node tests/smoke/sprite-palette-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Pixel postprocess parity, virtual pixels and recovery",
+      "run": "node tests/smoke/pixel-postprocess-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Pixel art showcase movement, collection and visual controls",
+      "run": "node tests/smoke/pixel-showcase-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Built-in pixel creation, source export and fresh game rendering",
+      "run": "node tests/smoke/aseprite-assets-smoke.mjs --pixels\nnode tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-animation-tools-only",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Native pixel source storage and fresh game roundtrip",
+      "run": "node tests/smoke/aseprite-project-smoke.mjs --pixels\nnode tests/smoke/aseprite-project-smoke.mjs --pixels --pixel-opacity-only\nnode tests/smoke/aseprite-project-smoke.mjs --pixels --pixel-blend-only\nnode tests/smoke/aseprite-project-smoke.mjs --pixels --pixel-indexed-only",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "64-frame pixel editing capacity and native save compatibility",
+      "run": "node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-capacity-only\nFERRUM_STUDIO_SMOKE_DIST=\"$RUNNER_TEMP/studio-save\" node tests/smoke/aseprite-project-smoke.mjs --pixels --pixel-capacity-only",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Recoverable project asset catalog cleanup",
+      "run": "FERRUM_STUDIO_SMOKE_DIST=\"$RUNNER_TEMP/studio-save\" node tests/smoke/aseprite-project-smoke.mjs --cleanup",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Native tile map source storage and fresh game roundtrip",
+      "run": "cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked\nnode tests/smoke/aseprite-project-smoke.mjs --tiles",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Autotile bake, preview, Data Scene budget and native roundtrip",
+      "run": "node tests/smoke/aseprite-assets-smoke.mjs --tiles --autotile\nFERRUM_STUDIO_SMOKE_DIST=\"$RUNNER_TEMP/studio-save\" node tests/smoke/aseprite-project-smoke.mjs --tiles --autotile",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Tile animation, fixed collision and native roundtrip",
+      "run": "node tests/smoke/aseprite-assets-smoke.mjs --tiles --tile-animation\nFERRUM_STUDIO_SMOKE_DIST=\"$RUNNER_TEMP/studio-save\" node tests/smoke/aseprite-project-smoke.mjs --tiles --tile-animation",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Real village combat, audio, ramp and LOD quality evidence",
+      "run": "node tests/smoke/village-game-quality-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Verify native HD-2D combat, input, checkpoints, prefabs, multi-floor AI, crowd, scheduler, movement, melee/dash, actor spawn and projectile visuals",
+      "run": "node tests/smoke/hd2d-combat-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Data Scene animation projection and sun browser smoke",
+      "run": "node tests/smoke/data-scene-presentation-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Native sprite timing directions events and save browser smoke",
+      "run": "node tests/smoke/sprite-animation-runtime-smoke.mjs --require-webgpu",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "RenderTexture browser smoke",
+      "run": "node tests/smoke/render-texture-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Color management browser smoke",
+      "run": "node tests/smoke/color-management-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Flat 2D pixel-perfect rendering and Game Preview smoke",
+      "run": "node tests/smoke/flat-pixel-perfect-smoke.mjs\nnode tests/smoke/flat-pixel-perfect-viewer-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Atlas PNG extrusion and renderer boundary smoke",
+      "run": "node tests/smoke/atlas-extrusion-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "GPU resource lifecycle browser smoke",
+      "run": "node tests/smoke/gpu-resources-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Asset loading concurrency and cancellation smoke",
+      "run": "node tests/smoke/asset-loading-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Spatial audio output and native binding smoke",
+      "run": "node tests/smoke/spatial-audio-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "KTX2 compressed texture smoke",
+      "run": "node tests/smoke/ktx2-browser-smoke.mjs\nnode tests/smoke/ktx2-browser-smoke.mjs --bundled",
+      "timeoutMinutes": 20
+    },
+    {
+      "name": "Shader preparation smoke",
+      "run": "node tests/smoke/shader-preparation-browser-smoke.mjs",
+      "timeoutMinutes": 20
+    }
+  ],
+  "extended": [
+    {
+      "name": "smoke:preload",
+      "run": "pnpm smoke:preload",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:mobile-input",
+      "run": "pnpm smoke:mobile-input",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:lighting",
+      "run": "pnpm smoke:lighting",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:lighting-webgpu",
+      "run": "pnpm smoke:lighting-webgpu",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:material",
+      "run": "pnpm smoke:material",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:material-webgpu",
+      "run": "pnpm smoke:material-webgpu",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:camera-postprocess",
+      "run": "pnpm smoke:camera-postprocess",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:particle-vfx",
+      "run": "pnpm smoke:particle-vfx",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:topdown",
+      "run": "pnpm smoke:topdown",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:topdown-budget",
+      "run": "pnpm smoke:topdown-budget",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:topdown-save-load",
+      "run": "pnpm smoke:topdown-save-load",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:topdown-hd2d",
+      "run": "pnpm smoke:topdown-hd2d",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:destructible-terrain-browser",
+      "run": "pnpm smoke:destructible-terrain-browser",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:breakout-effects",
+      "run": "pnpm smoke:breakout-effects",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:breakout-budget",
+      "run": "pnpm smoke:breakout-budget",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:platformer-effects",
+      "run": "pnpm smoke:platformer-effects",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:platformer-budget",
+      "run": "pnpm smoke:platformer-budget",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:physics-sandbox",
+      "run": "pnpm smoke:physics-sandbox",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:physics-sandbox-budget",
+      "run": "pnpm smoke:physics-sandbox-budget",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    },
+    {
+      "name": "smoke:physics-demo-suite",
+      "run": "pnpm smoke:physics-demo-suite",
+      "env": {
+        "FERRUM_BROWSER_SMOKE_TIMEOUT_MS": "30000",
+        "FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR": "artifacts/browser-smoke-budgets"
+      }
+    }
+  ]
+}

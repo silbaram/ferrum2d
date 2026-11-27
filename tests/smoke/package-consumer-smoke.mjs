@@ -201,6 +201,7 @@ function parseArgs(args) {
     offline: false,
     skipBuild: false,
     skipPackageCheck: false,
+    skipBrowser: false,
     templates: undefined,
     artifactDir: process.env.FERRUM_CONSUMER_SMOKE_ARTIFACT_DIR,
     commandTimeoutMs: optionalPositiveIntegerEnv(process.env.FERRUM_CONSUMER_SMOKE_COMMAND_TIMEOUT_MS)
@@ -223,6 +224,8 @@ function parseArgs(args) {
       parsed.skipBuild = true;
     } else if (arg === "--skip-package-check") {
       parsed.skipPackageCheck = true;
+    } else if (arg === "--skip-browser") {
+      parsed.skipBrowser = true;
     } else if (arg.startsWith("--templates=")) {
       parsed.templates = parseTemplateList(arg.slice("--templates=".length));
     } else if (arg === "--templates") {
@@ -617,16 +620,19 @@ async function runGeneratedGameConsumer({
   assertConsumerDeployReadinessReport(deploymentReport, templateName);
   templateSummary.checks.deployReport = true;
   templateSummary.reports.deployment = summarizeConsumerDeployReadinessReport(deploymentReport);
-  templateSummary.reports.developmentBrowser = await smokeGeneratedGameRuntime(generatedGameRoot, templateName, { development: true });
-  templateSummary.checks.devBrowserSmoke = true;
-  templateSummary.reports.deploymentBrowser = await smokeGeneratedGameRuntime(generatedGameRoot, templateName);
-  templateSummary.checks.deployBrowserSmoke = true;
-  templateSummary.reports.placementViewer = await smokeGeneratedPlacementViewer(generatedGameRoot, templateName);
-  templateSummary.checks.placementViewerSmoke = true;
+  if (!options.skipBrowser) {
+    // CI passes --skip-browser; these checks need Chromium and run locally.
+    templateSummary.reports.developmentBrowser = await smokeGeneratedGameRuntime(generatedGameRoot, templateName, { development: true });
+    templateSummary.checks.devBrowserSmoke = true;
+    templateSummary.reports.deploymentBrowser = await smokeGeneratedGameRuntime(generatedGameRoot, templateName);
+    templateSummary.checks.deployBrowserSmoke = true;
+    templateSummary.reports.placementViewer = await smokeGeneratedPlacementViewer(generatedGameRoot, templateName);
+    templateSummary.checks.placementViewerSmoke = true;
+  }
   templateSummary.buildOutput.distIndexHtml = path.join(templateSummary.generatedProject, "dist/index.html");
   templateSummary.buildOutput.distPlacementViewerHtml = path.join(templateSummary.generatedProject, "dist/studio.html");
   templateSummary.buildOutput.deployReady = true;
-  templateSummary.buildOutput.browserSmoke = true;
+  templateSummary.buildOutput.browserSmoke = !options.skipBrowser;
   templateSummary.buildOutput.preservedInArtifactSnapshot = false;
 }
 
@@ -3539,6 +3545,7 @@ function buildConsumerSmokeReport({ status, error }) {
     options: {
       skipBuild: options.skipBuild,
       skipPackageCheck: options.skipPackageCheck,
+      skipBrowser: options.skipBrowser,
       keepTemp: options.keepTemp,
       artifactDir: options.artifactDir,
       commandTimeoutMs: options.commandTimeoutMs,
@@ -3664,6 +3671,7 @@ function printHelp() {
 Options:
   --skip-build            Reuse existing ferrum-web dist/pkg artifacts
   --skip-package-check    Skip package allowlist and pack checks before consumer smoke
+  --skip-browser          Skip the Chromium checks of the generated game and Placement Viewer
   --offline               Require all non-local dependencies to already be in the pnpm store
   --templates <names>     Comma-separated create-game templates to test. Default: every template
   --artifact-dir <path>   Copy the smoke report, tarballs, and light project snapshots to this directory
