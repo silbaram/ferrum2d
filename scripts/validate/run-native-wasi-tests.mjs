@@ -6,6 +6,7 @@ import { createReadStream } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { maybeCleanRustTargets } from "../tools/clean-rust-targets.mjs";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 export const NATIVE_WASI_ABORT_PROBE = "world::tests::joints::unchecked_distance_joint_stale_endpoint_abort_probe";
@@ -109,5 +110,7 @@ export async function runNativeWasiQa(invocation) {
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  process.exitCode = await runNativeWasiQa(nativeWasiInvocation(process.argv.slice(2)));
+  const invocation = nativeWasiInvocation(process.argv.slice(2));
+  maybeCleanRustTargets();
+  process.exitCode = await runNativeWasiQa(invocation);
 }

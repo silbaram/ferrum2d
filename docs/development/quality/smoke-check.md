@@ -89,6 +89,16 @@ pnpm validate:pages-artifact
 `pnpm smoke:check`는 넓은 로컬 회귀 묶음이다. 모든 선택형·실기기·native GUI 검증을 포함하는 명령은 아니다.
 변경 영역에 해당하는 gate를 아래에서 선택한다. 선행 build를 생략하는 옵션은 같은 소스의 검증 결과가 있을 때만 사용한다.
 
+로컬 `pnpm build:wasm`과 `pnpm test:rust-wasi`는 Linux에서 `flock`을 사용할 수 있을 때 24시간마다 Rust 빌드 폴더를 검사한다.
+기본값은 마지막 사용이 14일보다 오래된 결과물과 네 `target`의 합계 20GiB를 넘는 분량을 오래된 순으로 정리하는 것이다.
+Cargo가 잠근 profile과 NFS는 보존한다. `CI=true`에서는 이 검사를 건너뛴다.
+
+- 파일 보존 기간과 용량은 `FERRUM_RUST_TARGET_MAX_AGE_DAYS`와 `FERRUM_RUST_TARGET_MAX_GIB`로 정한다.
+  `FERRUM_RUST_TARGET_GC=0`은 자동 정리와 오래된 결과물 정리를 끈다.
+- `pnpm clean:rust:stale`은 하루 제한 없이 실행한다. 후보만 보고 싶으면 `pnpm clean:rust:stale --dry-run`을 쓴다.
+  `cargo test`를 직접 실행할 때는 필요에 따라 이 명령을 실행한다.
+- `pnpm clean:rust`는 Cargo로 네 빌드 폴더를 전부 정리한다. 다음 빌드는 삭제된 결과물을 다시 만든다.
+
 ## CI와 로컬 검증 차이
 
 | Workflow | 현재 trigger와 범위 |

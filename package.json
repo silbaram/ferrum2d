@@ -9,6 +9,8 @@
   },
   "scripts": {
     "build:wasm": "node scripts/build/build-wasm.mjs",
+    "clean:rust": "node scripts/tools/clean-rust-targets.mjs --all",
+    "clean:rust:stale": "node scripts/tools/clean-rust-targets.mjs",
     "build:web": "pnpm -r --filter './packages/*' --filter './apps/*' --filter './examples/*' build",
     "pack:textures": "node scripts/tools/pack-textures.mjs",
     "smoke:atlas-extrusion": "node --test tests/smoke/atlas-extrusion.test.mjs && node tests/smoke/atlas-extrusion-browser-smoke.mjs",

@@ -1,6 +1,6 @@
 # PR CI 정리와 Studio 배포 분리
 
-상태: 사용자 결정 완료(2026-11-27), S1 완료·S1b 로컬 검증 완료·S1c 진행 중. 작업 단위 S1→S1b→S1c→S2→S3를 Codex가 구현하고 통합 담당이 검증한다.
+상태: 사용자 결정 완료(2026-11-27), S1 완료·S1b와 S1c 로컬 검증 완료. 작업 단위 S1→S1b→S1c→S2→S3를 Codex가 구현하고 통합 담당이 검증한다.
 
 ## 배경
 
@@ -132,6 +132,56 @@ PR #113에서 세 번 실행한 결과는 [C1e](runtime-startup-view-plan.md#리
 - 기존 패키지·예제 빌드와 Chromium으로 `validate`의 브라우저 검사 6개를 실제 순서로 실행했다. Studio 변형 빌드가 생성한
   `FERRUM_STUDIO_TEST_DIST`와 `FERRUM_STUDIO_SAVE_TEST_DIST`를 다음 단계에 넘겼고, 6개 검사 모두 통과했다.
   GitHub의 전체 PR 시간과 수동 job 완주는 통합 검증에 남았다.
+
+## S1c: 로컬 Rust 빌드 폴더 자동 정리와 디버그 정보 축소
+
+배경: 2026-11-27 로컬 네 target 폴더가 합계 약 72GB였다(Core 60.5GB 중 증분 캐시 29GB·옛 결과물 427개, Studio Desktop 7.0GB,
+rapier3d 1.6GB, parry3d 2.8GB). Cargo는 `target`의 옛 결과물을 지우지 않는다. 기간·용량 기준 정리는 nightly 전용(`-Z`)이라 stable 1.97.1에서 쓸 수 없다.
+`~/.cargo/registry`는 Cargo가 이미 자동 정리한다(3개월 미사용). 사용자 결정(2026-11-27): 날짜·용량 기준 자동 정리 스크립트와 디버그 정보 축소를 함께 한다.
+
+범위: 새 Node 스크립트, 저장소 Cargo 설정, `package.json` 스크립트, 관련 문서. Rust/Wasm 소스와 vendor 파일은 바꾸지 않는다. 새 의존성(`cargo-sweep` 포함)은 쓰지 않는다.
+
+**1. 디버그 정보 축소**
+- 저장소 루트 `.cargo/config.toml`에 `[profile.dev] debug = "line-tables-only"`를 둔다(`test` profile은 `dev`를 상속한다).
+  Cargo 설정은 실행 위치에서 위로 찾으므로 Core, Studio Desktop, vendor rapier3d·parry3d 매니페스트에 모두 적용된다. vendor `Cargo.toml`은 건드리지 않는다.
+- Release profile, `wasm-pack` 설정, `[package.metadata.wasm-pack.profile.release]`는 바꾸지 않는다.
+- 확인: 설정 전후 같은 명령(`cargo test --manifest-path crates/ferrum-core/Cargo.toml --no-run`)의 target 크기와 빌드 시간, 실패 테스트의 backtrace에
+  파일·줄 번호가 남는지. 결정성 hash와 Wasm 출력이 바뀌지 않는지(`pnpm build:wasm` 전후 `ferrum_core_bg.wasm` 해시).
+
+**2. 날짜·용량 기준 자동 정리 스크립트** (`scripts/tools/clean-rust-targets.mjs`)
+- 대상: 네 매니페스트의 target 폴더(`cargo metadata --no-deps`의 `target_directory`로 찾는다. 하드코딩하지 않는다).
+- 정리 단위: `target/[<triple>/]<profile>/` 아래의 `.fingerprint/`, `deps/`, `build/`, `incremental/`, `examples/`의 각 항목.
+  항목의 마지막 사용 시각은 안의 파일 중 가장 늦은 atime·mtime으로 정한다.
+- 날짜 기준: 마지막 사용이 N일(기본 14일)보다 오래된 항목을 지운다.
+- 용량 기준: 날짜 정리 뒤에도 네 폴더 합계가 상한(기본 20GiB)을 넘으면, 상한 아래가 될 때까지 오래된 항목부터 지운다.
+- 안전성: 지운 결과물은 Cargo가 fingerprint 검사에서 없다고 판단해 다시 빌드한다. 정리는 정확성을 바꾸지 않고 다음 빌드 시간만 늘린다.
+  빌드 중 삭제를 막기 위해 각 profile 폴더의 `.cargo-lock`에 잠금을 걸 수 없으면 그 폴더를 건너뛴다(실행 중인 Cargo가 잠금을 잡고 있다).
+  자동·오래된 결과물 정리는 Cargo와 같은 OS 파일 잠금을 사용할 수 있는 Linux에서 실행한다. `flock` 미설치, NFS나
+  잠금 파일이 없는 profile은 보존한다. 다른 환경에서는 Cargo 자체의 `pnpm clean:rust`로 정리할 수 있다.
+- 설정: `FERRUM_RUST_TARGET_MAX_AGE_DAYS`, `FERRUM_RUST_TARGET_MAX_GIB`, `FERRUM_RUST_TARGET_GC=0`(끄기). `--dry-run`은 지울 항목과 크기만 출력한다.
+  `CI=true`에서는 아무것도 하지 않는다(CI는 `Swatinem/rust-cache`가 정리한다).
+- 자동 실행: `scripts/build/build-wasm.mjs`와 `scripts/validate/run-native-wasi-tests.mjs` 시작 시 호출한다. 하루 한 번만 검사하도록
+  `target` 밖의 기록 파일(예: `node_modules/.cache/ferrum2d/rust-target-gc.json`)에 마지막 실행 시각을 남긴다. 정리 결과는 한 줄로 출력한다.
+- 수동 실행: `pnpm clean:rust`(네 폴더 `cargo clean`), `pnpm clean:rust:stale`(날짜·용량 기준 정리 즉시 실행, 하루 제한 무시).
+- 한계: `cargo test`를 직접 실행하면 자동 정리가 돌지 않는다. 문서에 `pnpm clean:rust:stale`을 안내한다.
+- 시험: 임시 폴더에 가짜 target 구조(오래된·최근 항목, 잠긴 profile 폴더)를 만들어 날짜 기준, 용량 기준, 잠금 건너뛰기, `--dry-run`, `CI=true`, 하루 제한을
+  `node --test`로 확인한다. 실제 target에서는 `--dry-run` 결과를 보고한다.
+
+**문서:** `AGENTS.md`의 검증 명령 실행 원칙 또는 Required Checks 근처, [Smoke Check](../development/quality/smoke-check.md)의 로컬 실행 안내에
+자동 정리 동작·기본값·끄는 방법과 `pnpm clean:rust`·`pnpm clean:rust:stale`을 적는다.
+
+### S1c 구현 및 검증 결과
+
+- Rust 1.97.1, 같은 checkout과 6개 Cargo 작업을 사용해 각각 비어 있는 target에 Core의 `cargo test --no-run --locked --offline`을 실행했다.
+  `du -sb` 기준 target 크기는 **5.17GiB → 3.00GiB(42.0% 감소)**, 경과 시간은 **98.76초 → 91.67초**였다.
+  의도적으로 panic을 낸 임시 테스트는 두 설정 모두 backtrace에 파일·줄 번호를 표시했다.
+- Core 결정성·golden 테스트 7개가 설정 전후 모두 통과했다. `pnpm build:wasm`의 Wasm SHA-256은 양쪽 모두
+  `22836a7cd02fe236cc60049716177d55ac19b825a2af5a74839bebe2e0a57d0e`였다. 이 Wasm으로 Gameplay replay 17개와 스냅샷 94개가 통과했다.
+- `node --test`로 정리·WASI 실행기·Wasm 빌드 래퍼 계약 18개를 확인했다. 나이·용량·최신 atime/mtime·하드링크·잠금·CI와 opt-out·하루 제한·
+  dry run·전체 `cargo clean` 호출을 다뤘다. 별도 임시 프로젝트의 실제 Cargo 빌드 중에도 잠긴 profile을 건너뛰었고, 빌드가 끝난 뒤에는
+  오래된 파일이 dry run에 나타났다. `pnpm validate:rust-test-harness`와 문서 링크 검사도 통과했다.
+- 작업 트리의 기존 target 네 곳은 이 실행에서 비어 있었다. 별도로 빌드한 Core target은 기본값으로 dry run했을 때 약 3.0GiB,
+  삭제 후보 0건이었다. 실제 작업 트리의 target은 삭제하지 않았다.
 
 ## S2: Studio HD-2D 검사의 단위 테스트 전환
 

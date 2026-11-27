@@ -193,6 +193,13 @@ CI 정합 검증 순서
 - 나머지 TypeScript 패키지와 예제 빌드
 - `pnpm lint`
 
+로컬에서 `pnpm build:wasm`과 `pnpm test:rust-wasi`는 하루에 한 번 Cargo의 네 빌드 폴더를 정리한다.
+Linux의 `flock`으로 잠금을 잡은 폴더만 대상으로 하며, 기본값은 14일과 합계 20GiB다.
+`FERRUM_RUST_TARGET_MAX_AGE_DAYS`와 `FERRUM_RUST_TARGET_MAX_GIB`로 기준을 바꾸고,
+`FERRUM_RUST_TARGET_GC=0`으로 자동·오래된 결과물 정리를 끈다. CI에서는 정리를 건너뛴다.
+`pnpm clean:rust:stale`은 하루 제한 없이 실행하고, `pnpm clean:rust:stale --dry-run`은 삭제 후보를 보여 준다.
+직접 `cargo test`를 실행할 때는 필요하면 이 명령을 실행한다. `pnpm clean:rust`는 네 매니페스트에 `cargo clean`을 실행한다.
+
 Wasm 브리지 변경 후 추가:
 
 - `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
