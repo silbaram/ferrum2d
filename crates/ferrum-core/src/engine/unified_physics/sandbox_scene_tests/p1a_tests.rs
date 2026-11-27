@@ -5,11 +5,12 @@ use crate::components::{
     DistanceJoint, GearJoint, PrismaticJoint, RevoluteJoint, RopeJoint, SpringJoint, Transform2D,
     WeldJoint,
 };
+use crate::physics3d::p1b_tests::TraceHash;
 use crate::physics3d::{
     BodyDesc, BodyId, BodyKind, ColliderDesc, ColliderId, OverlapSample, PhysicsWorld3d, Pose,
     Shape,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::time::Instant;
 
@@ -28,9 +29,8 @@ fn physics(e: &Engine) -> &PhysicsWorld3d {
 }
 
 fn configure_experiment(world: &mut PhysicsWorld3d, mode: Mode) {
-    if matches!(mode, Mode::Rapier) {
-        world.enable_experimental_rigid_rapier_ccd();
-        assert!(!world.p1a_uses_motion_proof());
+    if matches!(mode, Mode::Current) {
+        world.force_rigid_motion_proof();
     }
 }
 
@@ -265,6 +265,104 @@ fn run_sandbox(name: &str, bodies: &[Body], gravity: f32, iterations: [u32; 2]) 
         }
         output.report(physics(&e), name, mode);
         overlaps.report(name, mode);
+    }
+}
+
+#[test]
+#[ignore = "P2a compares first-contact geometry and release step costs"]
+fn p2a_compare_soft_ccd_at_first_contact() {
+    let materials = rigid_materials();
+    let contacts = contacts_sensors();
+    let gallery = collider_gallery();
+    for (name, bodies, gravity, iterations) in [
+        ("rigid-materials", materials.as_slice(), 860., [8, 6]),
+        ("contacts-sensors", contacts.as_slice(), 820., [8, 7]),
+        ("collider-gallery", gallery.as_slice(), 640., [8, 6]),
+    ] {
+        for fraction in [0., 0.5] {
+            let mut expected = None;
+            for repeat in 0..2 {
+                let (mut e, entities) = sandbox_engine(bodies, gravity, iterations);
+                let ids: Vec<_> = entities
+                    .iter()
+                    .map(|&id| e.unified_body_id(id).unwrap())
+                    .collect();
+                e.unified_physics
+                    .as_mut()
+                    .unwrap()
+                    .physics
+                    .p2a_set_soft_ccd_fraction(fraction);
+                assert!(!physics(&e).p1a_uses_motion_proof());
+                let tracked: Vec<_> = bodies
+                    .iter()
+                    .zip(&entities)
+                    .filter_map(|(body, &id)| body.dynamic.then_some(id))
+                    .collect();
+                let chain = (name == "collider-gallery").then(|| gallery_chain(bodies));
+                let mut starts = BTreeSet::new();
+                let mut active = BTreeSet::new();
+                let mut first = (0_f32, 0, None);
+                let mut peak = 0_f32;
+                let mut episodes = 0;
+                let mut sum = 0.;
+                let mut max = 0_f64;
+                let mut hash = TraceHash::new();
+                for tick in 0..FRAMES {
+                    e.update(1. / 60.);
+                    let previous: Vec<_> = tracked
+                        .iter()
+                        .map(|&id| e.world.transform(id).unwrap())
+                        .collect();
+                    let (_, elapsed) = step_sample(|| sandbox_step(&mut e, gravity, iterations));
+                    assert_eq!(
+                        e.take_unified_physics_error(),
+                        None,
+                        "{name} {fraction} tick {tick}"
+                    );
+                    assert!(!past_sandbox_floor(&e, &tracked));
+                    if let Some(chain) = &chain {
+                        for (&id, before) in tracked.iter().zip(previous) {
+                            assert!(
+                                !crosses_chain_downward(
+                                    [before, e.world.transform(id).unwrap()],
+                                    chain
+                                ),
+                                "{name} {fraction} tick {tick}"
+                            );
+                        }
+                    }
+                    physics(&e).p1a_visit_overlaps(|sample| {
+                        if !sample.solver_allowed {
+                            return;
+                        }
+                        let pair = sample.bodies.map(|b| b.collider);
+                        active.insert(pair);
+                        peak = peak.max(sample.depth);
+                        if !starts.contains(&pair) {
+                            episodes += 1;
+                            if sample.depth > first.0 {
+                                first = (sample.depth, tick, Some(sample.bodies));
+                            }
+                        }
+                    });
+                    std::mem::swap(&mut starts, &mut active);
+                    active.clear();
+                    for &body in &ids {
+                        hash.body(physics(&e), body);
+                    }
+                    sum += elapsed;
+                    max = max.max(elapsed);
+                }
+                let hash = hash.finish();
+                if let Some(expected) = expected {
+                    assert_eq!(hash, expected, "{name} soft={fraction}");
+                } else {
+                    expected = Some(hash);
+                }
+                let timing = (!cfg!(debug_assertions)).then_some((sum / FRAMES as f64, max));
+                println!("P2A_SOFT scene={name} fraction={fraction} repeat={repeat} first_depth={:.7} first_tick={} episodes={episodes} peak={peak:.7} hash={hash:016x} timing_us={timing:?} first_pair={:?}", first.0,first.1, first.2);
+            }
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 # 3D 물리 운동 증명 방식 검토
 
-상태 — 사용자 결정 B(허용 오차 방식 전환)와 기준 확정(2026-11-27). P1a·P1b 실험을 완료했고 전환 방향 B를 확정했다.
+상태: 사용자 결정 B(허용 오차 방식 전환)·P1a·P1b 비교 완료·P2a 강체 경로 전환 완료(2026-11-27).
 
 관련 문서: [통합 3D 물리](unified-3d-physics-plan.md)의 "미해결: 회전 상자 접촉의 운동 증명", [PR CI 정리](ci-and-studio-distribution-plan.md)(빌드 시간 조사의 출발점).
 
@@ -136,7 +136,7 @@ vendor에 추가한 콜백 `resolve_solver_motion`이 각 물체의 실제 적�
 ## 진행 단계
 
 1. **P1 실험 모드 비교**: 증명 검사기만 끄고 Rapier CCD는 켠 설정을 실험용으로 만들어 지금 방식과 비교한다. 공개 API에는 노출하지 않는다.
-  범위는 아래 "P1 작업 범위"에 둔다. 결과로 B를 확정하거나 보류한다.
+   범위는 아래 "P1 작업 범위"에 둔다. 결과로 B를 확정하거나 보류한다.
 2. **P2 기본 경로 전환**: 기본값을 새 방식으로 바꾼다. 캐릭터는 KCC와 발판 운반·군중·끼임만 자체 코드로 재구성한다.
    - 공개 문서와 CHANGELOG에 결과 변화를 공지한다.
    - 군중 hash와 리플레이 기준 파일을 다시 만든다.
@@ -144,6 +144,11 @@ vendor에 추가한 콜백 `resolve_solver_motion`이 각 물체의 실제 적�
    - `solver_trajectory` 증명부와 그 테스트
    - `character_motion`의 승인·거절 처리
    - vendor의 증명 전용 훅
+   - 테스트 전용 `force_rigid_motion_proof`와 강체 증명 테스트
+     `observation_off_linear_sphere_and_locked_box_keep_actual_force_kernels_and_native_momentum`,
+     `forced_proof_includes_all_enabled_native_dynamic_origins`,
+     `prediction_extra_cadence_never_changes_actual_backend_base_parameters`
+   - `p1a_compare_*`의 강체 증명 대조군. 일반 CCD·관통·겹침 검사와 공개 오류 복구 회귀는 해당 시점의 제품 경로로 유지한다.
 4. 그 뒤 기존 2D 물리(`physics`·`collision`) 정리와 크레이트 분리를 검토한다(빌드 시간 조사의 2·3번 항목).
 
 ## 사용자 결정 (2026-11-27)
@@ -191,6 +196,8 @@ P1의 공통 규칙.
 - 결과 표와 판단(B 확정·보류)을 이 문서에 남긴다.
 
 ### P1a 결과
+
+이 절의 현행은 P2a 전 강체 증명 경로를 가리킨다. 당시 실험은 P2a의 제품 기본 경로가 됐다.
 
 Rust 단위 테스트에서만 `PhysicsWorld3d`의 직렬화 대상이 아닌 작업 상태에 실험 스위치를 둔다. 기본값은 꺼짐이다.
 캐릭터, 지정 경로, step-motion 중 하나라도 있으면 스위치를 켜도 증명 경로를 탄다. 나머지 장면에서는
@@ -260,7 +267,7 @@ B의 최종 확정에는 장면별 겹침 허용 한도와 캐릭터 품질 확�
 `p1a_probes`는 벽돌 가장자리, 체인 꼭짓점 주변, 바닥에 흩어져 멈춘 상자를 단위 테스트로 확인한다.
 
 ```bash
-cargo +1.97.1 test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib p1a_unproved_rigid_step_respects_continuous_ccd -- --show-output
+cargo +1.97.1 test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib rigid_step_respects_continuous_ccd_without_motion_proof -- --show-output
 cargo +1.97.1 test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib p1a_probes
 cargo +1.97.1 test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib p1a_compare -- --ignored --show-output --test-threads=6
 cargo +1.97.1 test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --release --lib p1a_compare -- --ignored --show-output --test-threads=1
@@ -381,3 +388,108 @@ P1a 비교 7건은 위 P1a 결과에 기록했다. 리뷰 후속 상태에서 P1
 통과했다. 최종 Core 전체 테스트 1회에서 단위 3,794건과 통합 1건이 통과했다.
 `cargo clippy --all-targets -- -D warnings`, Rust 포맷, 문서 링크와 `native-wasm-source-identity`
 검사도 통과했다. Wasm 빌드와 브라우저 smoke는 이번 범위에서 제외했다.
+
+## P2a 작업 범위 (2026-11-27 사용자 승인)
+
+P2를 강체 전환(P2a)과 캐릭터 전환(P2b)으로 나눈다. P2a는 캐릭터·지정 경로·step-motion이 없는 world만 바꾼다.
+캐릭터·지정 경로·step-motion을 사용하는 world는 기존 증명 경로를 유지한다. 경로는 장면 구성으로 정해지며, 실패 뒤 다른 방식으로 넘어가는 fallback이 아니다.
+
+- **기본 경로 전환**: 위 조건의 world는 `continuous`가 켜져 있어도 증명 경로를 타지 않고 Rapier 일반 step과 Rapier CCD로 진행한다.
+  P1a의 `RigidRapier` 실험을 기본값으로 만들고, 그 테스트 전용 스위치는 지운다. 캐릭터가 있는 world는 바꾸지 않는다.
+- **처음 닿는 순간의 겹침**: P1a의 세 장면(`rigid-materials`, `contacts-sensors`, `collider-gallery`)에서 첫 접촉 겹침을 잰다.
+  Rapier `soft_ccd_prediction`을 내부 기본값으로 쓰면 줄어드는지 시험한다. 효과가 분명하고 결정성과 step 시간 기준을 지키면 적용하고,
+  아니면 수치만 남긴다. 공개 설정으로는 내놓지 않는다. 장면별 겹침 한도를 제안한다.
+- **기존 테스트**: 강체 world로 증명을 시험하던 테스트 중 동작을 보는 것은 새 기대값으로 고친다. 증명 자체만 보는 것은
+  테스트 전용 강제 스위치로 증명 경로를 유지하고 P3 삭제 목록에 올린다.
+- **오류 검사**: `tests/smoke/native-checked-error-probe.mjs`는 강체 world의 `CapacityExceeded`에 기대므로, 오류를 일으킬 사례를 새로 정한다.
+  틱 되돌리기, 체크포인트 복원, 저장 파일 불변 같은 검사 내용은 유지한다.
+- **물리 실험실·예제**: `sandbox_scene_tests`의 ignored 3건을 일반 테스트로 바꾼다. `examples/shared/physicsExamples.json`의 `knownIssue` 4개와
+  브라우저 smoke의 예외 목록도 지운다. 실험실의 오류 표시 기능은 남긴다. 벽돌 깨기 예제는 연속 충돌을 다시 켜고 멈추지 않는지 확인한다.
+- **기준 파일**: 바뀌는 기준 파일만 다시 만든다. 64명 군중 hash는 캐릭터 world라 바뀌지 않아야 한다.
+- **문서**: 공개 문서의 `continuous` 설명을 고친다. 대상은 Rapier CCD 대상, 처음 닿는 순간의 겹침, 증명 오류가 캐릭터 world에서만 남는 점이다.
+  CHANGELOG의 미배포 항목에 강체 물리 결과 변화를 공지한다. 통합 3D 물리 계획의 미해결 절과 이 문서에 P2a 결과를 적는다.
+
+### P2a 결과
+
+강체만 있는 world는 캐릭터·지정 경로·step-motion이 없을 때 `continuous`와 관계없이 일반 step을 사용한다.
+평면·공간에서 `continuous: true`는 빠른 동적 물체와 고정물의 Rapier CCD를 켠다. `ccd: true`인 동적 물체는
+운동학적 물체와 `ccd`를 켜지 않은 동적 물체도 탐색한다. `RigidRapier` 테스트 스위치는 제거했다.
+P1a의 과거 대조군은 `force_rigid_motion_proof`, P1b의 캐릭터 실험은 기존 `CharacterKcc`로 재현한다.
+체크포인트와 저장 파일 롤백 검사는 먼 곳에 캡슐 캐릭터를 등록한 제품 world에 경사 메시와 빠른 상자를
+배치해, 실제 `CapacityExceeded`를 0초 승인 상태에서 일으킨다.
+
+#### 첫 접촉과 soft CCD
+
+300틱 동안 양의 기하 겹침이 처음 관측된 틱을 접촉 에피소드의 시작으로 집계했다. 한 쌍이 떨어졌다가
+다시 겹치면 새 에피소드다. 시작 깊이의 최댓값과 전체 틱의 피크를 구분했다. 틱 중 정확한 접촉 순간보다
+틱 종료 자세를 표본으로 사용했다. 센서와 solver가 배제하는 쌍은 집계에서 제외했다. 후보는 동적 물체에
+달린 활성 고체 콜라이더의 최소 CCD 두께 × 0.5를 각 물체의 `soft_ccd_prediction`에 설정했다.
+일반 접촉 예측 거리 0.02와 허용 겹침 0.005 등 기존 적분 값은 유지했다.
+
+| 장면 | 첫 접촉 최대 깊이 @ 틱, 기본 → 후보 | 전체 피크, 기본 → 후보 | 권고 상한 (첫 접촉 / 전체 피크 / 마지막 60틱의 정지 쌍) |
+| --- | --- | --- | --- |
+| `rigid-materials` | 4.0241852 @114 → 0.0002766 @0 | 4.0241852 → 0.0103378 | 4.5 / 4.5 / 0.02 |
+| `contacts-sensors` | 4.2528687 @90 → 0.0885620 @125 | 4.2528687 → 0.0885620 | 4.75 / 4.75 / 0.02 |
+| `collider-gallery` | 5.7482629 @49 → 2.5464621 @53 | 6.3751030 → 2.5464621 | 6.0 / 6.75 / 0.02 |
+
+권고 상한은 이 세 장면의 월드 단위에서 현재 피크에 여유를 더한 값이다. 정지 쌍 상한은 P1a 추적의
+마지막 60틱 수치에 근거한다. 제품이나 회귀 테스트의 제약으로 아직 적용하지 않았다.
+
+| 장면 | 릴리스 step 평균 / 최대의 중앙값(µs), 기본 → 후보 | 300틱 상태 hash, 기본 → 후보 |
+| --- | --- | --- |
+| `rigid-materials` | 15.45 / 162.85 → 14.16 / 87.54 | `2ce2bad1c7df0104` → `090358931228e0f2` |
+| `contacts-sensors` | 9.94 / 71.39 → 9.13 / 51.35 | `5bace87fd58058d8` → `e8589d96f648ad87` |
+| `collider-gallery` | 29.05 / 134.62 → 26.75 / 235.63 | `28a5274030db0df8` → `b45cc1dcf717e7f5` |
+
+릴리스 단일 스레드 테스트를 CPU 5에 고정하고 30회 실행했다. 실행마다 장면·설정별로 300틱을 두 번 실행했고,
+위 표는 각 실행의 평균과 최대를 모은 60개 표본의 중앙값이다. 타이머에는 수동 물리 스텝만 포함했다.
+장면·설정별 두 실행의 hash는 일치했고 단계 오류와 바닥·체인 관통은 검출되지 않았다.
+CPU를 고정하지 않은 별도 15회에서는 `contacts-sensors`의 최대 중앙값도 27.40 → 32.12µs로 늘었다.
+겹침 개선과 동일 입력 결정성을 확인했지만 틱 최대 비용이 증가하지 않는다는 조건을 확인하지 못해
+soft CCD 기본값은 Rapier의 0으로 유지했다.
+
+```bash
+cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --release --lib p2a_compare_soft_ccd --no-run
+# 위 명령이 출력한 릴리스 테스트 바이너리를 사용한다.
+for run in {1..30}; do
+  taskset -c 5 "$test_binary" p2a_compare_soft_ccd --ignored --show-output --test-threads=1
+done
+```
+
+#### 회귀 검증
+
+| 검증 | 결과 |
+| --- | --- |
+| Core 전체 테스트 · Clippy · 포맷 | Rust 1.97.1에서 단위 3,797건과 통합 1건 통과, 수동 측정 13건은 기본 실행에서 제외. `--all-targets -- -D warnings`와 Rust 포맷 검사 통과 |
+| Native 물리 실험실과 벽돌 깨기 | 일반 테스트로 되돌린 3개 장면은 각각 300틱 무오류. 별도 300틱 관절 비교는 관절 7개 유지, weld 앵커 최대 이격 0.0713455. 넓은 패들로 발사하는 벽돌 깨기 Rust 비교에서 틈 진입 13틱, 벽돌 4개, 오류·지정 장벽 관통 0. 얇은 지형의 고속 낙하는 CCD 클램프 1회 |
+| Wasm · SDK | 배포용 Wasm 지문 `11069d5bf39a8803` 일치. 지문 검사와 SDK 테스트 292건, SDK 빌드 헬퍼 검사 2건 통과 |
+| Chromium 물리 실험실 · 벽돌 깨기 | `physics-sandbox`와 `physics-demo-suite` 7개 장면이 각각 추가 300프레임 무오류. 실제 예제의 넓은 패들을 고정하고 세 번 발사해 점수 160, 벽돌 11개 제거, 정상 게임 오버까지 진행 |
+| Chromium 오류 복구 | SDK tarball의 자동·수동(기본·설정 명시) 3개 경로에서 실제 작업량 한도 초과와 롤백·체크포인트 복원·메시 제거 후 재시작 확인. 두 수동 경로의 저장 파일은 각각 448,482바이트로 거절 전후 완전히 동일 |
+| Chromium 64명 군중 | 고정 50ms 입력에서 81프레임·405스텝. 상태 SHA-256 `da6e9fd49d89addd7d87e6a7b296f1a82bca7ff2ff7542c890c4544aace6776d` 유지. 최종 실행에서 Rust 최대 36.2ms와 기존 프레임 예산 통과 |
+| 기준 파일 | `update-fixture`로 Minimal·Topdown·Platformer·Breakout 리플레이 기준 파일 갱신. Native 파일 SHA-256, snapshot hash, replay hash만 변경. 템플릿 패키지와 리포트 검사 통과. broad-phase golden은 기존 바이트 검사를 통과해 유지 |
+| 문서 | 공개 `continuous`·`ccd` 동작과 첫 접촉 겹침, 증명 경로의 남은 오류를 Core API·Physics Spec·통합 계획에 반영. 미배포 CHANGELOG와 문서 링크 검사 완료 |
+
+검증은 저장소 루트에서 실행했다. 브라우저의 두 실험실 모드는 같은 Wasm으로 만든 실험실 빌드를
+`node tests/smoke/browser-render-smoke.mjs --mode=physics-sandbox <lab-dist>`와
+`--mode=physics-demo-suite <lab-dist>`에 각각 넘겼다. 오류 복구와 군중은
+`tests/smoke/unified-physics-browser-smoke.mjs`가 사용하는 개별 probe를 추출한 SDK tarball에 연결해 실행했다.
+군중의 첫 실행은 SwiftShader를 명시한 Chromium 1243에서 렌더 시간 392.7ms로 125ms 상한을 넘었고,
+그때도 405스텝 결과 hash는 같았다. Chromium 1223의 기본 그래픽 선택으로 재실행해 기존 단언을 모두 통과했다.
+
+
+```bash
+cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline -- --test-threads=6
+cargo +stable clippy --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --all-targets -- -D warnings
+cargo +stable fmt --manifest-path crates/ferrum-core/Cargo.toml --all -- --check
+pnpm build:wasm
+node --test tests/smoke/native-wasm-source-identity.test.mjs
+node scripts/package/native-wasm-source-identity.mjs
+pnpm test:web
+pnpm --filter @ferrum2d/physics-sandbox build
+pnpm --filter @ferrum2d/example-site build
+pnpm --filter @ferrum2d/example-site lint
+node scripts/package/check-create-game-package.mjs --verify-pack --skip-build
+node tests/smoke/create-game-template-report-envelope-smoke.mjs
+pnpm validate:rust-test-harness
+pnpm validate:docs-links
+```

@@ -532,6 +532,17 @@ fn preapply_capacity_rejection_preserves_last_tick_and_pending_world_bytes() {
     assert_eq!(w.step_statistics().ccd_clamps, 1);
     w.remove_body(mover).unwrap();
     w.remove_body(stop).unwrap();
+    let character = body(
+        &mut w,
+        BodyKind::KinematicPosition,
+        [60., 2., 0.],
+        Shape::Capsule {
+            half_height: 0.5,
+            radius: 0.25,
+        },
+    );
+    w.enable_character(character, crate::physics3d::CharacterConfig::default())
+        .unwrap();
     let mesh = body(
         &mut w,
         BodyKind::Fixed,

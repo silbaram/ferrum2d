@@ -515,13 +515,14 @@ fn rejected_uncommitted_slice_has_no_published_motion_trace() {
 }
 
 #[test]
-fn automatic_authority_includes_all_enabled_native_dynamic_origins() {
+fn forced_proof_includes_all_enabled_native_dynamic_origins() {
     use crate::physics3d::{BodyDesc, ColliderDesc, Pose, Shape, WorldConfig};
     let mut world = PhysicsWorld3d::new(WorldConfig {
         gravity: [0.; 3],
         ..WorldConfig::default()
     })
     .unwrap();
+    world.force_rigid_motion_proof();
     let sphere = world
         .create_body(
             BodyDesc {
@@ -552,6 +553,7 @@ fn automatic_authority_includes_all_enabled_native_dynamic_origins() {
         ..WorldConfig::default()
     })
     .unwrap();
+    box_world.force_rigid_motion_proof();
     box_world
         .create_body(
             BodyDesc {
@@ -578,6 +580,7 @@ fn prediction_extra_cadence_never_changes_actual_backend_base_parameters() {
         ..WorldConfig::default()
     })
     .unwrap();
+    world.force_rigid_motion_proof();
     let body = world
         .create_body(
             BodyDesc {

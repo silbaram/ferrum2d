@@ -11,7 +11,7 @@ use rapier3d::parry::{
 pub(in crate::physics3d) enum Experiment {
     #[default]
     Current,
-    RigidRapier,
+    RigidProof,
     CharacterKcc,
 }
 
@@ -26,6 +26,20 @@ struct MovePlan {
 }
 
 impl PhysicsWorld3d {
+    pub(crate) fn force_rigid_motion_proof(&mut self) {
+        self.character_motion.experiment = Experiment::RigidProof;
+    }
+
+    pub(in crate::physics3d) fn rigid_motion_proof_is_forced(&self) -> bool {
+        self.character_motion.experiment == Experiment::RigidProof
+            && self.config.solver.continuous
+            && self
+                .backend
+                .bodies
+                .iter()
+                .any(|(_, body)| body.is_enabled() && body.is_dynamic())
+    }
+
     pub(crate) fn enable_experimental_character_kcc(&mut self) {
         self.character_motion.experiment = Experiment::CharacterKcc;
     }

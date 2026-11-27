@@ -5807,29 +5807,17 @@ impl PhysicsWorld3d {
         if self.experimental_character_kcc_enabled() {
             return false;
         }
-        if self.step_motion.enabled
+        #[cfg(test)]
+        if self.rigid_motion_proof_is_forced() {
+            return true;
+        }
+        self.step_motion.enabled
             || !self.characters.is_empty()
             || !self
                 .character_motion
                 .backend_motion
                 .prescribed_paths
                 .is_empty()
-        {
-            return true;
-        }
-        #[cfg(test)]
-        if self.character_motion.experiment
-            == crate::physics3d::character::experimental_tests::Experiment::RigidRapier
-        {
-            return false;
-        }
-        self.config.solver.continuous
-            && self.backend.bodies.iter().any(|(_, body)| {
-                // Linear force/constraint kernels need the same actual
-                // coverage as rotating ones; orientation invariance is
-                // not a certificate for a whole-pass endpoint chord.
-                body.is_enabled() && body.is_dynamic()
-            })
     }
 
     pub(in crate::physics3d) fn prepare_backend_motion(

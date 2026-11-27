@@ -138,12 +138,6 @@ impl PhysicsWorld3d {
             .unwrap_or(self.config.step_seconds)
     }
 
-    #[cfg(test)]
-    pub(crate) fn enable_experimental_rigid_rapier_ccd(&mut self) {
-        self.character_motion.experiment =
-            super::character::experimental_tests::Experiment::RigidRapier;
-    }
-
     pub(crate) fn has_active_interval(&self) -> bool {
         self.interval_nominal_seconds.is_some()
     }

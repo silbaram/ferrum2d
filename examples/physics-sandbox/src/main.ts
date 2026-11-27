@@ -44,7 +44,6 @@ import { createScenarioDetail } from "./scenarioDetail";
 
 // Gallery thumbnails, so the scenario list matches the example gallery and the feature lab.
 const scenarioThumbnails = import.meta.glob<string>("../../shared/thumbnails/physics-*.jpg", { eager: true, query: "?url", import: "default" });
-const knownIssues = new Map<string, string>(sharedScenarios.flatMap((item): [string, string][] => "knownIssue" in item ? [[item.id, String(item.knownIssue)]] : []));
 
 interface PhysicsShowcaseCatalog {
   version: 1;
@@ -472,7 +471,6 @@ function createShell(
     title: scenarioTitle(scenario),
     category: categoryLabel(scenario.category, scenarios),
     summary: scenarioSummary(scenario),
-    issue: knownIssues.get(scenario.id),
     thumbnail: scenarioThumbnails[`../../shared/thumbnails/physics-${scenario.id}.jpg`],
     physicsSpec: scenario.physicsSpec,
     specUrl: publicAssetUrl(scenario.physicsSpec),

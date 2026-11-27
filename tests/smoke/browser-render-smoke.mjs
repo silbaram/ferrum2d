@@ -118,10 +118,6 @@ const PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER =
   "/tmp/ferrum-studio-desktop-assets-smoke/shared-assets-alternate";
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const MAX_PLACEMENT_SAVE_BYTES = 2 * 1024 * 1024;
-// Scenarios with a catalog `knownIssue` may stop their world; the lab must then show the error.
-// The same field shows the gallery badge (examples/shared/physicsExamples.json).
-const PHYSICS_SANDBOX_KNOWN_STEP_ERRORS = new Set(JSON.parse(await readFile("examples/shared/physicsExamples.json", "utf8"))
-  .filter(item => item.knownIssue).map(item => item.id));
 const PHYSICS_SANDBOX_SUSTAINED_FRAMES = 300;
 
 const PHYSICS_DEMO_SUITE = [
@@ -4694,20 +4690,16 @@ async function smokePhysicsSandbox(page, timeoutMs, demoId) {
   await waitForPageFunction(
     page,
     `Physics sandbox did not keep rendering ${demoId}`,
-    (target) => globalThis.ferrumPhysicsSandboxSmokeFrame.frameCount >= target,
+    (target) => {
+      const frame = globalThis.ferrumPhysicsSandboxSmokeFrame;
+      return frame.physicsStepError !== undefined || frame.frameCount >= target;
+    },
     timeoutMs,
     startFrame + PHYSICS_SANDBOX_SUSTAINED_FRAMES,
   );
-  const sustained = await page.evaluate(() => ({
-    stepError: globalThis.ferrumPhysicsSandboxSmokeFrame.physicsStepError,
-    badge: document.querySelector("[data-status]")?.dataset.status,
-  }));
-  if (PHYSICS_SANDBOX_KNOWN_STEP_ERRORS.has(demoId)) {
-    if (sustained.stepError !== undefined && sustained.badge !== "error") {
-      throw new Error(`Physics scenario ${demoId} stopped without showing the error: ${sustained.stepError}`);
-    }
-  } else if (sustained.stepError !== undefined) {
-    throw new Error(`Physics scenario ${demoId} stopped its world: ${sustained.stepError}`);
+  const stepError = await page.evaluate(() => globalThis.ferrumPhysicsSandboxSmokeFrame.physicsStepError);
+  if (stepError !== undefined) {
+    throw new Error(`Physics scenario ${demoId} stopped its world: ${stepError}`);
   }
 
   return { ...(viewportCheck ? { physicsViewport: viewportCheck } : {}), ...await page.evaluate(() => ({

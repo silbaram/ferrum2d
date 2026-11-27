@@ -29,6 +29,29 @@ pub(crate) struct OverlapSample {
 }
 
 impl PhysicsWorld3d {
+    pub(crate) fn p2a_set_soft_ccd_fraction(&mut self, fraction: f32) {
+        let colliders = &self.backend.colliders;
+        for (_, body) in self
+            .backend
+            .bodies
+            .iter_mut()
+            .filter(|(_, body)| body.is_dynamic())
+        {
+            let thickness = body
+                .colliders()
+                .iter()
+                .filter_map(|&id| {
+                    colliders
+                        .get(id)
+                        .filter(|c| c.is_enabled() && !c.is_sensor())
+                        .map(|c| c.shape().ccd_thickness())
+                })
+                .reduce(f32::min)
+                .unwrap_or(0.);
+            body.set_soft_ccd_prediction(fraction * thickness);
+        }
+    }
+
     pub(crate) fn p1a_uses_motion_proof(&self) -> bool {
         self.backend_motion_enabled()
     }
@@ -181,7 +204,7 @@ impl PhysicsWorld3d {
 }
 
 #[test]
-fn p1a_unproved_rigid_step_respects_continuous_ccd() {
+fn rigid_step_respects_continuous_ccd_without_motion_proof() {
     for (continuous, ccd) in [(true, true), (false, true), (true, false)] {
         let mut world = PhysicsWorld3d::new(WorldConfig {
             gravity: [0.; 3],
@@ -217,8 +240,6 @@ fn p1a_unproved_rigid_step_respects_continuous_ccd() {
                 ColliderDesc::new(Shape::Sphere { radius: 0.5 }),
             )
             .unwrap();
-        assert_eq!(world.backend_motion_enabled(), continuous);
-        world.enable_experimental_rigid_rapier_ccd();
         assert!(!world.backend_motion_enabled());
         world.step_checked().unwrap();
         let x = world.body_state(ball).unwrap().pose.position[0];

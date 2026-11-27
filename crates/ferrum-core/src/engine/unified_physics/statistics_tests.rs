@@ -1,6 +1,6 @@
 use super::*;
 use crate::collision::PHYSICS_DEBUG_CCD;
-use crate::physics3d::{BodyKind, Shape};
+use crate::physics3d::{BodyKind, CharacterConfig, Shape};
 
 fn engine(space: Space, limit: usize) -> Engine {
     let mut e = Engine::new();
@@ -40,6 +40,21 @@ fn body(e: &mut Engine, kind: BodyKind, p: [f32; 3], v: [f32; 3], shape: Shape) 
     )
     .unwrap()
 }
+fn register_distant_character(e: &mut Engine) {
+    let character = body(
+        e,
+        BodyKind::KinematicPosition,
+        [60., 2., 0.],
+        [0.; 3],
+        Shape::Capsule {
+            half_height: 0.5,
+            radius: 0.25,
+        },
+    );
+    e.enable_unified_character(character, CharacterConfig::default())
+        .unwrap();
+}
+
 fn wall_and_fast(e: &mut Engine, y: f32) -> Entity {
     body(
         e,
@@ -78,6 +93,7 @@ fn checked_manual_mesh_rejection_preserves_previous_tick_and_engine_checkpoint()
     e.step_rigid_bodies_checked(dt).unwrap();
     let last_step = e.unified_physics_step_statistics().unwrap();
     assert_eq!(last_step.ccd_clamps, 1);
+    register_distant_character(&mut e);
     let mesh = body(
         &mut e,
         BodyKind::Fixed,
@@ -158,6 +174,7 @@ fn planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection() {
             .set_circle_collider(a, CircleCollider::new(1., false, CollisionLayer::Enemy));
         e.world.set_rigid_body(a, RigidBody::dynamic_circle(1., 1.));
         e.step_rigid_bodies_checked(dt).unwrap();
+        register_distant_character(&mut e);
         let mesh = body(
             &mut e,
             BodyKind::Fixed,
@@ -223,6 +240,7 @@ fn rejected_frame_retry_does_not_repeat_pre_physics_gameplay() {
             1.,
             TweenEasing::Linear,
         ));
+        register_distant_character(&mut e);
         let mesh = body(
             &mut e,
             BodyKind::Fixed,

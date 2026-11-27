@@ -303,15 +303,8 @@ fn first_failure(bodies: &[Body], gravity: f32, iterations: [u32; 2], frames: u3
     })
 }
 
-/// rigid-materials: the metal slider (180 u/s, friction-induced spin about
-/// 1e-4 rad/s) reaches the resting block on the shared track at frame 115.
-/// Its sleeping-body wake prefix ends at the original contact time, so every
-/// re-integrated prefix meets the still sleeping block again and the retries
-/// exhaust the tick's proof ledger. An awake block instead leaves the impact
-/// pair touching while it separates, and the f32 grids of the two boxes
-/// (x < 512 versus x >= 512) re-hit that zero-gap contact by one ulp.
+// The old proof path stopped when a metal slider reached a sleeping block.
 #[test]
-#[ignore = "certified actual motion cannot yet resolve the box-box impact (frame 115)"]
 fn sandbox_rigid_materials_runs_without_stopping_the_world() {
     assert_eq!(first_failure(&rigid_materials(), 860., [8, 6], 300), None);
 }
@@ -346,12 +339,8 @@ fn rigid_materials() -> [Body<'static>; 8] {
     ]
 }
 
-/// contacts-sensors: a spinning box (12.8 rad/s) inside the fixed sensor
-/// ball first stopped the world at frame 58 with an unused pseudo-pair cast.
-/// It now reaches frame 63, where the same box meets the spinning ball on a
-/// diagonal normal and the near-contact bisection exhausts the ledger.
+// The old proof path stopped at a near-contact after the spinning box left the sensor.
 #[test]
-#[ignore = "certified actual motion cannot yet resolve the spinning box-ball contact (frame 63)"]
 fn sandbox_contacts_sensors_runs_without_stopping_the_world() {
     assert_eq!(first_failure(&contacts_sensors(), 820., [8, 7], 300), None);
 }
@@ -396,14 +385,8 @@ fn contacts_sensors() -> [Body<'static>; 6] {
     ]
 }
 
-/// collider-gallery: the metal oriented box (0.66 rad) lands on the chain
-/// terrain at 400 u/s. It is not fast enough for Native CCD, so its discrete
-/// step ends 5.7 units inside a segment at frame 49. At frame 50 the CCD plan
-/// must prove that this deep rotating overlap does not deepen, and exhausts
-/// the ledger. joints-lab stops the same way at frame 0 with its two touching
-/// welded boxes (rotated +-0.04), and its hinge box alone stops at frame 64.
+// The old proof path stopped after the rotated box first hit the chain terrain.
 #[test]
-#[ignore = "certified actual motion cannot yet resolve the rotated box in the chain (frame 50)"]
 fn sandbox_collider_gallery_runs_without_stopping_the_world() {
     assert_eq!(first_failure(&collider_gallery(), 640., [8, 6], 300), None);
 }

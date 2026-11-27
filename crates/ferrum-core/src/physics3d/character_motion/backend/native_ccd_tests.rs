@@ -40,6 +40,7 @@ fn observation_off_linear_sphere_and_locked_box_keep_actual_force_kernels_and_na
             world.add_force(body, [0.125, 0., 0.], [0.; 3]).unwrap();
             let saved = world.capture_snapshot().unwrap();
             let mut native_reference = PhysicsWorld3d::from_snapshot(&saved).unwrap();
+            world.force_rigid_motion_proof();
             assert!(!world.step_motion.enabled);
             assert!(world.backend_motion_enabled(), "locked={locked} ccd={ccd}");
             let id = crate::physics3d::world::native_id(body);
@@ -140,10 +141,8 @@ fn disabled_joint_pair_does_not_disable_an_unrelated_native_ccd_target() {
             }),
         )
         .unwrap();
-    // An enabled slack cable proves the connected pair owns no physical J.
-    // Its presence keeps the original four outer passes. The unrelated wall
-    // first contacts in the final pass (.75 -> 1), so no later solve can
-    // legitimately replace the velocity retained by the position-only clamp.
+    // The slack cable disables the connected pair without constraining the mover.
+    // The unrelated wall first contacts in the final pass (.75 -> 1).
     let joint = world
         .create_joint(JointDesc::new(
             anchor,
@@ -151,16 +150,13 @@ fn disabled_joint_pair_does_not_disable_an_unrelated_native_ccd_target() {
             JointKind::Rope { max_length: 10. },
         ))
         .unwrap();
-    assert!(!world.step_motion.enabled);
+    assert!(!world.backend_motion_enabled());
     world.step_checked().unwrap();
     let state = world.body_state(mover).unwrap();
-    assert!(
-        state.pose.position[0] > 0.8 && state.pose.position[0] < 0.851,
-        "{state:?}"
-    );
+    assert!((state.pose.position[0] - 0.855).abs() < 0.0001, "{state:?}");
     assert_eq!(world.ccd_clamps().len(), 1);
     assert_eq!(world.ccd_clamps()[0].target.body, target);
-    assert_eq!(world.step_statistics().ccd_clamp_checks, 1);
+    assert_eq!(world.step_statistics().ccd_clamp_checks, 3);
     assert_eq!(state.linear_velocity, [10., 0., 0.]);
     assert_eq!(world.joint_state(joint).unwrap().force, 0.);
     let mut impulses = Vec::new();
