@@ -5799,6 +5799,10 @@ impl PhysicsWorld3d {
         self.character_motion.backend_motion.begin_tick();
     }
     pub(in crate::physics3d) fn backend_motion_enabled(&self) -> bool {
+        #[cfg(test)]
+        if self.experimental_character_kcc_enabled() {
+            return false;
+        }
         if self.step_motion.enabled
             || !self.characters.is_empty()
             || !self
@@ -5810,7 +5814,9 @@ impl PhysicsWorld3d {
             return true;
         }
         #[cfg(test)]
-        if self.character_motion.experimental_rigid_rapier_ccd {
+        if self.character_motion.experiment
+            == crate::physics3d::character::experimental::Experiment::RigidRapier
+        {
             return false;
         }
         self.config.solver.continuous

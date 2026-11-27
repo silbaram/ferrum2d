@@ -1,8 +1,32 @@
 use super::native_id;
+use crate::physics3d::events::collider_id;
 use crate::physics3d::{
-    BodyDesc, BodyId, BodyKind, ColliderDesc, PhysicsWorld3d, Pose, Shape, WorldConfig,
+    BodyDesc, BodyId, BodyKind, ColliderDesc, ColliderId, PhysicsWorld3d, Pose, Shape, WorldConfig,
 };
 use rapier3d::parry::{bounding_volume::BoundingVolume, query::contact};
+use rapier3d::prelude as rp;
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OverlapBody {
+    pub id: BodyId,
+    pub collider: ColliderId,
+    pub kind: rp::RigidBodyType,
+    pub shape: rapier3d::parry::shape::ShapeType,
+    pub position: [f32; 3],
+    pub velocity: [f32; 3],
+    pub angular: [f32; 3],
+    pub ccd_active: bool,
+    pub ccd_thickness: f32,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct OverlapSample {
+    pub bodies: [OverlapBody; 2],
+    pub depth: f32,
+    pub normal: [f32; 3],
+    pub solver_allowed: bool,
+    pub solver_depth: Option<f32>,
+}
 
 impl PhysicsWorld3d {
     pub(crate) fn p1a_uses_motion_proof(&self) -> bool {
@@ -22,16 +46,22 @@ impl PhysicsWorld3d {
     }
 
     pub(crate) fn p1a_max_overlap(&self) -> f32 {
+        let mut depth = 0.0_f32;
+        self.p1a_visit_overlaps(|sample| depth = depth.max(sample.depth));
+        depth
+    }
+
+    pub(crate) fn p1a_visit_overlaps(&self, mut visit: impl FnMut(OverlapSample)) {
+        use rp::PhysicsHooks as _;
         let colliders: Vec<_> = self
             .backend
             .colliders
             .iter()
             .filter(|(_, c)| c.is_enabled() && !c.is_sensor())
-            .filter_map(|(_, c)| Some((c.parent()?, c, c.compute_aabb())))
+            .filter_map(|(handle, c)| Some((c.parent()?, handle, c, c.compute_aabb())))
             .collect();
-        let mut depth = 0.0_f32;
-        for (index, &(a_body, a, aabb)) in colliders.iter().enumerate() {
-            for &(b_body, b, bb) in &colliders[index + 1..] {
+        for (index, &(a_body, a_handle, a, aabb)) in colliders.iter().enumerate() {
+            for &(b_body, b_handle, b, bb) in &colliders[index + 1..] {
                 if a_body == b_body
                     || !aabb.intersects(&bb)
                     || !a.collision_groups().test(b.collision_groups())
@@ -48,13 +78,72 @@ impl PhysicsWorld3d {
                 }
                 let contact = contact(a.position(), a.shape(), b.position(), b.shape(), 0.)
                     .expect("all P1a solid shape pairs must be measurable");
-                if let Some(contact) = contact {
-                    assert!(contact.dist.is_finite());
-                    depth = depth.max(-contact.dist);
+                let Some(contact) = contact else { continue };
+                assert!(contact.dist.is_finite());
+                if contact.dist >= 0. {
+                    continue;
                 }
+                let a_native = &self.backend.bodies[a_body];
+                let b_native = &self.backend.bodies[b_body];
+                let (a_kind, b_kind) = (a_native.body_type(), b_native.body_type());
+                let solver_allowed = a_native.is_enabled()
+                    && b_native.is_enabled()
+                    && (a.active_collision_types().test(a_kind, b_kind)
+                        || b.active_collision_types().test(a_kind, b_kind))
+                    && (!(a.active_hooks() | b.active_hooks())
+                        .contains(rp::ActiveHooks::FILTER_CONTACT_PAIRS)
+                        || self
+                            .contact_policies
+                            .filter_contact_pair(&rp::PairFilterContext {
+                                bodies: &self.backend.bodies,
+                                colliders: &self.backend.colliders,
+                                rigid_body1: Some(a_body),
+                                rigid_body2: Some(b_body),
+                                collider1: a_handle,
+                                collider2: b_handle,
+                            })
+                            .is_some_and(|f| f.contains(rp::SolverFlags::COMPUTE_RIGID_IMPULSES)));
+                let solver_depth = self
+                    .backend
+                    .narrow_phase
+                    .contact_pair(a_handle, b_handle)
+                    .into_iter()
+                    .flat_map(|pair| pair.manifolds())
+                    .filter(|m| {
+                        m.data
+                            .solver_flags
+                            .contains(rp::SolverFlags::COMPUTE_RIGID_IMPULSES)
+                    })
+                    .flat_map(|m| &m.data.solver_contacts)
+                    .map(|p| -p.dist)
+                    .reduce(f32::max);
+                let describe =
+                    |body: &rp::RigidBody, id: rp::RigidBodyHandle, h, c: &rp::Collider| {
+                        let (slot, generation) = id.into_raw_parts();
+                        OverlapBody {
+                            id: BodyId { slot, generation },
+                            collider: collider_id(h),
+                            kind: body.body_type(),
+                            shape: c.shape().shape_type(),
+                            position: body.translation().to_array(),
+                            velocity: body.linvel().to_array(),
+                            angular: body.angvel().to_array(),
+                            ccd_active: body.is_ccd_active(),
+                            ccd_thickness: c.shape().ccd_thickness(),
+                        }
+                    };
+                visit(OverlapSample {
+                    bodies: [
+                        describe(a_native, a_body, a_handle, a),
+                        describe(b_native, b_body, b_handle, b),
+                    ],
+                    depth: -contact.dist,
+                    normal: contact.normal1.to_array(),
+                    solver_allowed,
+                    solver_depth,
+                });
             }
         }
-        depth
     }
 
     pub(crate) fn p1a_stack_is_supported(&self, floor: BodyId, blocks: &[BodyId]) -> bool {

@@ -81,7 +81,11 @@ pub use types::{
     BodyDesc, BodyId, BodyKind, BodyState, ColliderDesc, ColliderId, ColliderRef, PhysicsError,
     Pose, Shape, ShapePart, Space, WorldConfig,
 };
+#[cfg(test)]
+pub(crate) use world::p1a_tests::OverlapSample;
 pub use world::PhysicsWorld3d;
+#[cfg(test)]
+pub(crate) mod p1b_tests;
 
 #[cfg(test)]
 mod character_dynamic_tests;

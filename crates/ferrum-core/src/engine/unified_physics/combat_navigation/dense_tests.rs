@@ -182,11 +182,25 @@ fn native_cached_actual_connector_around_second_wall_reaches_goal_and_keeps_file
     }
 }
 
+mod p1b_tests;
+
 fn dense() -> (Engine, Vec<Entity>) {
     dense_with_config(WorldConfig::default())
 }
 
 fn dense_with_config(config: WorldConfig) -> (Engine, Vec<Entity>) {
+    let (mut e, actors, primary) = dense_scene(config);
+    for _ in 0..4 {
+        e.update(1. / 60.);
+    }
+    assert!(actors
+        .iter()
+        .all(|&actor| e.unified_character_state(actor).unwrap().grounded));
+    enable_dense_navigation(&mut e, &actors, primary);
+    (e, actors)
+}
+
+fn dense_scene(config: WorldConfig) -> (Engine, Vec<Entity>, Entity) {
     let mut e = Engine::new();
     e.use_data_scene();
     e.configure_unified_physics(config).unwrap();
@@ -240,11 +254,11 @@ fn dense_with_config(config: WorldConfig) -> (Engine, Vec<Entity>) {
             actors.push(actor);
         }
     }
-    for _ in 0..4 {
-        e.update(1. / 60.);
-    }
-    for &actor in &actors {
-        assert!(e.unified_character_state(actor).unwrap().grounded);
+    (e, actors, primary)
+}
+
+fn enable_dense_navigation(e: &mut Engine, actors: &[Entity], primary: Entity) {
+    for &actor in actors {
         assert!(e.set_gameplay_movement_chase_entity(
             actor.id,
             actor.generation,
@@ -266,7 +280,6 @@ fn dense_with_config(config: WorldConfig) -> (Engine, Vec<Entity>) {
         &[],
         &[]
     ));
-    (e, actors)
 }
 fn positions(e: &Engine, actors: &[Entity]) -> Vec<[f32; 3]> {
     actors

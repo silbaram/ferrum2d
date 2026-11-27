@@ -20,7 +20,9 @@ pub(super) use feedback::BackendCharacterFeedback;
 #[derive(Default)]
 pub(super) struct MotionScene {
     #[cfg(test)]
-    pub(super) experimental_rigid_rapier_ccd: bool,
+    pub(super) experiment: super::character::experimental::Experiment,
+    #[cfg(test)]
+    pub(super) p1b_ticks: Option<Vec<super::p1b_tests::TickSample>>,
     movers: Vec<(rp::ColliderHandle, NonlinearRigidMotion)>,
     exact: Vec<Kernel>,
     paths: Vec<trajectory::ColliderPath>,

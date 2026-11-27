@@ -5,7 +5,10 @@ use crate::components::{
     DistanceJoint, GearJoint, PrismaticJoint, RevoluteJoint, RopeJoint, SpringJoint, Transform2D,
     WeldJoint,
 };
-use crate::physics3d::{BodyDesc, BodyId, BodyKind, ColliderDesc, PhysicsWorld3d, Pose, Shape};
+use crate::physics3d::{
+    BodyDesc, BodyId, BodyKind, ColliderDesc, ColliderId, OverlapSample, PhysicsWorld3d, Pose,
+    Shape,
+};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::time::Instant;
@@ -148,6 +151,72 @@ fn gallery_chain(bodies: &[Body]) -> Vec<[f32; 2]> {
         .collect()
 }
 
+type OverlapTick = (usize, bool, OverlapSample);
+
+#[derive(Default)]
+struct RigidOverlapTrace {
+    by_pair: BTreeMap<[ColliderId; 2], Vec<OverlapTick>>,
+    tail_full_ticks: usize,
+}
+
+impl RigidOverlapTrace {
+    fn record(&mut self, world: &PhysicsWorld3d, frame: usize, full: bool) {
+        self.tail_full_ticks += usize::from(frame >= FRAMES - 60 && full);
+        world.p1a_visit_overlaps(|s| {
+            self.by_pair
+                .entry(s.bodies.map(|b| b.collider))
+                .or_default()
+                .push((frame, full, s));
+        });
+    }
+
+    fn report(&self, name: &str, mode: Mode) {
+        let rows = || self.by_pair.values().flatten();
+        let tail = || rows().filter(|(tick, _, _)| *tick >= FRAMES - 60);
+        let tail_full = || tail().filter(|(_, full, _)| *full);
+        let tail_rest = tail_full()
+            .filter(|(_, _, sample)| {
+                sample.bodies.iter().all(|b| {
+                    let speed = |v: [f32; 3]| v.into_iter().map(|x| x * x).sum::<f32>().sqrt();
+                    speed(b.velocity) <= 0.01 && speed(b.angular) <= 0.01
+                })
+            })
+            .map(|r| r.2.depth)
+            .reduce(f32::max);
+        let tail_full = tail_full().map(|r| r.2.depth).reduce(f32::max);
+        let tail = tail().map(|r| r.2.depth).reduce(f32::max);
+        let filtered = rows()
+            .filter_map(|r| (!r.2.solver_allowed).then_some(r.2.depth))
+            .reduce(f32::max);
+        println!("P1A_OVERLAP scene={name} mode={mode:?} tail={tail:?} tail_full={tail_full:?} tail_rest={tail_rest:?} tail_full_ticks={} denied={filtered:?}", self.tail_full_ticks);
+        let Some(&(tick, _, peak)) =
+            rows().max_by(|a, b| a.2.depth.total_cmp(&b.2.depth).then_with(|| b.0.cmp(&a.0)))
+        else {
+            return;
+        };
+        let rows = &self.by_pair[&peak.bodies.map(|b| b.collider)];
+        let at = rows.iter().position(|r| r.0 == tick).unwrap();
+        let mut start = at;
+        let mut end = at;
+        while start > 0 && rows[start - 1].0 + 1 == rows[start].0 {
+            start -= 1;
+        }
+        while end + 1 < rows.len() && rows[end].0 + 1 == rows[end + 1].0 {
+            end += 1;
+        }
+        let run = &rows[start..=end];
+        let full = run.iter().filter(|r| r.1).count();
+        let deep_full = run.iter().filter(|r| r.1 && r.2.depth >= 1.).count();
+        let first_solver = run
+            .iter()
+            .find_map(|r| r.2.solver_depth.map(|depth| (r.0, depth)));
+        println!("P1A_PEAK scene={name} mode={mode:?} tick={tick} depth={} normal={:?} allowed={} solver_depth={:?} first_solver={first_solver:?} overlap_ticks={} full_ticks={full} depth_at_least_one_full_ticks={deep_full} from={} to={}", peak.depth, peak.normal, peak.solver_allowed, peak.solver_depth, run.len(), rows[start].0, rows[end].0);
+        for body in peak.bodies {
+            println!("P1A_PAIR scene={name} mode={mode:?} body={:?} collider={:?} kind={:?} shape={:?} position={:?} velocity={:?} angular={:?} ccd_active={} ccd_thickness={}", body.id, body.collider, body.kind, body.shape, body.position, body.velocity, body.angular, body.ccd_active, body.ccd_thickness);
+        }
+    }
+}
+
 #[test]
 fn p1a_probes_detect_crossings_near_chain_vertices() {
     let chain = gallery_chain(&collider_gallery());
@@ -175,6 +244,7 @@ fn run_sandbox(name: &str, bodies: &[Body], gravity: f32, iterations: [u32; 2]) 
             .collect();
         configure_experiment(&mut e.unified_physics.as_mut().unwrap().physics, mode);
         let mut output = Measurements::new(physics(&e));
+        let mut overlaps = RigidOverlapTrace::default();
         let mut before = Vec::with_capacity(tracked.len());
         for frame in 0..FRAMES {
             e.update(1. / 60.);
@@ -184,6 +254,7 @@ fn run_sandbox(name: &str, bodies: &[Body], gravity: f32, iterations: [u32; 2]) 
             }
             let (_, elapsed) = step_sample(|| sandbox_step(&mut e, gravity, iterations));
             let error = e.take_unified_physics_error();
+            overlaps.record(physics(&e), frame, error.is_none());
             let crossed = past_sandbox_floor(&e, &tracked)
                 || chain.as_ref().is_some_and(|chain| {
                     tracked.iter().zip(&before).any(|(&id, &start)| {
@@ -193,6 +264,7 @@ fn run_sandbox(name: &str, bodies: &[Body], gravity: f32, iterations: [u32; 2]) 
             output.record(physics(&e), frame, error, crossed, elapsed);
         }
         output.report(physics(&e), name, mode);
+        overlaps.report(name, mode);
     }
 }
 
