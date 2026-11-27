@@ -2,14 +2,16 @@
 use super::*;
 use crate::collision_event::{COLLISION_EVENT_ENTER, COLLISION_EVENT_TRIGGER_ENTER};
 use crate::components::{
-    DistanceJoint, GearJoint, PrismaticJoint, RevoluteJoint, RopeJoint, SpringJoint, WeldJoint,
+    DistanceJoint, GearJoint, PrismaticJoint, RevoluteJoint, RopeJoint, SpringJoint, Transform2D,
+    WeldJoint,
 };
-use crate::physics3d::{BodyDesc, BodyKind, ColliderDesc, PhysicsWorld3d, Pose, Shape};
+use crate::physics3d::{BodyDesc, BodyId, BodyKind, ColliderDesc, PhysicsWorld3d, Pose, Shape};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::time::Instant;
 
 const FRAMES: usize = 300;
+const BRICK_HALF_EXTENTS: [f32; 2] = [26., 9.];
 
 #[derive(Debug, Clone, Copy)]
 enum Mode {
@@ -93,8 +95,16 @@ impl Measurements {
             (!cfg!(debug_assertions)).then_some((self.sum_us / FRAMES as f64, self.max_us));
         println!(
             "P1A scene={scene} mode={mode:?} frames={FRAMES} errors={:?} first_error={:?} stalls={} first_stall={:?} first_crossing={:?} overlap={:.7} initial_overlap={:.7} ccd_clamps={} tail_speed={:.7} joint_error={:.7} timing_us={timing:?} params={:?}",
-            self.errors, self.first_error, self.stalls, self.first_stall, self.first_crossing,
-            self.overlap, self.initial_overlap, self.ccd_clamps, self.tail_speed, self.joint_error,
+            self.errors,
+            self.first_error,
+            self.stalls,
+            self.first_stall,
+            self.first_crossing,
+            self.overlap,
+            self.initial_overlap,
+            self.ccd_clamps,
+            self.tail_speed,
+            self.joint_error,
             world.p1a_integration_settings()
         );
     }
@@ -108,27 +118,54 @@ fn past_sandbox_floor(e: &Engine, tracked: &[Entity]) -> bool {
     })
 }
 
-fn gallery_chain_crossing(e: &Engine, tracked: &[Entity]) -> bool {
-    // Check the authored polyline only inside its span. A center more than 40
-    // units below the segment is a pass-through rather than small penetration.
-    const CHAIN: [[f32; 2]; 6] = [
-        [120., 380.],
-        [230., 336.],
-        [340., 362.],
-        [440., 328.],
-        [560., 358.],
-        [680., 378.],
-    ];
-    tracked.iter().any(|&id| {
-        let p = e.world.transform(id).unwrap();
-        CHAIN.windows(2).any(|segment| {
-            let [[a, ya], [b, yb]] = [segment[0], segment[1]];
-            (a + 40. ..=b - 40.).contains(&p.x) && p.y > ya + (yb - ya) * (p.x - a) / (b - a) + 40.
-        })
+fn crosses_chain_downward(path: [Transform2D; 2], chain: &[[f32; 2]]) -> bool {
+    let [before, after] = path;
+    chain.windows(2).any(|segment| {
+        let [[ax, ay], [bx, by]] = [segment[0], segment[1]];
+        // The gallery chain is authored from left to right, with +y down.
+        let side = |p: Transform2D| (bx - ax) * (p.y - ay) - (by - ay) * (p.x - ax);
+        let start = side(before);
+        let end = side(after);
+        if start > 0. || end <= 0. {
+            return false;
+        }
+        let x = before.x + (after.x - before.x) * (start / (start - end));
+        (ax..=bx).contains(&x)
     })
 }
 
+fn gallery_chain(bodies: &[Body]) -> Vec<[f32; 2]> {
+    let (position, vertices) = bodies
+        .iter()
+        .find_map(|body| match body.collider {
+            Collider::Chain(vertices) => Some((body.position, vertices)),
+            _ => None,
+        })
+        .expect("the collider gallery has an authored chain");
+    vertices
+        .chunks_exact(2)
+        .map(|point| [point[0] + position[0], point[1] + position[1]])
+        .collect()
+}
+
+#[test]
+fn p1a_probes_detect_crossings_near_chain_vertices() {
+    let chain = gallery_chain(&collider_gallery());
+    for x in [145., 230., 250., 365.] {
+        let path = [Transform2D { x, y: 310. }, Transform2D { x, y: 412. }];
+        assert!(crosses_chain_downward(path, &chain), "missed x={x}");
+    }
+    assert!(!crosses_chain_downward(
+        [
+            Transform2D { x: 110., y: 377. },
+            Transform2D { x: 130., y: 392. }
+        ],
+        &chain,
+    ));
+}
+
 fn run_sandbox(name: &str, bodies: &[Body], gravity: f32, iterations: [u32; 2]) {
+    let chain = (name == "collider-gallery").then(|| gallery_chain(bodies));
     for mode in MODES {
         let (mut e, entities) = sandbox_engine(bodies, gravity, iterations);
         let tracked: Vec<_> = bodies
@@ -138,12 +175,21 @@ fn run_sandbox(name: &str, bodies: &[Body], gravity: f32, iterations: [u32; 2]) 
             .collect();
         configure_experiment(&mut e.unified_physics.as_mut().unwrap().physics, mode);
         let mut output = Measurements::new(physics(&e));
+        let mut before = Vec::with_capacity(tracked.len());
         for frame in 0..FRAMES {
             e.update(1. / 60.);
+            if chain.is_some() {
+                before.clear();
+                before.extend(tracked.iter().map(|&id| e.world.transform(id).unwrap()));
+            }
             let (_, elapsed) = step_sample(|| sandbox_step(&mut e, gravity, iterations));
             let error = e.take_unified_physics_error();
             let crossed = past_sandbox_floor(&e, &tracked)
-                || (name == "collider-gallery" && gallery_chain_crossing(&e, &tracked));
+                || chain.as_ref().is_some_and(|chain| {
+                    tracked.iter().zip(&before).any(|(&id, &start)| {
+                        crosses_chain_downward([start, e.world.transform(id).unwrap()], chain)
+                    })
+                });
             output.record(physics(&e), frame, error, crossed, elapsed);
         }
         output.report(physics(&e), name, mode);
@@ -293,6 +339,67 @@ fn p1a_compare_joints_lab() {
     }
 }
 
+fn crosses_box_interior([before, after]: [Transform2D; 2], body: &Body) -> bool {
+    if body.trigger {
+        return false;
+    }
+    let Collider::Box([half_width, half_height]) = body.collider else {
+        unreachable!("the breakout obstacles are axis-aligned boxes");
+    };
+    let [x, y] = body.position;
+    // Clip the center's segment to the open interior. Edge-only contact is not a crossing.
+    let mut entry = 0_f32;
+    let mut exit = 1_f32;
+    for (from, to, min, max) in [
+        (before.x, after.x, x - half_width, x + half_width),
+        (before.y, after.y, y - half_height, y + half_height),
+    ] {
+        if from == to {
+            if from <= min || from >= max {
+                return false;
+            }
+            continue;
+        }
+        let a = (min - from) / (to - from);
+        let b = (max - from) / (to - from);
+        entry = entry.max(a.min(b));
+        exit = exit.min(a.max(b));
+        if entry >= exit {
+            return false;
+        }
+    }
+    true
+}
+
+#[test]
+fn p1a_probes_detect_crossings_at_brick_edges() {
+    let brick = Body::new(
+        false,
+        [404., 168.],
+        Collider::Box(BRICK_HALF_EXTENTS),
+        [0., 0., 1.],
+    );
+    let vertical_path = |x| {
+        [187., 182., 177., 172., 167., 162., 157., 152., 147.]
+            .windows(2)
+            .any(|y| {
+                crosses_box_interior(
+                    [Transform2D { x, y: y[0] }, Transform2D { x, y: y[1] }],
+                    &brick,
+                )
+            })
+    };
+    assert!(vertical_path(426.));
+    assert!(!vertical_path(430.));
+    assert!(crosses_box_interior(
+        [
+            Transform2D { x: 376., y: 174. },
+            Transform2D { x: 432., y: 174. }
+        ],
+        &brick,
+    ));
+}
+
 #[test]
 #[ignore = "P1a measures 300 attempts per mode"]
 fn p1a_compare_breakout_gap() {
@@ -315,16 +422,18 @@ fn p1a_compare_breakout_gap() {
         assert!(e.configure_auto_rigid_body_step(
             true, 0., 0., 6, 3, 0.8, 0.01, 1., 0.2, 120., false, true,
         ));
-        let paddle = spawn_kind(&mut e, &wall([320., 344.], [56., 6.]), 1);
+        let paddle_body = wall([320., 344.], [56., 6.]);
+        let paddle = spawn_kind(&mut e, &paddle_body, 1);
         let mut bricks = Vec::new();
         for row in 0..5 {
             for column in 0..10 {
                 let p = [68. + 56. * column as f32, 72. + 24. * row as f32];
-                let brick = spawn(&mut e, &wall(p, [26., 9.]));
+                let body = wall(p, BRICK_HALF_EXTENTS);
+                let brick = spawn(&mut e, &body);
                 if p == GAP {
                     assert!(e.despawn_physics_entity(brick.id, brick.generation));
                 } else {
-                    bricks.push((brick, p));
+                    bricks.push((brick, body));
                 }
             }
         }
@@ -367,14 +476,15 @@ fn p1a_compare_breakout_gap() {
             let (_, elapsed) = step_sample(|| e.update(dt));
             let error = e.take_unified_physics_error();
             let p = e.world.transform(ball).unwrap();
-            let crossing = !(10. ..=630.).contains(&p.x)
-                || p.y < 10.
-                || (before.y < 344. && p.y >= 344. && (p.x - 320.).abs() < 50.)
-                || bricks.iter().any(|(_, [x, y])| {
-                    (p.x - x).abs() < 20.
-                        && ((before.y > *y && p.y <= *y) || (before.y < *y && p.y >= *y))
-                });
-            gap_frames += usize::from((p.x - GAP[0]).abs() < 26. && (p.y - GAP[1]).abs() < 9.);
+            let crossing = static_bodies
+                .iter()
+                .chain(std::iter::once(&paddle_body))
+                .chain(bricks.iter().map(|(_, body)| body))
+                .any(|body| crosses_box_interior([before, p], body));
+            let [half_width, half_height] = BRICK_HALF_EXTENTS;
+            gap_frames += usize::from(
+                (p.x - GAP[0]).abs() < half_width && (p.y - GAP[1]).abs() < half_height,
+            );
             output.record(physics(&e), frame, error, crossing, elapsed);
             if !in_play {
                 continue;
@@ -513,44 +623,72 @@ fn p1a_compare_thin_mesh_fall() {
 }
 
 #[test]
+fn p1a_probes_require_stack_support_when_boxes_are_still() {
+    for (upper, expected) in [
+        ([0., 1.5, 0.], true),
+        ([2., 0.5, 0.], false),
+        ([0., 1.7, 0.], false),
+    ] {
+        let mut w = spatial_world();
+        let floor = create_stack_box(&mut w, BodyKind::Fixed, [0., -0.5, 0.], [10., 0.5, 10.]);
+        let blocks = [
+            create_stack_box(&mut w, BodyKind::Dynamic, [0., 0.5, 0.], [0.5; 3]),
+            create_stack_box(&mut w, BodyKind::Dynamic, upper, [0.5; 3]),
+        ];
+        assert!(blocks.iter().all(|&id| {
+            let state = w.body_state(id).unwrap();
+            state.linear_velocity == [0.; 3] && state.angular_velocity == [0.; 3]
+        }));
+        assert_eq!(
+            w.p1a_stack_is_supported(floor, &blocks),
+            expected,
+            "upper={upper:?}"
+        );
+    }
+}
+
+fn create_stack_box(
+    w: &mut PhysicsWorld3d,
+    kind: BodyKind,
+    position: [f32; 3],
+    half_extents: [f32; 3],
+) -> BodyId {
+    w.create_body(
+        BodyDesc {
+            kind,
+            pose: Pose {
+                position,
+                ..Pose::default()
+            },
+            ccd: kind == BodyKind::Dynamic,
+            ..BodyDesc::default()
+        },
+        ColliderDesc::new(Shape::Box { half_extents }),
+    )
+    .unwrap()
+}
+
+#[test]
 #[ignore = "P1a measures 300 attempts per mode"]
 fn p1a_compare_box_stack() {
     for mode in MODES {
         let mut w = spatial_world();
-        w.create_body(
-            BodyDesc {
-                kind: BodyKind::Fixed,
-                pose: Pose {
-                    position: [0., -0.5, 0.],
-                    ..Pose::default()
-                },
-                ..BodyDesc::default()
-            },
-            ColliderDesc::new(Shape::Box {
-                half_extents: [10., 0.5, 10.],
-            }),
-        )
-        .unwrap();
+        let floor = create_stack_box(&mut w, BodyKind::Fixed, [0., -0.5, 0.], [10., 0.5, 10.]);
         let blocks: Vec<_> = (0..8)
             .map(|level| {
-                w.create_body(
-                    BodyDesc {
-                        pose: Pose {
-                            position: [0., 0.55 + 1.03 * level as f32, 0.],
-                            ..Pose::default()
-                        },
-                        ccd: true,
-                        ..BodyDesc::default()
-                    },
-                    ColliderDesc::new(Shape::Box {
-                        half_extents: [0.5; 3],
-                    }),
+                create_stack_box(
+                    &mut w,
+                    BodyKind::Dynamic,
+                    [0., 0.55 + 1.03 * level as f32, 0.],
+                    [0.5; 3],
                 )
-                .unwrap()
             })
             .collect();
         configure_experiment(&mut w, mode);
         let mut output = Measurements::new(&w);
+        let mut tail_supported_frames = 0;
+        let mut tail_angular_speed = 0_f32;
+        let magnitude = |[x, y, z]: [f32; 3]| (x * x + y * y + z * z).sqrt();
         for frame in 0..FRAMES {
             let (result, elapsed) = step_sample(|| w.step_checked());
             let mut crossed = false;
@@ -558,13 +696,20 @@ fn p1a_compare_box_stack() {
                 let state = w.body_state(id).unwrap();
                 let [x, y, z] = state.pose.position;
                 crossed |= x.abs() < 10. && z.abs() < 10. && y < -1.;
-                if frame >= 240 {
-                    let [vx, vy, vz] = state.linear_velocity;
-                    output.tail_speed = output.tail_speed.max((vx * vx + vy * vy + vz * vz).sqrt());
+                if frame >= FRAMES - 60 {
+                    output.tail_speed = output.tail_speed.max(magnitude(state.linear_velocity));
+                    tail_angular_speed = tail_angular_speed.max(magnitude(state.angular_velocity));
                 }
+            }
+            if frame >= FRAMES - 60 && w.p1a_stack_is_supported(floor, &blocks) {
+                tail_supported_frames += 1;
             }
             output.record(&w, frame, result.err(), crossed, elapsed);
         }
+        let final_supported = w.p1a_stack_is_supported(floor, &blocks);
+        println!(
+            "P1A_STACK mode={mode:?} final_supported={final_supported} tail_supported_frames={tail_supported_frames} tail_angular_speed={tail_angular_speed:.7}"
+        );
         output.report(&w, "box-stack", mode);
     }
 }

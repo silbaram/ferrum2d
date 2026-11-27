@@ -1,5 +1,6 @@
+use super::native_id;
 use crate::physics3d::{
-    BodyDesc, BodyKind, ColliderDesc, PhysicsWorld3d, Pose, Shape, WorldConfig,
+    BodyDesc, BodyId, BodyKind, ColliderDesc, PhysicsWorld3d, Pose, Shape, WorldConfig,
 };
 use rapier3d::parry::{bounding_volume::BoundingVolume, query::contact};
 
@@ -54,6 +55,39 @@ impl PhysicsWorld3d {
             }
         }
         depth
+    }
+
+    pub(crate) fn p1a_stack_is_supported(&self, floor: BodyId, blocks: &[BodyId]) -> bool {
+        let collider = |body| {
+            let [handle] = self.backend.bodies[native_id(body)].colliders() else {
+                panic!("each stack body must have exactly one collider");
+            };
+            &self.backend.colliders[*handle]
+        };
+        let prediction = self.backend.integration_parameters.prediction_distance();
+        std::iter::once(floor)
+            .chain(blocks.iter().copied())
+            .zip(blocks.iter().copied())
+            .all(|(lower, upper)| {
+                let lower = collider(lower);
+                let upper = collider(upper);
+                let local_center = lower
+                    .position()
+                    .inverse_transform_point(upper.position().translation);
+                let half = lower.shape().as_cuboid().unwrap().half_extents;
+                local_center.y > 0.
+                    && local_center.x.abs() <= half.x
+                    && local_center.z.abs() <= half.z
+                    && contact(
+                        lower.position(),
+                        lower.shape(),
+                        upper.position(),
+                        upper.shape(),
+                        prediction,
+                    )
+                    .unwrap()
+                    .is_some_and(|c| c.normal1.y > c.normal1.x.hypot(c.normal1.z))
+            })
     }
 }
 
