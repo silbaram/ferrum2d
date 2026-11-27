@@ -93,7 +93,15 @@ export async function smokePhysicsLabViewport(page, timeout = 15000) {
   assert.deepEqual(await page.evaluate(() => ({ x: window.ferrumEngine.cameraX(), y: window.ferrumEngine.cameraY(), actor: window.ferrumEngine.builtInShooterPlayerHandle() })), { x: 400, y: 240, actor: undefined });
   assert.equal(await page.evaluate(() => window.ferrumEngine.entityCount()), 8, 'physics fixture must not contain the default Shooter player');
   await page.getByRole('button', { name: '일시정지', exact: true }).click();
+  const progress = () => page.evaluate(() => {
+    const { frameCount, physicsStepCount } = window.ferrumPhysicsSandboxSmokeFrame;
+    return { frameCount, physicsStepCount };
+  });
+  const pausedFrame = await progress();
   const frozen = await bodies(); await page.waitForTimeout(160); assert.deepEqual(await bodies(), frozen);
+  await page.waitForFunction(before => window.ferrumPhysicsSandboxSmokeFrame.frameCount > before,
+    pausedFrame.frameCount, { timeout });
+  assert.equal((await progress()).physicsStepCount, pausedFrame.physicsStepCount, 'paused render frames must not count as physics steps');
   await page.evaluate(() => {
     const e = window.ferrumEngine; window.physicsOriginalStep = e.stepRigidBodies; window.physicsStepCalls = 0;
     e.stepRigidBodies = (...args) => { window.physicsStepCalls++; return window.physicsOriginalStep(...args); };
@@ -103,6 +111,7 @@ export async function smokePhysicsLabViewport(page, timeout = 15000) {
   const stepped = await bodies(); assert.notDeepEqual(stepped, frozen, 'one frame must move native bodies');
   await page.waitForTimeout(100); assert.deepEqual(await bodies(), stepped);
   assert.equal(await page.evaluate(() => window.physicsStepCalls), 1, 'one click must not double-step the solver');
+  assert.equal((await progress()).physicsStepCount, pausedFrame.physicsStepCount + 1, 'one completed manual step must increment the counter once');
   await page.evaluate(() => { window.ferrumEngine.stepRigidBodies = window.physicsOriginalStep; });
   const viewport = page.viewportSize();
   await page.evaluate(() => document.fonts.ready);

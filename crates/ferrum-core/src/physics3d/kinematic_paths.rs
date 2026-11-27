@@ -169,6 +169,10 @@ impl PhysicsWorld3d {
                 return Err(PhysicsError::InvalidBody);
             }
         }
+        #[cfg(test)]
+        if self.experimental_character_kcc_enabled() {
+            return self.step_experimental_character_kcc(paths);
+        }
         self.step_kinematic_tick(paths);
         self.actual_motion_result()
     }

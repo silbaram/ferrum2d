@@ -164,6 +164,9 @@ impl UnifiedPhysicsRuntime {
             self.platform_motion.paths = paths;
             return Err(error);
         }
+        #[cfg(test)]
+        let result = self.physics.p1b_step_observed(&paths);
+        #[cfg(not(test))]
         let result = self.physics.step_with_kinematic_paths(&paths);
         self.finish_native_dashes(result.is_ok());
         self.platform_motion.paths = paths;

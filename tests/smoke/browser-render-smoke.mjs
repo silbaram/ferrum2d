@@ -118,11 +118,7 @@ const PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER =
   "/tmp/ferrum-studio-desktop-assets-smoke/shared-assets-alternate";
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const MAX_PLACEMENT_SAVE_BYTES = 2 * 1024 * 1024;
-// Scenarios with a catalog `knownIssue` may stop their world; the lab must then show the error.
-// The same field shows the gallery badge (examples/shared/physicsExamples.json).
-const PHYSICS_SANDBOX_KNOWN_STEP_ERRORS = new Set(JSON.parse(await readFile("examples/shared/physicsExamples.json", "utf8"))
-  .filter(item => item.knownIssue).map(item => item.id));
-const PHYSICS_SANDBOX_SUSTAINED_FRAMES = 300;
+const PHYSICS_SANDBOX_SUSTAINED_STEPS = 300;
 
 const PHYSICS_DEMO_SUITE = [
   "rigid-materials",
@@ -4666,6 +4662,14 @@ async function smokePhysicsSandbox(page, timeoutMs, demoId) {
     }
   }, demoId);
 
+  const readFrame = async () => {
+    const frame = await page.evaluate(() => globalThis.ferrumPhysicsSandboxSmokeFrame);
+    if (frame.physicsStepError !== undefined) {
+      throw new Error(`Physics scenario ${demoId} stopped its world: ${frame.physicsStepError}`);
+    }
+    return frame;
+  };
+
   await waitForPageFunction(
     page,
     `Physics sandbox did not render debug lines for ${demoId}`,
@@ -4675,44 +4679,37 @@ async function smokePhysicsSandbox(page, timeoutMs, demoId) {
       return Boolean(
         frame
         && frame.demoId === expectedDemoId
-        && frame.bodyCount >= 2
-        && frame.visibleBodyCount >= 2
-        && frame.worldTextCount > 0
-        && (debugLinesEnabled
-          ? frame.physicsDebugLineCount > 0 && frame.customDebugLineCount > 0
-          : frame.physicsDebugLineCount === 0 && frame.customDebugLineCount === 0)
-        && frame.frameCount > 1,
+        && (frame.physicsStepError !== undefined || (
+          frame.bodyCount >= 2
+          && frame.visibleBodyCount >= 2
+          && frame.worldTextCount > 0
+          && (debugLinesEnabled
+            ? frame.physicsDebugLineCount > 0 && frame.customDebugLineCount > 0
+            : frame.physicsDebugLineCount === 0 && frame.customDebugLineCount === 0)
+          && frame.frameCount > 1
+        )),
       );
     },
     timeoutMs,
     demoId,
   );
 
+  const initialFrame = await readFrame();
   const viewportCheck = demoId === "rigid-materials" ? await smokePhysicsLabViewport(page, timeoutMs) : undefined;
-  // Native step errors stop a world after the first frames, so run long enough to catch them.
-  const startFrame = await page.evaluate(() => globalThis.ferrumPhysicsSandboxSmokeFrame.frameCount);
+  const startStep = (viewportCheck ? await readFrame() : initialFrame).physicsStepCount;
   await waitForPageFunction(
     page,
-    `Physics sandbox did not keep rendering ${demoId}`,
-    (target) => globalThis.ferrumPhysicsSandboxSmokeFrame.frameCount >= target,
+    `Physics sandbox did not complete ${PHYSICS_SANDBOX_SUSTAINED_STEPS} additional physics steps for ${demoId}`,
+    ({ expectedDemoId, target }) => {
+      const frame = globalThis.ferrumPhysicsSandboxSmokeFrame;
+      return frame?.demoId === expectedDemoId
+        && (frame.physicsStepError !== undefined || frame.physicsStepCount >= target);
+    },
     timeoutMs,
-    startFrame + PHYSICS_SANDBOX_SUSTAINED_FRAMES,
+    { expectedDemoId: demoId, target: startStep + PHYSICS_SANDBOX_SUSTAINED_STEPS },
   );
-  const sustained = await page.evaluate(() => ({
-    stepError: globalThis.ferrumPhysicsSandboxSmokeFrame.physicsStepError,
-    badge: document.querySelector("[data-status]")?.dataset.status,
-  }));
-  if (PHYSICS_SANDBOX_KNOWN_STEP_ERRORS.has(demoId)) {
-    if (sustained.stepError !== undefined && sustained.badge !== "error") {
-      throw new Error(`Physics scenario ${demoId} stopped without showing the error: ${sustained.stepError}`);
-    }
-  } else if (sustained.stepError !== undefined) {
-    throw new Error(`Physics scenario ${demoId} stopped its world: ${sustained.stepError}`);
-  }
 
-  return { ...(viewportCheck ? { physicsViewport: viewportCheck } : {}), ...await page.evaluate(() => ({
-    physicsSandbox: globalThis.ferrumPhysicsSandboxSmokeFrame,
-  })) };
+  return { ...(viewportCheck ? { physicsViewport: viewportCheck } : {}), physicsSandbox: await readFrame() };
 }
 
 async function smokePhysicsDemoSuite(page, timeoutMs) {

@@ -25,3 +25,4 @@ docs/planning/*
 !docs/planning/example-site-rebuild-plan.md
 !docs/planning/runtime-startup-view-plan.md
 !docs/planning/ci-and-studio-distribution-plan.md
+!docs/planning/physics-motion-proof-review.md

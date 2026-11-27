@@ -19,6 +19,17 @@ fn zero_progress_rejection_restores_staged_tick_inputs() {
         Shape::Sphere { radius: 1. },
     );
     w.step_checked().unwrap();
+    let character = body(
+        &mut w,
+        BodyKind::KinematicPosition,
+        [60., 2., 0.],
+        Shape::Capsule {
+            half_height: 0.5,
+            radius: 0.25,
+        },
+    );
+    w.enable_character(character, crate::physics3d::CharacterConfig::default())
+        .unwrap();
     body(
         &mut w,
         BodyKind::Fixed,

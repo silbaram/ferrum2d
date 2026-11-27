@@ -1,5 +1,7 @@
 use super::colliders::native_collider;
 
+#[cfg(test)]
+pub(super) mod experimental_tests;
 mod file_admission;
 pub(super) mod interval_credit;
 use super::events::{collider_id, collider_ref};

@@ -50,6 +50,12 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
               engine.removeUnifiedPhysicsBody(spinner);
               engine.removeUnifiedPhysicsBody(stop);
             }
+            // A registered controller keeps this world on the checked motion path.
+            const actor = engine.spawnUnifiedPhysicsBody({
+              kind: "kinematic-position", pose: { position: [40, 2, 0] },
+              collider: { shape: { type: "capsule", halfHeight: 0.5, radius: 0.25 } },
+            });
+            engine.configureUnifiedPhysicsCharacter(actor, {});
             // Start above the sloped mesh and cross it within one tick. The
             // fast box activates CCD and its sweep visits the overlapping
             // triangle leaves until the current native proof budget is exhausted.
@@ -65,8 +71,11 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
               pose: { position: [0, 1.25, 0] }, linearVelocity: [0, -100, 0],
               collider: { shape: { type: "box", halfExtents: [0.5, 0.5, 0.5] } },
             });
-            const handles = new Uint32Array([box.entityId, box.entityGeneration]);
-            const body = () => [...engine.queryUnifiedPhysicsBodyStates(handles).floats.slice(L.position, L.stride)];
+            const handles = new Uint32Array([box.entityId, box.entityGeneration, actor.entityId, actor.entityGeneration]);
+            const body = () => {
+              const { floats } = engine.queryUnifiedPhysicsBodyStates(handles);
+              return [...floats.slice(L.position, L.stride), ...floats.slice(L.stride + L.position, L.stride * 2)];
+            };
             result.before = body();
             result.timeBefore = engine.time();
             let saved;

@@ -9,6 +9,8 @@ use super::{
 use rapier3d::prelude as rp;
 use std::collections::BTreeMap;
 use std::fmt;
+#[cfg(test)]
+pub(super) mod p1a_tests;
 pub(super) mod tick_outputs;
 
 /// Rust-owned simulation. Space selection changes constraints, not the solver backend.
@@ -332,6 +334,10 @@ impl PhysicsWorld3d {
     /// Internal Engine execution must consume the checked outcome; a failed
     /// actual-motion suffix is never an instruction to run a second solver.
     pub(crate) fn step_checked(&mut self) -> Result<(), PhysicsError> {
+        #[cfg(test)]
+        if self.experimental_character_kcc_enabled() {
+            return self.step_experimental_character_kcc(&[]);
+        }
         if self.has_moving_character_obstacles() || self.backend_motion_enabled() {
             self.step_kinematic_tick(&[]);
             return self.actual_motion_result();

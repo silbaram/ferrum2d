@@ -885,7 +885,12 @@ World 이동을 유지한다.
 
 `UnifiedPhysicsOptions`의 `space`는 `planar-xy` 또는 `spatial`이다. `gravity` XYZ와 `lengthUnit`을 명시한다.
 Planar는 Z 이동 및 X/Y 회전을 허용하지 않는다. Spatial은 Y-up이며 상태 좌표는 화면 투영과 별개다.
-`stepSeconds` 기본값은 1/60, solver 반복 수는 각각 1, `continuous`는 true다.
+`stepSeconds` 기본값은 1/60, solver 반복 수는 각각 1, `continuous`는 `true`다.
+캐릭터·지정 경로·step-motion이 없는 world에서 `continuous`는 Rapier CCD를 켠다. 빠른 동적 물체는 고정
+콜라이더를 대상으로 검사한다. 동적 물체의 `ccd: true`는 운동학적 물체와 `ccd`를 켜지 않은 동적 물체도 검사한다.
+첫 접촉을 처리한 틱에 형상이 잠시 겹칠 수 있으며, 이후 접촉 solver가 겹침을 보정한다. `continuous: false`는
+CCD를 끄고 틱 단위 접촉은 계속 처리한다. 운동 증명에서 발생하는 `CapacityExceeded`와 `UnresolvedMotion`은
+캐릭터 또는 지정 경로·step-motion이 증명 경로를 사용하는 경우에 남아 있다.
 선택 capacity 기본값은 bodies 8192, colliders 16384, events 4096, characters 128, joints 16384다.
 설정 오류·controller의 직접 속도 변경·잠긴 회전·stale 핸들은 예외로 보고하고 기존 상태를 유지한다.
 
@@ -1157,7 +1162,9 @@ Physics Spec 전체 이전 및 물리 snapshot/restore는 아직 진행 중이�
 
 `kind`는 `fixed`, `dynamic`(기본), `kinematic-position`, `kinematic-velocity`다.
 `pose.position`은 XYZ, `pose.rotation`은 단위 XYZW quaternion이며 기본값은 원점/identity다.
-선형·각속도, gravity scale(1), 두 damping(0), CCD(false), sleep 허용(true)을 설정할 수 있다.
+선형·각속도, gravity scale(1), 두 damping(0), `ccd`(false), sleep 허용(true)을 설정할 수 있다.
+world의 `continuous`가 켜진 상태에서 빠른 동적 물체는 고정 콜라이더를 검사한다. 동적 물체의 `ccd: true`는
+빠른 상태에서 운동학적 물체와 `ccd`를 켜지 않은 동적 물체에 대해서도 검사한다.
 `renderOffset`은 물리 XYZ 시각 앵커 오프셋이다. Spatial 위치는 기존 월드의 `(x, y, elevation) = (X, -Z, Y)`로 표시한다.
 Planar에서는 Z 위치·속도와 X/Y 회전을 허용하지 않는다.
 

@@ -97,10 +97,7 @@ export default async function start(host: ExampleHost): Promise<ExampleSession> 
       handles = dataScene.result.entityHandles;
       names = new Map(Object.entries(handles).map(([name, handle]) => [`${handle.entityId}:${handle.entityGeneration}`, name]));
       bricks = new Set(Object.keys(handles).filter(name => name.startsWith("brick_")));
-      // Continuous collision stays off: at these speeds the ball moves at most 8px a step, less than any
-      // wall, brick or paddle it could cross, and the engine's continuous path can fail when the ball
-      // enters a one-brick gap ("physics capacity exceeded"; docs/planning/example-site-rebuild-plan.md).
-      engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 0, continuous: false });
+      engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 0, continuous: true });
       showDebug();
     };
     physicsSetup();

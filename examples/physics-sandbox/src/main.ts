@@ -44,7 +44,6 @@ import { createScenarioDetail } from "./scenarioDetail";
 
 // Gallery thumbnails, so the scenario list matches the example gallery and the feature lab.
 const scenarioThumbnails = import.meta.glob<string>("../../shared/thumbnails/physics-*.jpg", { eager: true, query: "?url", import: "default" });
-const knownIssues = new Map<string, string>(sharedScenarios.flatMap((item): [string, string][] => "knownIssue" in item ? [[item.id, String(item.knownIssue)]] : []));
 
 interface PhysicsShowcaseCatalog {
   version: 1;
@@ -142,6 +141,7 @@ interface PhysicsSandboxSmokeFrame {
   worldTextCount: number;
   fixedStepSeconds: number;
   frameCount: number;
+  physicsStepCount: number;
   visibleBodyCount: number;
   contactCount: number;
   manifoldCount: number;
@@ -472,7 +472,6 @@ function createShell(
     title: scenarioTitle(scenario),
     category: categoryLabel(scenario.category, scenarios),
     summary: scenarioSummary(scenario),
-    issue: knownIssues.get(scenario.id),
     thumbnail: scenarioThumbnails[`../../shared/thumbnails/physics-${scenario.id}.jpg`],
     physicsSpec: scenario.physicsSpec,
     specUrl: publicAssetUrl(scenario.physicsSpec),
@@ -922,6 +921,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
   let paused = false;
   let stepQueued = false;
   let frameCount = 0;
+  let physicsStepCount = 0;
   let physicsStepError: string | undefined;
   let selectedBodyId: string | undefined;
   let queryTarget: Point2 | undefined = queryTargetFromScenario(initialScenario);
@@ -1038,6 +1038,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
         ?? Object.keys(currentWorld.bodies)[0];
       queryTarget = queryTargetFromScenario(scenario);
       frameCount = 0;
+      physicsStepCount = 0;
       debugOptions = physicsDebugLinesEnabled
         ? sanitizeDebugOptionsForScenario(
             scenario,
@@ -1145,7 +1146,10 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
       const consumedStep = stepQueued;
       if (currentWorld && (!paused || stepQueued)) {
         try {
-          runtime?.engine.stepRigidBodies(currentWorld.stepSeconds, currentWorld.stepOptions);
+          const step = runtime?.engine.stepRigidBodies(currentWorld.stepSeconds, currentWorld.stepOptions);
+          if (step && step.substeps > 0) {
+            physicsStepCount += 1;
+          }
           stepQueued = false;
           if (consumedStep && paused) {
             shell.setStatus("paused");
@@ -1217,6 +1221,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
         worldTextCount,
         fixedStepSeconds: currentSpec?.solver.stepSeconds ?? 0,
         frameCount,
+        physicsStepCount,
         visibleBodyCount: metrics.visibleBodyCount,
         contactCount: metrics.contactCount,
         manifoldCount: metrics.manifoldCount,
