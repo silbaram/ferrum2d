@@ -28,11 +28,14 @@ const REQUIRED_TEMPLATE_CHECKS = Object.freeze([
   "deployBrowserSmoke",
   "placementViewerSmoke",
 ]);
+// CI runs the consumer smoke without Chromium; these checks are then false.
+const BROWSER_TEMPLATE_CHECKS = Object.freeze(["deployBrowserSmoke", "placementViewerSmoke"]);
 const FORBIDDEN_SNAPSHOT_DIRS = Object.freeze(["node_modules", "dist", ".pnpm"]);
 
 const options = parseArgs(process.argv.slice(2));
 const report = JSON.parse(await readFile(options.reportPath, "utf8"));
 const errors = [];
+const skippedBrowser = report?.options?.skipBrowser === true;
 
 validateTopLevelReport(report, errors);
 validateTemplates(report, errors);
@@ -91,6 +94,10 @@ function validateTopLevelReport(value, reportErrors) {
   }
   if (!isRecord(value.options)) {
     reportErrors.push("options must be an object");
+  } else if (value.options.skipBrowser !== undefined && typeof value.options.skipBrowser !== "boolean") {
+    reportErrors.push("options.skipBrowser must be a boolean");
+  } else if (skippedBrowser && !options.allowSkippedBrowser) {
+    reportErrors.push("report skipped the browser checks; pass --allow-skipped-browser to accept it");
   }
   if (!isRecord(value.tarballs)) {
     reportErrors.push("tarballs must be an object");
@@ -253,10 +260,11 @@ function validateTemplateChecks(template, label, reportStatus, reportErrors) {
     return;
   }
   for (const checkName of REQUIRED_TEMPLATE_CHECKS) {
+    const expected = !(skippedBrowser && BROWSER_TEMPLATE_CHECKS.includes(checkName));
     if (typeof template.checks[checkName] !== "boolean") {
       reportErrors.push(`${label}.checks.${checkName} must be a boolean`);
-    } else if (reportStatus === "passed" && template.checks[checkName] !== true) {
-      reportErrors.push(`${label}.checks.${checkName} must be true`);
+    } else if (reportStatus === "passed" && template.checks[checkName] !== expected) {
+      reportErrors.push(`${label}.checks.${checkName} must be ${expected}`);
     }
   }
 }
@@ -295,30 +303,41 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
   validateRuntimeReplaySummary(template.reports.runtimeReplay, `${label}.reports.runtimeReplay`, reportErrors);
   validateRuntimeRecipeSummary(template.reports.runtimeReplayRecipe, `${label}.reports.runtimeReplayRecipe`, reportErrors);
   validateDeploymentSummary(template.reports.deployment, `${label}.reports.deployment`, reportErrors);
-  validateDeploymentBrowserSummary(
-    template.reports.deploymentBrowser,
-    `${label}.reports.deploymentBrowser`,
-    reportErrors,
-    template.template,
-  );
-  // Earlier v2 reports predate development-server coverage. When present, require full evidence.
-  if (template.checks?.devBrowserSmoke !== undefined || template.reports.developmentBrowser !== undefined) {
-    if (template.checks?.devBrowserSmoke !== true) {
-      reportErrors.push(`${label}.checks.devBrowserSmoke must be true`);
+  if (skippedBrowser) {
+    for (const name of ["deploymentBrowser", "developmentBrowser", "placementViewer"]) {
+      if (template.reports[name] !== undefined) {
+        reportErrors.push(`${label}.reports.${name} must be absent when browser checks are skipped`);
+      }
     }
+    if (template.checks?.devBrowserSmoke !== undefined) {
+      reportErrors.push(`${label}.checks.devBrowserSmoke must be absent when browser checks are skipped`);
+    }
+  } else {
     validateDeploymentBrowserSummary(
-      template.reports.developmentBrowser,
-      `${label}.reports.developmentBrowser`,
+      template.reports.deploymentBrowser,
+      `${label}.reports.deploymentBrowser`,
       reportErrors,
       template.template,
-      "/",
+    );
+    // Earlier v2 reports predate development-server coverage. When present, require full evidence.
+    if (template.checks?.devBrowserSmoke !== undefined || template.reports.developmentBrowser !== undefined) {
+      if (template.checks?.devBrowserSmoke !== true) {
+        reportErrors.push(`${label}.checks.devBrowserSmoke must be true`);
+      }
+      validateDeploymentBrowserSummary(
+        template.reports.developmentBrowser,
+        `${label}.reports.developmentBrowser`,
+        reportErrors,
+        template.template,
+        "/",
+      );
+    }
+    validatePlacementViewerSummary(
+      template.reports.placementViewer,
+      `${label}.reports.placementViewer`,
+      reportErrors,
     );
   }
-  validatePlacementViewerSummary(
-    template.reports.placementViewer,
-    `${label}.reports.placementViewer`,
-    reportErrors,
-  );
   if (!isRecord(template.buildOutput)) {
     reportErrors.push(`${label}.buildOutput must be an object`);
   } else {
@@ -337,8 +356,8 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
     if (template.buildOutput.deployReady !== true) {
       reportErrors.push(`${label}.buildOutput.deployReady must be true`);
     }
-    if (template.buildOutput.browserSmoke !== true) {
-      reportErrors.push(`${label}.buildOutput.browserSmoke must be true`);
+    if (template.buildOutput.browserSmoke !== !skippedBrowser) {
+      reportErrors.push(`${label}.buildOutput.browserSmoke must be ${!skippedBrowser}`);
     }
   }
 }
@@ -859,6 +878,7 @@ function parseArgs(args) {
   let reportPath;
   let expectStatus;
   let validateArtifacts = true;
+  let allowSkippedBrowser = false;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--") {
@@ -892,6 +912,10 @@ function parseArgs(args) {
       validateArtifacts = false;
       continue;
     }
+    if (arg === "--allow-skipped-browser") {
+      allowSkippedBrowser = true;
+      continue;
+    }
     if (arg === "-h" || arg === "--help") {
       printHelp();
       process.exit(0);
@@ -903,6 +927,7 @@ function parseArgs(args) {
     reportPath: reportPath ?? resolve(artifactDir, "consumer-smoke-report.json"),
     expectStatus,
     validateArtifacts,
+    allowSkippedBrowser,
   };
 }
 
@@ -980,6 +1005,7 @@ Options:
   --report <path>           Report JSON path. Default: <artifact-dir>/consumer-smoke-report.json
   --expect-status <status>  Require passed or failed
   --skip-artifacts          Validate JSON only, without checking tarballs/snapshots
+  --allow-skipped-browser   Accept a report made with --skip-browser (no Chromium checks)
   -h, --help                Show this help
 `);
 }

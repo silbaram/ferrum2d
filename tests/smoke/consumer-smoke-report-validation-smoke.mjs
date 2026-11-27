@@ -24,6 +24,7 @@ try {
   await assertPassedTemplateMatrixMismatchFails();
   await assertPassedDeploymentEvidenceMissingFails();
   await assertDevelopmentBrowserEvidence();
+  await assertSkippedBrowserEvidence();
   await assertPassedPlacementViewerEvidenceMissingFails();
   await assertPassedDeploymentSamplingEvidenceInvalidFails();
   await assertPassedDeploymentReadbackEvidenceInvalidFails();
@@ -65,6 +66,43 @@ async function assertDevelopmentBrowserEvidence() {
   assert(result.code !== 0 && result.stdout.includes("checks must be an object") &&
     result.stdout.includes("checks.devBrowserSmoke must be true"),
     "development browser without checks must produce diagnostics rather than throw");
+}
+
+async function assertSkippedBrowserEvidence() {
+  const artifactDir = path.join(tempRoot, "skipped-browser-evidence");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  const reportPath = path.join(artifactDir, "consumer-smoke-report.json");
+  const args = ["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"];
+  // Full browser evidence also passes when skipped browser checks are allowed.
+  await writeJson(reportPath, report);
+  await runValidatorExpecting(0, [...args, "--allow-skipped-browser"], "full report with skipped browser allowed");
+  report.options.skipBrowser = true;
+  for (const template of report.templates) {
+    template.checks.deployBrowserSmoke = false;
+    template.checks.placementViewerSmoke = false;
+    delete template.checks.devBrowserSmoke;
+    delete template.reports.deploymentBrowser;
+    delete template.reports.developmentBrowser;
+    delete template.reports.placementViewer;
+    template.buildOutput.browserSmoke = false;
+  }
+  await writeJson(reportPath, report);
+  let result = await runValidator(args);
+  assert(result.code !== 0 && result.stdout.includes("pass --allow-skipped-browser to accept it"),
+    "a report without browser evidence must be accepted only on request");
+  await runValidatorExpecting(0, [...args, "--allow-skipped-browser"], "report with skipped browser checks");
+  report.templates[0].checks.deployBrowserSmoke = true;
+  await writeJson(reportPath, report);
+  result = await runValidator([...args, "--allow-skipped-browser"]);
+  assert(result.code !== 0 && result.stdout.includes("checks.deployBrowserSmoke must be false"),
+    "a skipped browser run must not claim browser checks");
+  report.templates[0].checks.deployBrowserSmoke = false;
+  report.templates[0].buildOutput.browserSmoke = true;
+  await writeJson(reportPath, report);
+  result = await runValidator([...args, "--allow-skipped-browser"]);
+  assert(result.code !== 0 && result.stdout.includes("buildOutput.browserSmoke must be false"),
+    "a skipped browser run must not report browser build output");
 }
 
 async function assertEarlyFailedReportPasses() {

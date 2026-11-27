@@ -7,6 +7,7 @@ import {
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const localBrowserSmokes = readFileSync("scripts/validate/browser-smoke-steps.json", "utf8");
 const pagesWorkflow = readFileSync(".github/workflows/pages.yml", "utf8");
 const smokeDoc = readFileSync("docs/development/quality/smoke-check.md", "utf8");
 const pagesDoc = readFileSync("docs/development/operations/demo-deploy.md", "utf8");
@@ -63,9 +64,17 @@ const defaultCiGateSnippets = [
 ];
 const optInCiSnippets = [
   "consumer_smoke",
-  "extended_browser_smoke",
-  "artifacts/browser-smoke-budgets",
   "pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke",
+];
+// Browser budget smokes left CI and run locally through pnpm smoke:browser-local.
+const localBrowserSmokeSnippets = [
+  "artifacts/browser-smoke-budgets",
+  "pnpm smoke:topdown-budget",
+  "pnpm smoke:breakout-budget",
+  "pnpm smoke:platformer-budget",
+  "pnpm smoke:physics-sandbox-budget",
+  "pnpm smoke:lighting-webgpu",
+  "pnpm smoke:material-webgpu",
 ];
 const smokeDocSnippets = [
   "제품 Runtime Budget Readiness",
@@ -95,6 +104,7 @@ const errors = [
   ...missingModeMappings(),
   ...missingSnippets("CI default gate", ciWorkflow, defaultCiGateSnippets),
   ...missingSnippets("CI opt-in gate", ciWorkflow, optInCiSnippets),
+  ...missingSnippets("Local browser smoke list", localBrowserSmokes, localBrowserSmokeSnippets),
   ...missingSnippets("Smoke Check doc", smokeDoc, smokeDocSnippets),
   ...missingSnippets("Pages deploy doc", pagesDoc, pagesReadinessSnippets),
   ...missingSnippets("Pages workflow", pagesWorkflow, ["pnpm validate:pages-artifact"]),
@@ -122,6 +132,7 @@ console.log(JSON.stringify({
     defaultGateSnippets: defaultCiGateSnippets.length,
     optInGateSnippets: optInCiSnippets.length,
   },
+  localBrowserSmokeSnippets: localBrowserSmokeSnippets.length,
 }, null, 2));
 
 function missingPackageScripts() {

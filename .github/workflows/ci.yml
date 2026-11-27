@@ -10,16 +10,6 @@ on:
         required: false
         default: false
         type: boolean
-      browser_smoke:
-        description: 'Run full browser smoke checks'
-        required: false
-        default: false
-        type: boolean
-      extended_browser_smoke:
-        description: 'Run extended browser smoke matrix'
-        required: false
-        default: false
-        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
@@ -31,10 +21,10 @@ env:
   CI_RUST_TOOLCHAIN: '1.97.1'
 
 jobs:
-  validate:
-    # Playwright 1.60 supports installing Chromium dependencies on Ubuntu 24.04.
+  # PR checks run as four parallel jobs, so a run takes as long as the slowest job.
+  validate-rust:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -45,6 +35,73 @@ jobs:
         with:
           toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
           components: rustfmt, clippy
+
+      - name: Cache Rust build dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/ferrum-core -> target
+            crates/ferrum-core/vendor/rapier3d -> target
+            crates/ferrum-core/vendor/parry3d -> target
+          cache-on-failure: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: '.nvmrc'
+          package-manager-cache: false
+
+      - name: Setup pnpm 10.8.0
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.8.0
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Check Ferrum core Rust formatting
+        run: cargo fmt --manifest-path crates/ferrum-core/Cargo.toml --all -- --check
+
+      - name: Lint Ferrum core Rust
+        run: cargo clippy --manifest-path crates/ferrum-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --manifest-path crates/ferrum-core/Cargo.toml
+
+      - name: Native physics stored-reference contracts
+        run: pnpm test:physics3d-storage
+
+      - name: Native physics near-origin query contracts
+        run: pnpm test:physics3d-queries
+
+      - name: Rust test harness guard
+        run: pnpm validate:rust-test-harness
+
+      - name: Physics smoke tests
+        run: pnpm smoke:physics
+
+      - name: Runtime budget profile gate
+        run: pnpm smoke:runtime-budgets
+
+      - name: Runtime budget productization guard
+        run: pnpm validate:runtime-budget-product
+
+      - name: Mass object stress smoke
+        run: pnpm smoke:mass-objects
+
+  validate-wasi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
           targets: wasm32-wasip1
 
       - name: Cache Rust build dependencies
@@ -52,9 +109,48 @@ jobs:
         with:
           workspaces: |
             crates/ferrum-core -> target
+          cache-on-failure: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: '.nvmrc'
+          package-manager-cache: false
+
+      - name: Setup pnpm 10.8.0
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.8.0
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Native WASI runner contracts
+        run: node --test tests/smoke/native-wasi-runner.test.mjs
+
+      - name: Rust-only WASI unit and integration tests
+        run: pnpm test:rust-wasi
+
+  validate-studio-desktop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+
+      - name: Cache Rust build dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
             apps/studio-desktop/src-tauri -> target
-            crates/ferrum-core/vendor/rapier3d -> target
-            crates/ferrum-core/vendor/parry3d -> target
           cache-on-failure: true
 
       - name: Install desktop Linux dependencies
@@ -68,12 +164,6 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Check Ferrum core Rust formatting
-        run: cargo fmt --manifest-path crates/ferrum-core/Cargo.toml --all -- --check
-
-      - name: Lint Ferrum core Rust
-        run: cargo clippy --manifest-path crates/ferrum-core/Cargo.toml --all-targets -- -D warnings
-
       - name: Check Studio desktop Rust formatting
         run: cargo fmt --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --all -- --check
 
@@ -83,8 +173,30 @@ jobs:
       - name: Test Studio desktop save contracts
         run: cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml
 
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
+      - name: Native tile map source storage build
+        run: cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked
+
+  validate:
+    # Playwright 1.60 supports installing Chromium dependencies on Ubuntu 24.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/ferrum-core -> target
+          cache-on-failure: true
 
       - name: Install wasm-pack
         run: |
@@ -136,36 +248,6 @@ jobs:
 
       - name: Sprite normal tooling and animation contracts
         run: pnpm test:sprite-normals-tool
-
-      - name: Rust tests
-        run: cargo test --manifest-path crates/ferrum-core/Cargo.toml
-
-      - name: Native physics stored-reference contracts
-        run: pnpm test:physics3d-storage
-
-      - name: Native physics near-origin query contracts
-        run: pnpm test:physics3d-queries
-
-      - name: Native WASI runner contracts
-        run: node --test tests/smoke/native-wasi-runner.test.mjs
-
-      - name: Rust-only WASI unit and integration tests
-        run: pnpm test:rust-wasi
-
-      - name: Rust test harness guard
-        run: pnpm validate:rust-test-harness
-
-      - name: Physics smoke tests
-        run: pnpm smoke:physics
-
-      - name: Runtime budget profile gate
-        run: pnpm smoke:runtime-budgets
-
-      - name: Runtime budget productization guard
-        run: pnpm validate:runtime-budget-product
-
-      - name: Mass object stress smoke
-        run: pnpm smoke:mass-objects
 
       - name: Build wasm package
         run: pnpm build:wasm
@@ -235,7 +317,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Placement camera, grid, locale, layer and command contracts
-        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers && pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm test:placement-asset-usage && pnpm test:placement-asset-cleanup
+        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers && pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm test:placement-asset-usage && pnpm test:placement-asset-cleanup && pnpm test:placement-flat-lighting
 
       - name: Packed input context browser smoke
         timeout-minutes: 10
@@ -259,7 +341,7 @@ jobs:
           pnpm test:spatial-light-selection-report
           pnpm test:spatial-bloom-report
 
-      - name: Imported tile asset contracts
+      - name: Tile asset, autotile and tile animation contracts
         run: pnpm test:tile-assets
 
       - name: Trimmed sprite contracts
@@ -270,6 +352,11 @@ jobs:
 
       - name: Example site build contracts
         run: pnpm test:pages-build
+
+      - name: Example catalog and browser-free example contracts
+        run: |
+          pnpm validate:example-catalog
+          pnpm test:browser-smoke-node-checks
 
       - name: Pixel postprocess contracts
         run: node --test tests/smoke/pixel-postprocess-contract.test.mjs
@@ -282,15 +369,6 @@ jobs:
 
       - name: Pixel editing capacity profile
         run: pnpm profile:pixel-capacity
-
-      - name: Native tile map source storage build
-        run: cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked
-
-      - name: Autotile asset contracts
-        run: pnpm test:tile-assets
-
-      - name: Tile animation asset contracts
-        run: pnpm test:tile-assets
 
       - name: Native sprite runtime report contracts
         run: node --test tests/smoke/sprite-animation-runtime-report.test.mjs
@@ -340,490 +418,9 @@ jobs:
       - name: Topdown template replay report smoke
         run: node tests/smoke/topdown-template-replay-report-smoke.mjs
 
-  browser-smoke:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 360
-    if: startsWith(github.ref, 'refs/tags/ferrum-web-v') || (github.event_name == 'workflow_dispatch' && inputs.browser_smoke)
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
-          components: rustfmt, clippy
-          targets: wasm32-wasip1
-
-      - name: Cache Rust build dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            crates/ferrum-core -> target
-            apps/studio-desktop/src-tauri -> target
-          cache-on-failure: true
-
-      - name: Install desktop Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
-
-      - name: Install wasm-pack
-        run: |
-          if command -v wasm-pack >/dev/null 2>&1; then
-            wasm-pack --version
-          else
-            cargo install wasm-pack
-          fi
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version-file: '.nvmrc'
-          package-manager-cache: false
-
-      - name: Setup pnpm 10.8.0
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10.8.0
-          run_install: false
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Install Playwright Chromium and system libraries
-        run: pnpm exec playwright-core install --with-deps chromium
-
-      - name: Build wasm package
-        run: pnpm build:wasm
-
-      - name: Build Web SDK
-        run: pnpm --filter @ferrum2d/ferrum-web build
-
-      - name: Build remaining TypeScript packages
-        run: |
-          pnpm pack:textures:if-present
-          pnpm -r --filter './packages/*' --filter './apps/*' --filter './examples/*' \
-            --filter '!@ferrum2d/ferrum-web' --filter '!@ferrum2d/studio-kit' build
-
-      - name: Fetch native Studio dependencies
-        run: cargo fetch --locked --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --target x86_64-unknown-linux-gnu
-
-      - name: Build Studio smoke variants
-        run: |
-          VITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --outDir "$RUNNER_TEMP/studio-save"
-          VITE_FERRUM_STUDIO_SAVE=false pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode test --outDir "$RUNNER_TEMP/studio-test"
-          VITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode test --outDir "$RUNNER_TEMP/studio-test-save"
-          printf 'FERRUM_STUDIO_TEST_DIST=%s\nFERRUM_STUDIO_SAVE_TEST_DIST=%s\n' \
-            "$RUNNER_TEMP/studio-test" "$RUNNER_TEMP/studio-test-save" >> "$GITHUB_ENV"
-
-      - name: Unified physics public package browser bridge
-        timeout-minutes: 10
-        run: |
-          pnpm smoke:unified-physics-web
-          pnpm smoke:scene-physics
-
-      - name: Upload unified physics Web bridge report
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: unified-physics-web-bridge
-          path: |
-            artifacts/physics-3d/web-bridge-browser/report.json
-            artifacts/physics-3d/scene-authoring-browser/
-          if-no-files-found: ignore
-
-      - name: Placement workspace browser smoke
-        timeout-minutes: 39
-        run: node tests/smoke/browser-render-smoke.mjs --mode=studio apps/studio/dist
-
-      - name: Spatial Scene browser smoke
-        timeout-minutes: 106
-        run: node tests/smoke/spatial-scene-browser-smoke.mjs
-
-      - name: Spatial WebGPU geometry/models offscreen and pre-context fallback
-        timeout-minutes: 104
-        run: node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target
-
-      - name: WebGPU recovery with GPU timing and resource diagnostics
-        timeout-minutes: 20
-        run: node tests/smoke/spatial-webgpu-browser-smoke.mjs --recovery-only --offscreen-target
-
-      - name: Imported Tiled and LDtk whole map authoring
-        timeout-minutes: 20
-        run: node tests/smoke/aseprite-assets-smoke.mjs --tiles
-
-      - name: Asset revision cleanup and import diagnostics
-        timeout-minutes: 20
-        run: node tests/smoke/aseprite-assets-smoke.mjs
-
-      - name: Trimmed sprite restoration and native source preservation
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/aseprite-assets-smoke.mjs --trim
-          FERRUM_STUDIO_SMOKE_DIST="$RUNNER_TEMP/studio-save" node tests/smoke/aseprite-project-smoke.mjs --trim
-
-      - name: Slice metadata and explicit sprite origin authoring
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/aseprite-assets-smoke.mjs --trim --slices
-          FERRUM_STUDIO_SMOKE_DIST="$RUNNER_TEMP/studio-save" node tests/smoke/aseprite-project-smoke.mjs --trim --slices
-
-      - name: Upload slice origin evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: aseprite-slices
-          path: artifacts/aseprite-slices
-          if-no-files-found: ignore
-
-      - name: Upload trim restoration evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: aseprite-trim
-          path: artifacts/aseprite-trim
-          if-no-files-found: ignore
-
-      - name: Ordinary 2D sprite normals on WebGL2 and WebGPU
-        timeout-minutes: 20
-        run: pnpm smoke:sprite-normal-2d
-
-      - name: Flat lighting composition contracts on WebGL2 and WebGPU
-        timeout-minutes: 20
-        run: node tests/smoke/flat-lighting-contract-smoke.mjs
-
-      - name: Flat lit receivers on WebGL2 and WebGPU
-        timeout-minutes: 20
-        run: node tests/smoke/flat-lit-browser-smoke.mjs
-
-      - name: Upload flat lighting verification
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: flat-lighting
-          path: |
-            artifacts/flat-lighting-contract
-            artifacts/flat-lit-m2a
-          if-no-files-found: ignore
-
-      - name: Engine Playground movement, physics, lighting and camera
-        timeout-minutes: 20
-        run: node tests/smoke/engine-playground-smoke.mjs
-
-      - name: Independent engine feature examples on WebGL2 and WebGPU
-        timeout-minutes: 20
-        run: node tests/smoke/feature-examples-smoke.mjs
-
-      - name: Example site shell, list and former routes
-        timeout-minutes: 20
-        run: |
-          pnpm build:pages
-          node tests/smoke/example-site-smoke.mjs
-
-      - name: Upload example site evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: example-site
-          path: artifacts/example-site
-          if-no-files-found: ignore
-
-      - name: Upload feature example evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: feature-examples
-          path: artifacts/feature-examples
-          if-no-files-found: ignore
-
-      - name: Upload Engine Playground evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: engine-playground
-          path: artifacts/engine-playground
-          if-no-files-found: ignore
-
-      - name: Nine-slice native geometry and WebGL2/WebGPU pixel parity
-        timeout-minutes: 20
-        run: pnpm smoke:sprite-nine-slice
-
-      - name: Upload nine-slice evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: sprite-nine-slice
-          path: artifacts/pixel-tools-and-demo/nine-slice/runtime
-          if-no-files-found: ignore
-
-      - name: Sprite palette RGB parity, native scene and recovery
-        timeout-minutes: 20
-        run: node tests/smoke/sprite-palette-smoke.mjs
-
-      - name: Pixel postprocess parity, virtual pixels and recovery
-        timeout-minutes: 20
-        run: node tests/smoke/pixel-postprocess-smoke.mjs
-
-      - name: Pixel art showcase movement, collection and visual controls
-        timeout-minutes: 20
-        run: node tests/smoke/pixel-showcase-smoke.mjs
-
-      - name: Upload pixel showcase evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: pixel-showcase
-          path: artifacts/pixel-showcase
-          if-no-files-found: ignore
-
-      - name: Upload pixel postprocess evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: pixel-postprocess
-          path: artifacts/pixel-postprocess
-          if-no-files-found: ignore
-
-      - name: Upload sprite palette evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: sprite-palette
-          path: artifacts/sprite-palette
-          if-no-files-found: ignore
-
-      - name: Built-in pixel creation, source export and fresh game rendering
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/aseprite-assets-smoke.mjs --pixels
-          node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-animation-tools-only
-
-      - name: Native pixel source storage and fresh game roundtrip
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/aseprite-project-smoke.mjs --pixels
-          node tests/smoke/aseprite-project-smoke.mjs --pixels --pixel-opacity-only
-          node tests/smoke/aseprite-project-smoke.mjs --pixels --pixel-blend-only
-          node tests/smoke/aseprite-project-smoke.mjs --pixels --pixel-indexed-only
-
-      - name: 64-frame pixel editing capacity and native save compatibility
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-capacity-only
-          FERRUM_STUDIO_SMOKE_DIST="$RUNNER_TEMP/studio-save" node tests/smoke/aseprite-project-smoke.mjs --pixels --pixel-capacity-only
-
-      - name: Upload pixel capacity evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: pixel-editor-capacity
-          path: artifacts/pixel-editor-capacity
-          if-no-files-found: ignore
-
-      - name: Recoverable project asset catalog cleanup
-        timeout-minutes: 20
-        run: FERRUM_STUDIO_SMOKE_DIST="$RUNNER_TEMP/studio-save" node tests/smoke/aseprite-project-smoke.mjs --cleanup
-
-      - name: Upload project catalog cleanup evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: project-asset-cleanup
-          path: |
-            artifacts/project-asset-cleanup/browser/verification.json
-            artifacts/project-asset-cleanup/browser/run-*/*.png
-            artifacts/project-asset-cleanup/browser/run-*/cleanup-plan.json
-            artifacts/project-asset-cleanup/browser/run-*/rust-build.log
-          if-no-files-found: ignore
-
-      - name: Upload pixel and 2D material evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: native-pixel-project
-          path: |
-            artifacts/pixel-normal-2d/runtime/verification.json
-            artifacts/pixel-normal-2d/runtime/run-*/verification.json
-            artifacts/pixel-project/verification.json
-            artifacts/pixel-project/run-*/verification.json
-            artifacts/pixel-project/run-*/*.png
-            artifacts/pixel-project/run-*/*.pixel.json
-            artifacts/pixel-project/run-*/rust-build.log
-          if-no-files-found: ignore
-
-      - name: Native tile map source storage and fresh game roundtrip
-        timeout-minutes: 20
-        run: |
-          cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked
-          node tests/smoke/aseprite-project-smoke.mjs --tiles
-
-      - name: Upload native tile map evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: native-tile-map
-          path: |
-            artifacts/native-tile-assets/verification.json
-            artifacts/native-tile-assets/run-*/*.png
-          if-no-files-found: ignore
-
-      - name: Autotile bake, preview, Data Scene budget and native roundtrip
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/aseprite-assets-smoke.mjs --tiles --autotile
-          FERRUM_STUDIO_SMOKE_DIST="$RUNNER_TEMP/studio-save" node tests/smoke/aseprite-project-smoke.mjs --tiles --autotile
-
-      - name: Upload autotile evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: tile-autotile
-          path: artifacts/tile-autotile
-          if-no-files-found: ignore
-
-      - name: Tile animation, fixed collision and native roundtrip
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/aseprite-assets-smoke.mjs --tiles --tile-animation
-          FERRUM_STUDIO_SMOKE_DIST="$RUNNER_TEMP/studio-save" node tests/smoke/aseprite-project-smoke.mjs --tiles --tile-animation
-
-      - name: Upload tile animation evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: tile-animation
-          path: artifacts/tile-animation
-          if-no-files-found: ignore
-
-      - name: Real village combat, audio, ramp and LOD quality evidence
-        timeout-minutes: 20
-        run: node tests/smoke/village-game-quality-browser-smoke.mjs
-
-      - name: Upload village game quality evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: village-game-quality
-          path: |
-            artifacts/village-game-quality/run-*/report.json
-            artifacts/village-game-quality/run-*/*.png
-          if-no-files-found: ignore
-
-      - name: Upload spatial WebGPU evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: spatial-webgpu
-          path: |
-            artifacts/hd2d-static-model/spatial-webgpu/run-*/report.json
-            artifacts/hd2d-static-model/spatial-webgpu/run-*/*.png
-          if-no-files-found: ignore
-
-      - name: Verify native HD-2D combat, input, checkpoints, prefabs, multi-floor AI, crowd, scheduler, movement, melee/dash, actor spawn and projectile visuals
-        timeout-minutes: 20
-        run: node tests/smoke/hd2d-combat-browser-smoke.mjs
-
-      - name: Upload HD-2D combat evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: hd2d-combat
-          path: |
-            artifacts/hd2d-static-model/combat/run-*/report.json
-            artifacts/hd2d-static-model/combat/run-*/*-enemies*.json
-            artifacts/hd2d-static-model/combat/run-*/prefab-*.png
-            artifacts/hd2d-static-model/combat/run-*/movement-*.png
-            artifacts/hd2d-static-model/combat/run-*/actions-*.png
-            artifacts/hd2d-static-model/combat/run-*/spawn-*.png
-            artifacts/hd2d-static-model/combat/run-*/visuals-*.png
-          if-no-files-found: ignore
-
-      - name: Data Scene animation projection and sun browser smoke
-        timeout-minutes: 20
-        run: node tests/smoke/data-scene-presentation-browser-smoke.mjs
-
-      - name: Native sprite timing directions events and save browser smoke
-        timeout-minutes: 20
-        run: node tests/smoke/sprite-animation-runtime-smoke.mjs --require-webgpu
-
-      - name: Upload runtime animation verification
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: runtime-animation
-          path: artifacts/runtime-animation
-          if-no-files-found: ignore
-
-      - name: RenderTexture browser smoke
-        timeout-minutes: 20
-        run: node tests/smoke/render-texture-browser-smoke.mjs
-
-      - name: Color management browser smoke
-        timeout-minutes: 20
-        run: node tests/smoke/color-management-browser-smoke.mjs
-
-      - name: Flat 2D pixel-perfect rendering and Game Preview smoke
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/flat-pixel-perfect-smoke.mjs
-          node tests/smoke/flat-pixel-perfect-viewer-smoke.mjs
-
-      - name: Atlas PNG extrusion and renderer boundary smoke
-        timeout-minutes: 20
-        run: node tests/smoke/atlas-extrusion-browser-smoke.mjs
-
-      - name: Upload atlas extrusion verification
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: atlas-extrusion
-          path: artifacts/atlas-extrusion
-          if-no-files-found: ignore
-
-      - name: Upload pixel-perfect verification
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: flat-pixel-perfect
-          path: artifacts/flat-pixel-perfect
-          if-no-files-found: ignore
-
-      - name: GPU resource lifecycle browser smoke
-        timeout-minutes: 20
-        run: node tests/smoke/gpu-resources-browser-smoke.mjs
-
-      - name: Asset loading concurrency and cancellation smoke
-        timeout-minutes: 20
-        run: node tests/smoke/asset-loading-browser-smoke.mjs
-
-      - name: Spatial audio output and native binding smoke
-        timeout-minutes: 20
-        run: node tests/smoke/spatial-audio-browser-smoke.mjs
-
-      - name: KTX2 compressed texture smoke
-        timeout-minutes: 20
-        run: |
-          node tests/smoke/ktx2-browser-smoke.mjs
-          node tests/smoke/ktx2-browser-smoke.mjs --bundled
-
-      - name: Shader preparation smoke
-        timeout-minutes: 20
-        run: node tests/smoke/shader-preparation-browser-smoke.mjs
-
   consumer-smoke:
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [validate-rust, validate-wasi, validate-studio-desktop, validate]
     if: startsWith(github.ref, 'refs/tags/ferrum-web-v') || (github.event_name == 'workflow_dispatch' && inputs.consumer_smoke)
 
     steps:
@@ -858,13 +455,13 @@ jobs:
 
       - name: Package consumer smoke
         id: package_consumer_smoke
-        run: pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke
+        run: pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke --skip-browser
 
       - name: Validate consumer smoke report
         if: always()
         env:
           EXPECT_STATUS: ${{ steps.package_consumer_smoke.outcome == 'success' && 'passed' || 'failed' }}
-        run: pnpm validate:consumer-smoke-report -- --expect-status "$EXPECT_STATUS"
+        run: pnpm validate:consumer-smoke-report -- --expect-status "$EXPECT_STATUS" --allow-skipped-browser
 
       - name: Upload consumer smoke artifacts
         if: always()
@@ -872,97 +469,4 @@ jobs:
         with:
           name: consumer-smoke-artifacts
           path: artifacts/consumer-smoke
-          if-no-files-found: ignore
-
-  extended-browser-smoke:
-    runs-on: ubuntu-latest
-    needs: validate
-    if: startsWith(github.ref, 'refs/tags/ferrum-web-v') || (github.event_name == 'workflow_dispatch' && inputs.extended_browser_smoke)
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - smoke: smoke:preload
-            artifact: preload
-          - smoke: smoke:mobile-input
-            artifact: mobile-input
-          - smoke: smoke:lighting
-            artifact: lighting
-          - smoke: smoke:lighting-webgpu
-            artifact: lighting-webgpu
-          - smoke: smoke:material
-            artifact: material
-          - smoke: smoke:material-webgpu
-            artifact: material-webgpu
-          - smoke: smoke:camera-postprocess
-            artifact: camera-postprocess
-          - smoke: smoke:particle-vfx
-            artifact: particle-vfx
-          - smoke: smoke:topdown
-            artifact: topdown
-          - smoke: smoke:topdown-budget
-            artifact: topdown-budget
-          - smoke: smoke:topdown-save-load
-            artifact: topdown-save-load
-          - smoke: smoke:topdown-hd2d
-            artifact: topdown-hd2d
-          - smoke: smoke:destructible-terrain-browser
-            artifact: destructible-terrain-browser
-          - smoke: smoke:breakout-effects
-            artifact: breakout-effects
-          - smoke: smoke:breakout-budget
-            artifact: breakout-budget
-          - smoke: smoke:platformer-effects
-            artifact: platformer-effects
-          - smoke: smoke:platformer-budget
-            artifact: platformer-budget
-          - smoke: smoke:physics-sandbox
-            artifact: physics-sandbox
-          - smoke: smoke:physics-sandbox-budget
-            artifact: physics-sandbox-budget
-          - smoke: smoke:physics-demo-suite
-            artifact: physics-demo-suite
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.CI_RUST_TOOLCHAIN }}
-
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
-
-      - name: Install wasm-pack
-        run: cargo install wasm-pack
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version-file: '.nvmrc'
-          package-manager-cache: false
-
-      - name: Setup pnpm 10.8.0
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10.8.0
-          run_install: false
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Extended browser smoke
-        env:
-          FERRUM_BROWSER_SMOKE_TIMEOUT_MS: 30000
-          FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR: artifacts/browser-smoke-budgets
-        run: pnpm ${{ matrix.smoke }}
-
-      - name: Upload browser smoke budget artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: extended-browser-smoke-${{ matrix.artifact }}
-          path: artifacts/browser-smoke-budgets
           if-no-files-found: ignore

@@ -1,6 +1,6 @@
 # PR CI 정리와 Studio 배포 분리
 
-상태: 사용자 결정 완료(2026-11-27), S1 완료·S1b와 S1c 로컬 검증 완료. 작업 단위 S1→S1b→S1c→S2→S3를 Codex가 구현하고 통합 담당이 검증한다.
+상태: S1·S1b·S1c 완료(PR #113, 2026-11-27 main 머지). 결정 5(2026-11-28)로 S2 범위를 `browser-smoke` job 전체로 넓혔다. S2 분류표 완료, S2a 로컬 검증 완료. 다음은 S2b(보강 6·새 테스트 12)와 `extended-browser-smoke` 20개 분류.
 
 ## 배경
 
@@ -25,6 +25,10 @@ PR #113에서 세 번 실행한 결과는 [C1e](runtime-startup-view-plan.md#리
    Pages의 웹 Studio(`/studio/`, 데모 사이트)는 두 예제를 유지한다(S3).
 4. (S1 PR 실행 후 추가) PR 검사에서 오래 걸리는 브라우저 검사를 모두 뺀다. 뺀 검사는 수동 실행과 `ferrum-web-v*` 태그 실행에서만 돈다.
    매일 자동 실행은 하지 않는다(S1b).
+5. (2026-11-28 추가) CI는 단위 테스트로만 검증한다. `browser-smoke` job을 없애고, 그 검사 중 로직은 단위 테스트로 옮긴다(S2).
+   실제 브라우저·GPU가 필요한 검사(렌더링 픽셀, WebGPU 복구, 레이아웃·포인터 등)는 CI에서 빼고, 스크립트는 로컬 수동 실행용으로 남긴다.
+   - 배경: main 수동 실행(run 46017639730)에서 `browser-smoke`가 55분 동안 82단계 중 20단계만 진행했다. 소프트웨어 렌더링 때문에 장면 하나에 50분 넘게 걸린다.
+   - `validate`에 있는 빠른 브라우저 smoke 6개(S1b)는 이 결정의 대상이 아니다. PR CI는 약 25분이다.
 
 ## S1: PR CI 정리
 
@@ -183,9 +187,13 @@ rapier3d 1.6GB, parry3d 2.8GB). Cargo는 `target`의 옛 결과물을 지우지 
 - 작업 트리의 기존 target 네 곳은 이 실행에서 비어 있었다. 별도로 빌드한 Core target은 기본값으로 dry run했을 때 약 3.0GiB,
   삭제 후보 0건이었다. 실제 작업 트리의 target은 삭제하지 않았다.
 
-## S2: Studio HD-2D 검사의 단위 테스트 전환
+## S2: 브라우저 검사의 단위 테스트 전환
 
-범위: 두 smoke가 부르는 하위 검사(`placement-spatial-workspace-smoke.mjs`, `placement-lighting*-smoke.mjs`, `placement-game-camera*-smoke.mjs`,
+범위(결정 5로 확대): `.github/workflows/ci.yml`의 `browser-smoke` job에 있는 브라우저 검사 전체(41단계)다.
+처음 범위였던 Studio HD-2D 두 smoke의 하위 검사도 포함한다. 분류는 단계마다 "로직 → 단위 테스트", "브라우저 필요 → 로컬 수동 스크립트"로 나눈다.
+옮긴 뒤 `browser-smoke` job과 태그 실행 조건을 지우고, 릴리스 문서의 검사 목록을 고친다. 아래 1~4는 Studio 두 smoke의 처음 계획이며 같은 방식으로 나머지에도 적용한다.
+
+처음 범위: 두 smoke가 부르는 하위 검사(`placement-spatial-workspace-smoke.mjs`, `placement-lighting*-smoke.mjs`, `placement-game-camera*-smoke.mjs`,
 `placement-spatial-transforms-smoke.mjs`, `placement-threejs-upgrades-smoke.mjs`, `placement-model-picking-smoke.mjs`,
 `placement-asset-usage-smoke.mjs`, `placement-six-panels-smoke.mjs`, `placement-village-smoke.mjs`와 그 하위 파일)를 분류한다.
 
@@ -193,12 +201,121 @@ rapier3d 1.6GB, parry3d 2.8GB). Cargo는 `target`의 옛 결과물을 지우지 
    표를 계획 문서에 올리고 통합 담당의 확인을 받은 뒤 옮긴다.
 2. 로직 단언은 기존 방식(`ts.transpileModule`로 Studio 모듈을 불러오는 `node --test`)의 단위 테스트로 옮긴다.
    DOM이 필요한 모듈은 조작 함수와 문서 변경 함수를 분리할 수 있는지 먼저 보고하고, 필요한 리팩터링은 동작을 바꾸지 않는 범위로 한다.
-3. 브라우저 smoke는 DPR 1의 짧은 시나리오로 줄인다. 실제 렌더링 픽셀, 좁은 화면 배치, 드래그 중 Esc·포인터 캡처 취소처럼 브라우저가 필요한 것만 남긴다.
-4. 옮긴 단위 테스트는 `validate`에 연결한다. 줄인 브라우저 smoke는 실행 시간을 재서 PR에 넣을지 보고한다.
+3. 브라우저가 필요한 단언(실제 렌더링 픽셀, 좁은 화면 배치, 드래그 중 Esc·포인터 캡처 취소 등)은 CI에서 빼고 로컬 수동 스크립트로 남긴다(결정 5).
+4. 옮긴 단위 테스트는 `validate`에 연결한다. PR CI 시간이 크게 늘면 보고한다.
 
 지킬 것: 단언을 줄이지 않는다. 옮긴 단언과 원래 위치의 대응표를 보고에 넣는다. 제품 코드의 동작은 바꾸지 않는다.
 
 검증: 새 단위 테스트, 기존 `placement-*.test.mjs`, 줄인 smoke의 실행 결과와 시간.
+
+### S2 분류표 (통합 담당, 2026-11-28)
+
+`browser-smoke` job의 브라우저 검사는 39단계(아래 1~39)다. 40·41은 별도 `consumer-smoke` job이다. 두 job 모두 수동·태그 실행에서만 돈다.
+조사는 origin/main(`c931e948`) 기준으로 스크립트를 읽어서 했고, 단언 수는 grep으로 센 추정치다.
+
+처리 방법은 세 가지다.
+- **그냥 뺌**: 로직은 이미 `validate`의 단위 테스트에 있고, 남는 것은 브라우저가 필요한 부분뿐이다.
+- **보강**: 기존 단위 테스트에 빠진 로직 단언을 옮긴다.
+- **새 테스트**: 로직을 검사하는 단위 테스트가 없다. 필요하면 Node+Wasm(`packages/ferrum-web/test/*Wasm.test.ts` 방식)이나 Rust 테스트로 새로 만든다.
+
+| # | 검사 | 처리 | CI에서 빠지면 잃는 것(로컬 수동 스크립트로 남김) |
+| --- | --- | --- | --- |
+| 1 | 통합 물리 패키지 브라우저 연결 | 보강. 대부분 `unifiedPhysics*Wasm.test.ts` 등에 이미 있다 | 압축한 tarball을 실제 브라우저에서 불러오기, 타일맵 픽셀, Studio 물리 편집 UI |
+| 2 | Placement workspace | 보강. 로직 약 150개 → `placement-*.test.mjs`, `scenePlacement*.test.ts` | 포인터 드래그·제스처 취소, 폭별 레이아웃, 캔버스 픽셀 |
+| 3 | Spatial Scene | 보강. 로직 약 88개 → `spatial*.test.ts` | 픽셀 차이 0, GL 객체 누수, DPR 화면 |
+| 4 | Spatial WebGPU 오프스크린·fallback | 그냥 뺌 | 실제 WebGPU 렌더 결과, WebGL2↔WebGPU 픽셀 일치 |
+| 5 | WebGPU 복구 | 그냥 뺌 | 실제 디바이스 손실 뒤 복구한 픽셀, GPU timing |
+| 6 | Tiled·LDtk 맵 작성 | 그냥 뺌(`tile-assets.test.mjs` whole-map) | 런타임 캔버스 픽셀, GL 텍스처 해제 |
+| 7 | 에셋 revision 정리 | 보강. snapshot·history 약 65개 | 렌더 픽셀, GL 텍스처 수, 레이아웃 |
+| 8 | 트림 스프라이트 | 그냥 뺌(`aseprite-trim.test.mjs`, Rust trim) | 새 게임에서 렌더된 UV |
+| 9 | 슬라이스·origin | 그냥 뺌(`aseprite-slices.test.mjs`) | DOM 컨트롤, GL 해제 |
+| 10 | 2D 스프라이트 노멀 | 그냥 뺌(`spriteNormals.test.ts` 등) | 노멀 조명 픽셀, GL 상태 누수, 복구 |
+| 11 | Flat lighting 합성 | 새 테스트: reference vector 검사(순수 Node)를 `validate`에 넣는다 | 셰이더 합성 결과, GL↔GPU 일치 |
+| 12 | Flat lit receiver | 그냥 뺌(`flatLit.test.ts`) | lit 렌더 패스, 복구 뒤 픽셀 |
+| 13 | Engine Playground | 새 테스트: 네이티브 상태 약 22개(엔티티 수, pause, 재질별 속도, reset) | 픽셀 변화, 화면→카메라 좌표, 좁은 화면 |
+| 14 | 기능 예제 31개 | 새 테스트: 9-slice 재생성, `check-example-catalog`(지금 CI에 없음), snapshot 기반 네이티브 상태 약 280개 | 예제 실제 부팅·렌더, 탭·사이드바 UI, 오디오, 복구 |
+| 15 | 예제 사이트 셸 | 새 테스트: 그룹·개수, 검색(먼저 `main.ts`에서 함수로 분리), ko/en, 화면 맞춤 | 레이아웃, 폰트, 드래그, 포커스, WebGL 컨텍스트 해제 |
+| 16 | 9-slice | 그냥 뺌(`sprite_nine_slices.rs`, `spriteNineSlice.test.ts`) | 경계 픽셀, GL↔GPU 일치 |
+| 17 | 스프라이트 팔레트 | 그냥 뺌(`spritePalette.test.ts`) | 팔레트 샘플링 픽셀, CPU 예산 |
+| 18 | 픽셀 후처리 | 그냥 뺌(`pixel-postprocess-contract.test.mjs` 등) | 셰이더 출력, virtual pixel 메모리 |
+| 19 | 픽셀 아트 쇼케이스 | 새 테스트: `validatePixelArtProfile`(순수 Node), 엔티티·수집 수 | 효과 픽셀, letterbox 포인터, 레이아웃 |
+| 20 | 내장 픽셀 제작 | 그냥 뺌(`test:pixel-authoring`) | 캔버스 포인터·줌, 다운로드, 새 게임 렌더 |
+| 21 | 픽셀 소스 저장 왕복 | 보강. JSON·revision·충돌 약 250개 | UI→저장→게임을 잇는 증거, 렌더 픽셀 |
+| 22 | 64프레임 용량 | 그냥 뺌(`pixel-capacity.test.mjs`, `profile:pixel-capacity`) | 큰 시트 스크롤, 64 cel 픽셀 |
+| 23 | 에셋 카탈로그 정리 | 새 테스트: 차단 사유를 `main.ts:2555-2561`에서 순수 함수로 분리 | 대화상자 흐름, 모달 레이아웃 |
+| 24 | 타일맵 저장 왕복 | 그냥 뺌(`tile-assets.test.mjs`, Rust `tile_assets.rs`) | 4조합 실제 렌더 |
+| 25 | 오토타일 | 보강(소량) | 프리뷰 픽셀, draw call·CPU 예산 |
+| 26 | 타일 애니메이션 | 새 테스트: 시간→프레임 경계 계산(지금은 픽셀로만 검증) | 게임 루프 타이밍 픽셀 |
+| 27 | 마을 품질 | 새 테스트: AI·사격·경사·체크포인트(지금 로직 검증이 어디에도 없음) | 오디오 2보이스, GPU 리소스 누수, 예산 |
+| 28 | HD-2D 전투 전반 | 새 테스트: 모델 216개·적 32명 규모의 통합 시나리오(기능별 로직은 이미 있음) | 입력 좌표 변환(레터박스·DPR), GPU 예산, 프레임버퍼 동일성 |
+| 29 | 투영·태양 | 그냥 뺌(`data_scene_projection_sun.rs`, `dataSceneSun.test.ts` 등) | WebGL2↔WebGPU 픽셀, 포인터 |
+| 30 | 스프라이트 타이밍·방향 | 그냥 뺌(`data_scene_animation*.rs`, `dataSceneSpriteAnimation.test.ts`) | 실제 UV 픽셀 |
+| 31 | RenderTexture | 새 테스트: 입력 검증·stats 불변 약 35개(`WebGL2Renderer.renderToTexture` 단위 테스트 없음) | FBO 샘플링 방향, alpha 합성 |
+| 32 | 색 관리 | 새 테스트(소량): 작업 색 값, 모드 충돌 거부 약 10개 | GPU 셰이더 sRGB 정확도 |
+| 33 | 픽셀 퍼펙트·Game Preview | 새 테스트: 설정 검증, 복구 뒤 설정 유지, `placementGameCamera.ts` 카메라 복원 | 백엔드 간 픽셀 일치, 실제 마우스·DPR |
+| 34 | 아틀라스 extrusion | 그냥 뺌(`atlas-extrusion.test.mjs`) | 필터링 번짐 회귀 |
+| 35 | GPU 리소스 수명 | 그냥 뺌(`runtimeProfiler`·`textureResources` 테스트 등) | 실제 GL 객체 수, timer query |
+| 36 | 에셋 로딩 동시성 | 그냥 뺌(`assetLoadLifecycle.test.ts`) | 실제 fetch, 디코드 |
+| 37 | 공간 오디오 | 그냥 뺌(`spatialAudio.test.ts`) | 실제 PannerNode 출력, 클릭 unlock |
+| 38 | KTX2 | 그냥 뺌(`ktx2Texture.test.ts`) | 실제 Basis transcoder Worker, 압축 업로드 |
+| 39 | 셰이더 준비 | 그냥 뺌(`shaderPreparation.test.ts`) | 실제 드라이버의 GLSL 컴파일(셰이더 문법 회귀) |
+| 40 | 패키지 소비자(`consumer-smoke`) | 결정 필요. assert 약 500개 중 브라우저 구간은 약 38개이고, 나머지는 tarball 설치→생성 게임 빌드 Node E2E | 실제 설치부터 빌드까지 E2E, 배포 페이지 렌더 |
+| 41 | 소비자 보고서 검증 | 그냥 뺌(`smoke:consumer-smoke-report`가 `validate`에 있음) | 없음 |
+
+요약: 그냥 뺌 22개, 보강 6개, 새 테스트 12개, 결정 필요 1개(40).
+CI에서 완전히 사라지는 것은 실제 렌더링·GPU 확인이다. 픽셀 일치, 디바이스 복구, 실제 드라이버 셰이더 컴파일, KTX2 transcoder,
+오디오 출력, 포인터·DPR·레이아웃, GPU 누수 수, 브라우저에서 tarball 불러오기가 여기에 해당한다. 이 스크립트들은 로컬 수동 실행용으로 남긴다.
+
+조사 중 찾은 PR CI(`validate`)의 빈틈과 중복. S2와 상관없이 바로 고칠 수 있다.
+- `check-example-catalog.mjs`(assert 45개)가 어디에서도 돌지 않는다. `smoke:feature-examples`의 첫 단계인데, CI는 node 스크립트를 직접 실행한다(`ci.yml:526`).
+- `test:placement-flat-lighting`이 CI에 없다(`package.json:77`).
+- `pnpm test:tile-assets`가 세 번 돈다(`ci.yml:263, 290, 293`).
+
+### S2a 결과 (통합 담당, 2026-11-28)
+
+사용자 승인(2026-11-28): 패키지 소비자 smoke는 브라우저 부분만 빼고 릴리스 태그·수동 실행에 남긴다. `validate`의 빠른 브라우저 smoke는 그대로 둔다.
+
+- **CI job 정리**: `browser-smoke` job과 `extended-browser-smoke` job, 수동 입력 `browser_smoke`·`extended_browser_smoke`를 지웠다.
+  `ci.yml`에는 `validate`와 `consumer-smoke`만 남는다.
+- **로컬 실행**: 지운 두 job의 명령을 `scripts/validate/browser-smoke-steps.json`으로 옮겼다. 준비 5, 검사 39, 확장 20단계다.
+  `pnpm smoke:browser-local`(`scripts/validate/run-browser-smokes.mjs`)이 순서대로 실행하고 결과를 요약한다.
+  `RUNNER_TEMP`와 `GITHUB_ENV`를 `artifacts/browser-smoke-local/`에 흉내 내므로 Studio 빌드 변형을 쓰는 단계도 그대로 돈다.
+- **`validate`에 추가**: 지금까지 어디에서도 돌지 않던 검사를 넣었다.
+  - `pnpm validate:example-catalog`
+  - `pnpm test:placement-flat-lighting`
+  - `pnpm test:browser-smoke-node-checks`: flat lighting 기준값(브라우저 스크립트에서 `flat-lighting-reference-vectors.mjs`로 분리), 기능 예제 재생성, 픽셀 아트 프로필, 로컬 실행 목록의 명령·스크립트 존재 확인
+- **중복 제거**: 세 번 돌던 `pnpm test:tile-assets`를 한 단계로 합쳤다.
+- **패키지 소비자**:
+  - `package:consumer-smoke --skip-browser`는 생성 게임과 Placement Viewer의 Chromium 검사를 건너뛴다.
+  - 보고서 검증은 `--allow-skipped-browser`를 줄 때만 이 보고서를 받는다. 이때 브라우저 항목은 false이거나 없어야 한다.
+  - 검증 smoke에 네 사례를 추가했다.
+- **문서**: `AGENTS.md`, `docs/development/quality/smoke-check.md`의 CI 설명과 "CI의 `browser-smoke`에서 실행한다" 문장을 모두 로컬 명령 기준으로 고쳤다.
+- **병렬 분할**(사용자 승인 2026-11-28): 한 줄로 돌던 `validate` 66단계를 네 job으로 나눠 동시에 돌린다. 검사 내용과 순서는 그대로다.
+  - `validate-rust`: Core Rust 형식·Clippy·전체 테스트, vendor 물리 회귀 2종, harness guard, 물리·budget·대량 객체 smoke
+  - `validate-wasi`: WASI 실행기 계약과 Rust-only WASI 전체 테스트
+  - `validate-studio-desktop`: 데스크톱 Linux 패키지 설치와 Studio desktop Rust 4단계
+  - `validate`: 나머지(Wasm 빌드, SDK·TypeScript·패키지·짧은 브라우저 검사)
+  - PR #114 실행의 단계별 시간 기준 예상은 가장 긴 `validate` 약 10분이다(이전 약 25분). 공개 저장소의 기본 runner라 비용은 없다.
+- **분할 중 찾은 S2a 누락**:
+  - `validate:runtime-budget-product`가 지운 job의 `extended_browser_smoke`·`artifacts/browser-smoke-budgets`를 `ci.yml`에서 찾아 실패했다. 이 두 항목은 로컬 실행 목록(`browser-smoke-steps.json`)에서 확인하도록 바꿨다.
+  - 확장 20단계에 이전 job의 `FERRUM_BROWSER_SMOKE_TIMEOUT_MS=30000`과 `FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR`를 다시 넣었다. 실행기는 단계별 `env`를 적용하고, 테스트가 이를 확인한다.
+
+검증(로컬, `chore/ci-unit-tests` worktree):
+- actionlint 1.7.12와 YAML 해석
+- `pnpm test:browser-smoke-node-checks`(6건)
+- `pnpm validate:example-catalog`
+- `pnpm test:placement-flat-lighting`(10건, SDK 빌드 후)
+- `pnpm smoke:consumer-smoke-report`
+- 바꾼 스크립트의 `node --check`
+- `pnpm smoke:browser-local --list`(`--group extended` 포함)
+- 문서 링크 검사
+- 분할 뒤: 분할 전후 단계 66개가 빠짐·중복 없이 같은 내용인지 YAML로 대조했다. `validate` 안의 순서도 같다.
+- 분할 뒤: `validate:runtime-budget-product`, `validate:rust-test-harness`, `smoke:runtime-budgets`, 공개 API·릴리스 후보 guard 등 빠른 Node 검사 18개
+- `pnpm test:updates`는 로컬에서만 실패한다. 로컬 npm 12.0.2가 `--allow-scripts`를 거절하기 때문이고, 관련 파일은 main과 같다. CI의 Node 24 기본 npm에서는 PR #114 때 통과했다.
+
+남은 일:
+- 실제 `--skip-browser` 소비자 smoke 실행과 소요 시간 측정. 태그나 수동 실행 때 잰다.
+- `extended-browser-smoke` 20개의 로직 분류. 분류표에 없던 job이라 S2b에서 같은 방식으로 나눈다.
 
 ## S3: Studio 배포 분리 (설치판에서 예제 제외)
 
@@ -238,7 +355,7 @@ Pages 배포와 릴리스는 이 작업에서 실행하지 않는다.
 S2는 분류표를 먼저 보고한다.
 
 **지킬 것:**
-- 브랜치는 `feat/example-site-rebuild`. 푸시, PR 갱신, Pages 배포, 릴리스는 하지 않는다.
+- 브랜치는 작업마다 통합 담당이 정한다(S2a는 `chore/ci-unit-tests`). 푸시, PR 갱신, Pages 배포, 릴리스는 하지 않는다.
 - Rust/Wasm 소스, vendor 파일과 새 의존성은 바꾸지 않는다(`Swatinem/rust-cache` action 추가는 S1, 저장소 `.cargo/config.toml`의 dev profile 설정은 S1c 범위다).
 - 코드 주석은 영어, 문서는 한국어.
 - 설계가 이 문서와 달라져야 하면 구현 전에 이유를 보고하고 문서를 먼저 고친다.
