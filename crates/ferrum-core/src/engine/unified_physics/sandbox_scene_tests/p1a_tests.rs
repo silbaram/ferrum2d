@@ -571,165 +571,191 @@ fn p1a_probes_detect_crossings_at_brick_edges() {
 }
 
 #[test]
+fn breakout_gap_runs_300_ticks_without_errors_or_tunneling() {
+    let (output, completed_ticks) = run_breakout_gap(Mode::Rapier);
+    assert_eq!(output.first_error, None, "step errors: {:?}", output.errors);
+    assert_eq!(
+        completed_ticks, FRAMES,
+        "the native world must advance on each tick"
+    );
+    assert_eq!(
+        output.first_crossing, None,
+        "the ball crossed a solid fixture"
+    );
+    assert!(
+        output.ccd_clamps > 0,
+        "the scene must exercise continuous collision detection"
+    );
+}
+
+#[test]
 #[ignore = "P1a measures 300 attempts per mode"]
 fn p1a_compare_breakout_gap() {
+    for mode in MODES {
+        run_breakout_gap(mode);
+    }
+}
+
+fn run_breakout_gap(mode: Mode) -> (Measurements, usize) {
     const GAP: [f32; 2] = [348., 168.];
     const SPEED: f32 = 300.;
     const PADDLE_REACH: f32 = 56. + 6.;
-    for mode in MODES {
-        let wall = |p, size| Body::new(false, p, Collider::Box(size), [0., 0., 1.]);
-        let static_bodies = [
-            wall([320., 24.], [304., 8.]),
-            wall([24., 200.], [8., 184.]),
-            wall([616., 200.], [8., 184.]),
-            Body {
-                trigger: true,
-                ..wall([320., 380.], [288., 4.])
-            },
-        ];
-        let (mut e, walls) = sandbox_engine(&static_bodies, 0., [6, 3]);
-        e.set_collision_lifecycle_events_enabled(true);
-        assert!(e.configure_auto_rigid_body_step(
-            true, 0., 0., 6, 3, 0.8, 0.01, 1., 0.2, 120., false, true,
-        ));
-        let paddle_body = wall([320., 344.], [56., 6.]);
-        let paddle = spawn_kind(&mut e, &paddle_body, 1);
-        let mut bricks = Vec::new();
-        for row in 0..5 {
-            for column in 0..10 {
-                let p = [68. + 56. * column as f32, 72. + 24. * row as f32];
-                let body = wall(p, BRICK_HALF_EXTENTS);
-                let brick = spawn(&mut e, &body);
-                if p == GAP {
-                    assert!(e.despawn_physics_entity(brick.id, brick.generation));
-                } else {
-                    bricks.push((brick, body));
-                }
-            }
-        }
-        let ball = spawn(
-            &mut e,
-            &Body {
-                mass: Some(1.),
-                gravity_scale: 0.,
-                angular_damping: 4.,
-                ..Body::new(true, [320., 331.], Collider::Circle(6.), [0., 1., 1.])
-            },
-        );
-        assert!(e.set_physics_body_fixed_rotation(ball.id, ball.generation, true));
-        let mut rigid = e.world.rigid_body(ball).unwrap();
-        rigid.can_sleep = false;
-        e.world.set_rigid_body(ball, rigid);
-        configure_experiment(&mut e.unified_physics.as_mut().unwrap().physics, mode);
-        assert!(e.resume_data_scene());
-        assert!(e.auto_rigid_body_step_active());
-        let dt = f64::from(e.fixed_timestep.config().step_seconds);
-        let mut output = Measurements::new(physics(&e));
-        let mut in_play = false;
-        let mut gap_frames = 0;
-        let mut hits = 0;
-        for frame in 0..FRAMES {
-            if frame % 100 == 0 {
-                in_play = true;
-                let start = 18_f32.to_radians();
-                assert!(e.set_physics_body_position(ball.id, ball.generation, 320., 331.));
-                assert!(e.set_physics_body_velocity(
-                    ball.id,
-                    ball.generation,
-                    SPEED * start.sin(),
-                    -SPEED * start.cos()
-                ));
-            }
-            let before = e.world.transform(ball).unwrap();
-            // The demo uses automatic stepping so native collision lifecycle events
-            // are available before its brick removal and paddle response.
-            let (_, elapsed) = step_sample(|| e.update(dt));
-            let error = e.take_unified_physics_error();
-            let p = e.world.transform(ball).unwrap();
-            let crossing = static_bodies
-                .iter()
-                .chain(std::iter::once(&paddle_body))
-                .chain(bricks.iter().map(|(_, body)| body))
-                .any(|body| crosses_box_interior([before, p], body));
-            let [half_width, half_height] = BRICK_HALF_EXTENTS;
-            gap_frames += usize::from(
-                (p.x - GAP[0]).abs() < half_width && (p.y - GAP[1]).abs() < half_height,
-            );
-            output.record(physics(&e), frame, error, crossing, elapsed);
-            if !in_play {
-                continue;
-            }
-            let mut paddle_hit = false;
-            let mut miss = false;
-            let mut popped = Vec::new();
-            for event in &e.frame_buffers.collision_events {
-                let a = Entity {
-                    id: event.a_id,
-                    generation: event.a_generation,
-                };
-                let b = Entity {
-                    id: event.b_id,
-                    generation: event.b_generation,
-                };
-                let other = if a == ball {
-                    b
-                } else if b == ball {
-                    a
-                } else {
-                    continue;
-                };
-                if event.kind == COLLISION_EVENT_ENTER {
-                    paddle_hit |= other == paddle;
-                    if bricks.iter().any(|(brick, _)| *brick == other) {
-                        popped.push(other);
-                    }
-                } else if event.kind == COLLISION_EVENT_TRIGGER_ENTER && other == walls[3] {
-                    miss = true;
-                }
-            }
-            for brick in popped {
-                if let Some(index) = bricks.iter().position(|(id, _)| *id == brick) {
-                    assert!(e.despawn_physics_entity(brick.id, brick.generation));
-                    bricks.remove(index);
-                    hits += 1;
-                }
-            }
-            if miss {
-                in_play = false;
-                assert!(e.set_physics_body_position(ball.id, ball.generation, 320., 331.));
-                assert!(e.set_physics_body_velocity(ball.id, ball.generation, 0., 0.));
-            } else if paddle_hit {
-                let angle = ((p.x - 320.) / PADDLE_REACH).clamp(-1., 1.) * 60_f32.to_radians();
-                assert!(e.set_physics_body_velocity(
-                    ball.id,
-                    ball.generation,
-                    SPEED * angle.sin(),
-                    -SPEED * angle.cos()
-                ));
+    let wall = |p, size| Body::new(false, p, Collider::Box(size), [0., 0., 1.]);
+    let static_bodies = [
+        wall([320., 24.], [304., 8.]),
+        wall([24., 200.], [8., 184.]),
+        wall([616., 200.], [8., 184.]),
+        Body {
+            trigger: true,
+            ..wall([320., 380.], [288., 4.])
+        },
+    ];
+    let (mut e, walls) = sandbox_engine(&static_bodies, 0., [6, 3]);
+    e.set_collision_lifecycle_events_enabled(true);
+    assert!(e.configure_auto_rigid_body_step(
+        true, 0., 0., 6, 3, 0.8, 0.01, 1., 0.2, 120., false, true,
+    ));
+    let paddle_body = wall([320., 344.], [56., 6.]);
+    let paddle = spawn_kind(&mut e, &paddle_body, 1);
+    let mut bricks = Vec::new();
+    for row in 0..5 {
+        for column in 0..10 {
+            let p = [68. + 56. * column as f32, 72. + 24. * row as f32];
+            let body = wall(p, BRICK_HALF_EXTENTS);
+            let brick = spawn(&mut e, &body);
+            if p == GAP {
+                assert!(e.despawn_physics_entity(brick.id, brick.generation));
             } else {
-                let v = e.world.velocity(ball).unwrap();
-                let length = v.vx.hypot(v.vy);
-                let (mut vx, mut vy) = if length > 1. {
-                    (v.vx / length * SPEED, v.vy / length * SPEED)
-                } else {
-                    (0., -SPEED)
-                };
-                if vy.abs() < 0.35 * SPEED {
-                    vy = if vy > 0. { 0.35 * SPEED } else { -0.35 * SPEED };
-                    vx = (SPEED * SPEED - vy * vy).sqrt().copysign(vx);
-                }
-                if (v.vx - vx).abs() > 0.5 || (v.vy - vy).abs() > 0.5 {
-                    assert!(e.set_physics_body_velocity(ball.id, ball.generation, vx, vy));
-                }
+                bricks.push((brick, body));
             }
         }
-        assert!(
-            gap_frames > 0 && hits > 0,
-            "the ball must reach the brick gap"
-        );
-        println!("P1A_BREAKOUT mode={mode:?} gap_frames={gap_frames} bricks_hit={hits}");
-        output.report(physics(&e), "breakout-gap", mode);
     }
+    let ball = spawn(
+        &mut e,
+        &Body {
+            mass: Some(1.),
+            gravity_scale: 0.,
+            angular_damping: 4.,
+            ..Body::new(true, [320., 331.], Collider::Circle(6.), [0., 1., 1.])
+        },
+    );
+    assert!(e.set_physics_body_fixed_rotation(ball.id, ball.generation, true));
+    let mut rigid = e.world.rigid_body(ball).unwrap();
+    rigid.can_sleep = false;
+    e.world.set_rigid_body(ball, rigid);
+    configure_experiment(&mut e.unified_physics.as_mut().unwrap().physics, mode);
+    assert!(e.resume_data_scene());
+    assert!(e.auto_rigid_body_step_active());
+    let dt = f64::from(e.fixed_timestep.config().step_seconds);
+    let mut output = Measurements::new(physics(&e));
+    let mut in_play = false;
+    let mut gap_frames = 0;
+    let mut hits = 0;
+    let mut completed_ticks = 0;
+    for frame in 0..FRAMES {
+        if frame % 100 == 0 {
+            in_play = true;
+            let start = 18_f32.to_radians();
+            assert!(e.set_physics_body_position(ball.id, ball.generation, 320., 331.));
+            assert!(e.set_physics_body_velocity(
+                ball.id,
+                ball.generation,
+                SPEED * start.sin(),
+                -SPEED * start.cos()
+            ));
+        }
+        let before = e.world.transform(ball).unwrap();
+        // The demo uses automatic stepping so native collision lifecycle events
+        // are available before its brick removal and paddle response.
+        let (_, elapsed) = step_sample(|| e.update(dt));
+        let error = e.take_unified_physics_error();
+        if error.is_none() && e.unified_physics_frame_statistics().unwrap().fixed_steps == 1 {
+            completed_ticks += 1;
+        }
+        let p = e.world.transform(ball).unwrap();
+        let crossing = static_bodies
+            .iter()
+            .chain(std::iter::once(&paddle_body))
+            .chain(bricks.iter().map(|(_, body)| body))
+            .any(|body| crosses_box_interior([before, p], body));
+        let [half_width, half_height] = BRICK_HALF_EXTENTS;
+        gap_frames +=
+            usize::from((p.x - GAP[0]).abs() < half_width && (p.y - GAP[1]).abs() < half_height);
+        output.record(physics(&e), frame, error, crossing, elapsed);
+        if !in_play {
+            continue;
+        }
+        let mut paddle_hit = false;
+        let mut miss = false;
+        let mut popped = Vec::new();
+        for event in &e.frame_buffers.collision_events {
+            let a = Entity {
+                id: event.a_id,
+                generation: event.a_generation,
+            };
+            let b = Entity {
+                id: event.b_id,
+                generation: event.b_generation,
+            };
+            let other = if a == ball {
+                b
+            } else if b == ball {
+                a
+            } else {
+                continue;
+            };
+            if event.kind == COLLISION_EVENT_ENTER {
+                paddle_hit |= other == paddle;
+                if bricks.iter().any(|(brick, _)| *brick == other) {
+                    popped.push(other);
+                }
+            } else if event.kind == COLLISION_EVENT_TRIGGER_ENTER && other == walls[3] {
+                miss = true;
+            }
+        }
+        for brick in popped {
+            if let Some(index) = bricks.iter().position(|(id, _)| *id == brick) {
+                assert!(e.despawn_physics_entity(brick.id, brick.generation));
+                bricks.remove(index);
+                hits += 1;
+            }
+        }
+        if miss {
+            in_play = false;
+            assert!(e.set_physics_body_position(ball.id, ball.generation, 320., 331.));
+            assert!(e.set_physics_body_velocity(ball.id, ball.generation, 0., 0.));
+        } else if paddle_hit {
+            let angle = ((p.x - 320.) / PADDLE_REACH).clamp(-1., 1.) * 60_f32.to_radians();
+            assert!(e.set_physics_body_velocity(
+                ball.id,
+                ball.generation,
+                SPEED * angle.sin(),
+                -SPEED * angle.cos()
+            ));
+        } else {
+            let v = e.world.velocity(ball).unwrap();
+            let length = v.vx.hypot(v.vy);
+            let (mut vx, mut vy) = if length > 1. {
+                (v.vx / length * SPEED, v.vy / length * SPEED)
+            } else {
+                (0., -SPEED)
+            };
+            if vy.abs() < 0.35 * SPEED {
+                vy = if vy > 0. { 0.35 * SPEED } else { -0.35 * SPEED };
+                vx = (SPEED * SPEED - vy * vy).sqrt().copysign(vx);
+            }
+            if (v.vx - vx).abs() > 0.5 || (v.vy - vy).abs() > 0.5 {
+                assert!(e.set_physics_body_velocity(ball.id, ball.generation, vx, vy));
+            }
+        }
+    }
+    assert!(
+        gap_frames > 0 && hits > 0,
+        "the ball must reach the brick gap"
+    );
+    println!("P1A_BREAKOUT mode={mode:?} completed_ticks={completed_ticks} gap_frames={gap_frames} bricks_hit={hits}");
+    output.report(physics(&e), "breakout-gap", mode);
+    (output, completed_ticks)
 }
 
 fn spatial_world() -> PhysicsWorld3d {

@@ -764,6 +764,9 @@ Blender tree/pine 후보는 FPS 개선이 확인되지 않아 기본 예제에 �
 리셋을 확인한다.
 '벽돌 깨기'는 그 다음 버튼으로 연다. Space로 발사해 첫 벽돌(brick_4_5)이 깨지고 점수·남은 벽돌이 바뀌는지, 일시정지 동안 그림이 멈추고 안내가 나오는지,
 계속한 뒤 놓침으로 목숨이 주는지, 패들 너비를 바꾸면 씬 파일에 반영된 새 판이 시작되는지, 리셋과 떠날 때의 자원 해제를 확인한다.
+Core의 `breakout_gap_runs_300_ticks_without_errors_or_tunneling`은 넓은 패들로 세 번 발사하는 벽돌 틈 재현에서
+연속 충돌을 켠 채 물리 스텝 300회가 오류 없이 끝나고, 틱 전후 공 중심을 잇는 선분이 고체 장벽 내부를
+가로지르지 않는지 검사한다.
 `pnpm test:pages-build`는 사이트·Studio 빌드 누락이나 잘못된 HTML이 기존 Pages를 지우기 전에 거절되는지와 발행 구성을 확인한다.
 
 이전 예제 앱은 공개하지 않지만 엔진 검사 데이터로 남아 다음 검사가 그대로 쓴다.
@@ -773,8 +776,9 @@ Start/Pause/Resume/Restart·P/Esc·터치 취소는 실제 native 시간/위치/
 Physics Lab의 `visibleBodyCount`는 조회한 body 수이며 화면 culling 측정값이 아니다.
 `pnpm smoke:feature-examples`는 실험마다 제목·한 문장·볼 것과 해 보기, 닫힌 더 보기, 설명 탭과 씬 JSON·API·소스 링크, 게임 목록의 기능 전환과
 `이 위치에서 실험`, 충돌 영역 다시 시작을 확인한다.
-물리 실험실 smoke(`--mode=physics-sandbox`, `--mode=physics-demo-suite`)는 `physicsExamples.json`의 `knownIssue` 시나리오만
-멈춤을 허용하고, 그 경우에도 화면에 오류가 표시돼야 한다.
+물리 실험실 smoke(`--mode=physics-sandbox`, `--mode=physics-demo-suite`)는 검증하는 각 장면에 성공한 물리 스텝을
+300회 더 요구한다. 일시정지 중에도 렌더링은 계속되며, 물리 스텝은 재개하거나 한 프레임 진행할 때 집계된다.
+물리 스텝에서 오류가 발생하면 실험실 화면과 스모크 결과에 원인이 표시된다.
 
 package 변경은 `pnpm package:check` 또는 해당 package check로 tarball·declaration·Wasm·exports를 확인한다.
 create-game/agents 변경에는 아래 생성/설치 검증을 추가한다.
