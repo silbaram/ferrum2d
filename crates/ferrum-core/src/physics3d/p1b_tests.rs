@@ -391,6 +391,85 @@ fn p1b_kcc_resolves_peer_contacts_and_keeps_the_ordinary_step() {
     );
 }
 
+#[test]
+fn p2b_kcc_capsules_cannot_swap_places_in_one_tick() {
+    let mut world = PhysicsWorld3d::new(WorldConfig {
+        gravity: [0.; 3],
+        step_seconds: 0.1,
+        ..WorldConfig::default()
+    })
+    .unwrap();
+    let left = character(&mut world, [-1., 0., 0.]);
+    let right = character(&mut world, [1., 0., 0.]);
+    Mode::Kcc.configure(&mut world);
+    for (id, vx) in [(left, 20.), (right, -20.)] {
+        world
+            .set_character_input(
+                id,
+                CharacterInput {
+                    velocity: [vx, 0., 0.],
+                    ..CharacterInput::default()
+                },
+            )
+            .unwrap();
+    }
+    world.step_checked().unwrap();
+    let separation = world.body_state(right).unwrap().pose.position[0]
+        - world.body_state(left).unwrap().pose.position[0];
+    assert!(separation >= 0.5 - 1e-5, "separation={separation}");
+    assert!(world.character_state(left).unwrap().blocked_by_character);
+    assert!(world.character_state(right).unwrap().blocked_by_character);
+}
+
+#[test]
+#[ignore = "P2b compares the trial and baseline when a platform and its rider reach a wall"]
+fn p2b_compare_platform_and_rider_at_wall() {
+    for mode in MODES {
+        let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+        let platform = body(
+            &mut world,
+            BodyKind::KinematicPosition,
+            [0.; 3],
+            Shape::Box {
+                half_extents: [0.5, 0.2, 2.],
+            },
+        );
+        body(
+            &mut world,
+            BodyKind::Fixed,
+            [1.4, 1., 0.],
+            Shape::Box {
+                half_extents: [0.1, 2., 2.],
+            },
+        );
+        let rider = character(&mut world, [0.28, 0.959, 0.]);
+        mode.configure(&mut world);
+        for _ in 0..4 {
+            world.step_checked().unwrap();
+        }
+        assert_eq!(
+            world.character_state(rider).unwrap().ground.unwrap().body,
+            platform
+        );
+        let path = KinematicPath {
+            body: platform,
+            sweep_sensors: false,
+            knots: vec![(
+                1.,
+                Pose {
+                    position: [1.5, 0., 0.],
+                    ..Pose::default()
+                },
+            )],
+        };
+        let result = world.step_with_kinematic_paths(&[path]);
+        let platform_x = world.body_state(platform).unwrap().pose.position[0];
+        let rider_x = world.body_state(rider).unwrap().pose.position[0];
+        let ground = world.character_state(rider).unwrap().grounded;
+        println!("P2B_PLATFORM_WALL mode={mode:?} result={result:?} platform_x={platform_x} rider_x={rider_x} grounded={ground}");
+    }
+}
+
 fn compare_platform(rotates: bool) {
     let name = if rotates {
         "rotating-platform"

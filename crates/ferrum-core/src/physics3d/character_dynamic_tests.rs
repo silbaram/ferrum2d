@@ -136,6 +136,98 @@ fn finite_mass_dynamic_impact_splits_the_tick_and_conserves_momentum() {
 }
 
 #[test]
+#[ignore = "P2b measures the finite-mass reaction in the trial and baseline"]
+fn p2b_compare_finite_mass_push() {
+    for mode in super::p1b_tests::MODES {
+        let mut w = world();
+        let a = actor(&mut w, 0., 2.);
+        let b = dynamic(&mut w, 1.);
+        mode.configure(&mut w);
+        w.set_character_input(
+            a,
+            CharacterInput {
+                velocity: [10., 0., 0.],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let result = w.step_checked();
+        let actor = w.body_state(a).unwrap();
+        let dynamic = w.body_state(b).unwrap();
+        let momentum = 2. * (actor.linear_velocity[0] + dynamic.linear_velocity[0]);
+        println!("P2B_FINITE_PUSH mode={mode:?} result={result:?} actor_x={} actor_vx={} dynamic_x={} dynamic_vx={} momentum={momentum}",
+            actor.pose.position[0], actor.linear_velocity[0],
+            dynamic.pose.position[0], dynamic.linear_velocity[0]);
+    }
+}
+
+#[test]
+#[ignore = "P2b compares passive knockback against the packed SDK smoke fixture"]
+fn p2b_compare_passive_knockback() {
+    for space in [Space::PlanarXy, Space::Spatial] {
+        for mode in super::p1b_tests::MODES {
+            let mut w = PhysicsWorld3d::new(WorldConfig {
+                space,
+                gravity: [0.; 3],
+                step_seconds: 0.01,
+                ..WorldConfig::default()
+            })
+            .unwrap();
+            let a = w
+                .create_body(
+                    BodyDesc {
+                        kind: BodyKind::KinematicPosition,
+                        pose: Pose {
+                            position: [-2., 0., 0.],
+                            ..Pose::default()
+                        },
+                        ..BodyDesc::default()
+                    },
+                    ColliderDesc::new(Shape::Capsule {
+                        half_height: 0.5,
+                        radius: 0.25,
+                    }),
+                )
+                .unwrap();
+            w.enable_character(
+                a,
+                CharacterConfig {
+                    push_mass: 2.,
+                    step_height: 0.,
+                    snap_distance: 0.,
+                    ..CharacterConfig::default()
+                },
+            )
+            .unwrap();
+            let mut fixture = ColliderDesc::new(Shape::Box {
+                half_extents: [0.5; 3],
+            });
+            fixture.density = 2.;
+            fixture.friction = 0.;
+            let b = w
+                .create_body(
+                    BodyDesc {
+                        can_sleep: false,
+                        ..BodyDesc::default()
+                    },
+                    fixture,
+                )
+                .unwrap();
+            mode.configure(&mut w);
+            w.apply_character_impulse(a, [10., 0., 0.]).unwrap();
+            for _ in 0..50 {
+                w.step_checked().unwrap();
+            }
+            let actor = w.character_state(a).unwrap();
+            let dynamic = w.body_state(b).unwrap();
+            let momentum = 2. * (actor.velocity[0] + dynamic.linear_velocity[0]);
+            println!("P2B_PASSIVE space={space:?} mode={mode:?} actor_vx={} box_vx={} box_x={} momentum={momentum}",
+                actor.velocity[0], dynamic.linear_velocity[0], dynamic.pose.position[0]);
+        }
+    }
+}
+
+#[test]
 fn incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent() {
     let mut w = world();
     let a = actor(&mut w, 0., 2.);

@@ -74,9 +74,12 @@ impl PhysicsWorld3d {
         self.solve_experimental_crowd(&mut plans, &mut characters);
         for plan in &plans {
             let translation = plan.translation;
-            let state = &mut characters.get_mut(&plan.id).unwrap().state;
-            state.translation = translation.to_array();
-            state.velocity = (translation / dt).to_array();
+            let runtime = characters.get_mut(&plan.id).unwrap();
+            runtime.state.translation = translation.to_array();
+            runtime.state.velocity = (translation / dt).to_array();
+            if runtime.config.push_mass > 0. {
+                self.kcc_push_dynamic(plan, runtime, dt);
+            }
             self.backend.bodies[native_id(plan.id)].set_next_kinematic_position(
                 rp::Pose::from_translation(translation) * plan.body_pose,
             );
@@ -198,6 +201,15 @@ impl PhysicsWorld3d {
         } else {
             runtime.state.vertical_speed
         };
+        if runtime.config.push_mass > 0. {
+            let impulse = rp::Vector::from(std::mem::take(&mut runtime.pending_impulse));
+            let external = rp::Vector::from(runtime.external_velocity)
+                + (rp::Vector::from(runtime.external_force) * dt + impulse)
+                    / runtime.config.push_mass;
+            let vertical = external.dot(up);
+            vertical_speed += vertical;
+            runtime.external_velocity = (external - up * vertical).to_array();
+        }
         vertical_speed = (vertical_speed
             + self.backend.gravity.dot(up) * body.gravity_scale() * dt)
             .clamp(-max_speed, max_speed);
@@ -216,14 +228,23 @@ impl PhysicsWorld3d {
             .kcc_move(&plan, simple, rp::Vector::ZERO, None)
             .translation;
         let mut controller = plan.controller;
-        if !grounded || jump > 0. {
+        if !grounded || jump > 0. || vertical_speed > 0. {
             controller.snap_to_ground = None;
         }
         let desired = (rp::Vector::from(runtime.input.velocity)
             + rp::Vector::from(runtime.tick_velocity)
+            + rp::Vector::from(runtime.external_velocity)
             + up * walking_speed)
             * dt;
-        let movement = self.kcc_move(&plan, controller, desired, None);
+        runtime.collisions.clear();
+        let pose = rp::Pose::from_translation(plan.translation) * plan.shape_pose;
+        let movement = self.kcc_query(&plan, pose, None, |query| {
+            controller.move_shape(0., &query, plan.shape.as_ref(), &pose, desired, |hit| {
+                if runtime.config.push_mass > 0. && runtime.collisions.len() < 32 {
+                    runtime.collisions.push(hit);
+                }
+            })
+        });
         plan.translation += movement.translation;
 
         // Walk against the current platform pose, then transport the resulting anchor.
@@ -326,6 +347,37 @@ impl PhysicsWorld3d {
         })
     }
 
+    fn kcc_push_dynamic(&mut self, plan: &MovePlan, runtime: &CharacterRuntime, dt: f32) {
+        let filter = rp::QueryFilter {
+            flags: rp::QueryFilterFlags::ONLY_DYNAMIC | rp::QueryFilterFlags::EXCLUDE_SENSORS,
+            groups: Some(plan.groups),
+            predicate: Some(&|handle, collider| {
+                self.contact_policies
+                    .pair_allows(Some(native_id(plan.id)), collider.parent())
+                    && self.contact_policies.one_way_allows(
+                        handle,
+                        collider,
+                        plan.shape.as_ref(),
+                        &plan.shape_pose,
+                    )
+            }),
+            ..rp::QueryFilter::default()
+        };
+        let mut queries = self.backend.broad_phase.as_query_pipeline_mut(
+            self.backend.narrow_phase.query_dispatcher(),
+            &mut self.backend.bodies,
+            &mut self.backend.colliders,
+            filter,
+        );
+        plan.controller.solve_character_collision_impulses(
+            dt,
+            &mut queries,
+            plan.shape.as_ref(),
+            runtime.config.push_mass,
+            &runtime.collisions,
+        );
+    }
+
     fn solve_experimental_crowd(
         &self,
         plans: &mut [MovePlan],
@@ -333,6 +385,54 @@ impl PhysicsWorld3d {
     ) {
         if plans.len() < 2 {
             return;
+        }
+        let mut cut = vec![1_f32; plans.len()];
+        let swept_bounds: Vec<_> = plans
+            .iter()
+            .map(|plan| {
+                let initial = plan.shape.compute_aabb(&plan.shape_pose);
+                initial.merged(&initial.translated(plan.translation))
+            })
+            .collect();
+        for (i, a) in plans.iter().enumerate() {
+            for (j, b) in plans.iter().enumerate().skip(i + 1) {
+                if a.translation == b.translation
+                    || !swept_bounds[i].intersects(&swept_bounds[j])
+                    || !a.groups.test(b.groups)
+                    || !self
+                        .contact_policies
+                        .pair_allows(Some(native_id(a.id)), Some(native_id(b.id)))
+                {
+                    continue;
+                }
+                let options = ShapeCastOptions {
+                    max_time_of_impact: 1.,
+                    stop_at_penetration: false,
+                    ..ShapeCastOptions::default()
+                };
+                if let Ok(Some(hit)) = cast_shapes(
+                    &a.shape_pose,
+                    a.translation,
+                    a.shape.as_ref(),
+                    &b.shape_pose,
+                    b.translation,
+                    b.shape.as_ref(),
+                    options,
+                ) {
+                    cut[i] = cut[i].min(hit.time_of_impact);
+                    cut[j] = cut[j].min(hit.time_of_impact);
+                }
+            }
+        }
+        for (plan, fraction) in plans.iter_mut().zip(cut) {
+            if fraction < 1. {
+                plan.translation *= fraction;
+                characters
+                    .get_mut(&plan.id)
+                    .unwrap()
+                    .state
+                    .blocked_by_character = true;
+            }
         }
         let mut corrections = vec![rp::Vector::ZERO; plans.len()];
         let mut poses = Vec::with_capacity(plans.len());
