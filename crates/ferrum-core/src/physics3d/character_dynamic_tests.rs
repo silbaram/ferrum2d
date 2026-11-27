@@ -162,7 +162,6 @@ fn p2b_compare_finite_mass_push() {
 }
 
 #[test]
-#[ignore = "P2b compares passive knockback against the packed SDK smoke fixture"]
 fn p2b_compare_passive_knockback() {
     for space in [Space::PlanarXy, Space::Spatial] {
         for mode in super::p1b_tests::MODES {
@@ -223,12 +222,15 @@ fn p2b_compare_passive_knockback() {
             let momentum = 2. * (actor.velocity[0] + dynamic.linear_velocity[0]);
             println!("P2B_PASSIVE space={space:?} mode={mode:?} actor_vx={} box_vx={} box_x={} momentum={momentum}",
                 actor.velocity[0], dynamic.linear_velocity[0], dynamic.pose.position[0]);
+            assert!(
+                (momentum - 10.).abs() < 0.1,
+                "{space:?} {mode:?}: momentum={momentum}"
+            );
         }
     }
 }
 
-#[test]
-fn incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent() {
+fn incoming_dynamic_impact_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
     let mut w = world();
     let a = actor(&mut w, 0., 2.);
     let b = dynamic(&mut w, 1.);
@@ -241,6 +243,12 @@ fn incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent() {
     )
     .unwrap();
     w.set_velocity(b, [-10., 0., 0.], [0.; 3]).unwrap();
+    (w, a, b)
+}
+
+#[test]
+fn incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent() {
+    let (mut w, a, b) = incoming_dynamic_impact_fixture();
     c12_checked_motion(
         &mut w,
         "incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent",
@@ -365,69 +373,96 @@ fn dynamic_force_is_never_consumed_or_applied_twice_by_character_previews() {
     }
 }
 
-#[test]
-fn dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor() {
-    for rotate in [false, true] {
-        let mut w = world();
-        let p = w
-            .create_body(
-                BodyDesc {
-                    kind: BodyKind::Dynamic,
-                    ccd: true,
-                    pose: Pose {
-                        position: [0., -0.1, 0.],
-                        ..Default::default()
-                    },
+fn dynamic_support_fixture(
+    rotate: bool,
+    mode: super::p1b_tests::Mode,
+) -> (PhysicsWorld3d, BodyId, BodyId) {
+    let mut w = world();
+    let p = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Dynamic,
+                ccd: true,
+                pose: Pose {
+                    position: [0., -0.1, 0.],
                     ..Default::default()
                 },
-                ColliderDesc::new(Shape::Box {
-                    half_extents: [2., 0.1, 2.],
-                }),
-            )
-            .unwrap();
-        let a = actor(&mut w, 1., 2.);
-        w.set_pose(
-            a,
-            Pose {
-                position: [1., 0.51, 0.],
+                ..Default::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [2., 0.1, 2.],
+            }),
+        )
+        .unwrap();
+    let a = actor(&mut w, 1., 2.);
+    w.set_pose(
+        a,
+        Pose {
+            position: [1., 0.51, 0.],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    mode.configure(&mut w);
+    c12_checked_motion(
+        &mut w,
+        "dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor",
+    );
+    assert!(w.character_state(a).unwrap().grounded);
+    if rotate {
+        w.set_velocity(p, [0.; 3], [0., 2., 0.]).unwrap();
+    } else {
+        w.set_body_options(
+            p,
+            &BodyOptions {
+                kind: BodyKind::Dynamic,
+                ccd: true,
+                lock_rotation: true,
                 ..Default::default()
             },
         )
         .unwrap();
-        c12_checked_motion(
-            &mut w,
-            "dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor",
-        );
-        assert!(w.character_state(a).unwrap().grounded);
-        if rotate {
-            w.set_velocity(p, [0.; 3], [0., 2., 0.]).unwrap();
-        } else {
-            w.set_body_options(
-                p,
-                &BodyOptions {
-                    kind: BodyKind::Dynamic,
-                    ccd: true,
-                    lock_rotation: true,
+        w.create_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                pose: Pose {
+                    position: [2.3, 0., 0.],
                     ..Default::default()
                 },
-            )
-            .unwrap();
-            w.create_body(
-                BodyDesc {
-                    kind: BodyKind::Fixed,
-                    pose: Pose {
-                        position: [2.3, 0., 0.],
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                ColliderDesc::new(Shape::Box {
-                    half_extents: [0.1, 2., 3.],
-                }),
-            )
-            .unwrap();
-            w.set_velocity(p, [10., 0., 0.], [0.; 3]).unwrap();
-        }
+                ..Default::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [0.1, 2., 3.],
+            }),
+        )
+        .unwrap();
+        w.set_velocity(p, [10., 0., 0.], [0.; 3]).unwrap();
+    }
+    (w, p, a)
+}
+
+#[test]
+#[ignore = "P2b compares incoming dynamic contact and dynamic support on both paths"]
+fn p2b_compare_incoming_impact_and_dynamic_support() {
+    for mode in super::p1b_tests::MODES {
+        let (mut w, a, b) = incoming_dynamic_impact_fixture();
+        mode.configure(&mut w);
+        w.step_checked().unwrap();
+        let actor_x_velocity = w.body_state(a).unwrap().linear_velocity[0];
+        let box_x_velocity = w.body_state(b).unwrap().linear_velocity[0];
+        let (mut w, p, a) = dynamic_support_fixture(false, mode);
+        let start = w.body_state(p).unwrap().pose.position[0];
+        w.step_checked().unwrap();
+        let platform_delta = w.body_state(p).unwrap().pose.position[0] - start;
+        let carry = w.character_state(a).unwrap().carry_translation[0];
+        println!("P2B_INCOMING mode={mode:?} actor_vx={actor_x_velocity} box_vx={box_x_velocity} support_delta={platform_delta} carry={carry}");
+    }
+}
+
+#[test]
+fn dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor() {
+    for rotate in [false, true] {
+        let (mut w, p, a) = dynamic_support_fixture(rotate, super::p1b_tests::Mode::Current);
         let start = super::world::native_pose(w.body_state(p).unwrap().pose);
         let mut anchor = rapier3d::prelude::Vector::new(1., 0., 0.);
         let local_anchor = start.inverse_transform_point(anchor);

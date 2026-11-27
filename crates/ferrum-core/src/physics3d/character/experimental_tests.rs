@@ -1,11 +1,13 @@
 //! Test-only comparison using Rapier's KCC and ordinary rigid-body step.
 use super::*;
+use crate::physics3d::kinematic_motion::{accepted_collider_motion, motion_bounds};
 use crate::physics3d::KinematicPath;
 use rapier3d::control::EffectiveCharacterMovement;
 use rapier3d::parry::{
     bounding_volume::BoundingVolume,
-    query::{cast_shapes, contact},
+    query::{cast_shapes, cast_shapes_nonlinear, contact, NonlinearRigidMotion},
 };
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
 pub(in crate::physics3d) enum Experiment {
@@ -54,7 +56,9 @@ impl PhysicsWorld3d {
         &mut self,
         paths: &[KinematicPath],
     ) -> Result<(), PhysicsError> {
-        self.begin_fixed_step();
+        if !self.begin_fixed_step() {
+            return self.actual_motion_result();
+        }
         for path in paths {
             let target = path.knots.last().expect("validated path").1;
             self.backend.bodies[native_id(path.body)]
@@ -62,16 +66,35 @@ impl PhysicsWorld3d {
         }
         self.refresh_queries();
         let dt = self.backend.integration_parameters.dt;
+        let blocked = self.stop_blocked_platform_groups(paths, dt);
+        for _ in &blocked {
+            self.record_path_stop();
+        }
         let mut characters = std::mem::take(&mut self.characters);
         self.character_order.clear();
         self.character_order.extend(characters.keys().copied());
         let mut plans = Vec::with_capacity(characters.len());
         for (&id, runtime) in &mut characters {
+            if runtime.state.grounded
+                && runtime.input.jump_speed == 0.
+                && runtime
+                    .state
+                    .ground
+                    .is_some_and(|support| blocked.contains(&support.body))
+            {
+                let body = &mut self.backend.bodies[native_id(id)];
+                body.set_next_kinematic_position(*body.position());
+                runtime.state.translation = [0.; 3];
+                runtime.state.velocity = [0.; 3];
+                runtime.state.carried_by = None;
+                runtime.state.carry_translation = [0.; 3];
+                continue;
+            }
             if let Some(plan) = self.kcc_plan(id, runtime, dt) {
                 plans.push(plan);
             }
         }
-        self.solve_experimental_crowd(&mut plans, &mut characters);
+        self.separate_kcc_crowd(&mut plans, &mut characters);
         for plan in &plans {
             let translation = plan.translation;
             let runtime = characters.get_mut(&plan.id).unwrap();
@@ -91,7 +114,7 @@ impl PhysicsWorld3d {
             let runtime = characters.get_mut(&plan.id).unwrap();
             plan.shape_pose = *self.backend.colliders[native_collider(runtime.collider)].position();
             let support = if runtime.state.vertical_speed <= 0. {
-                self.experimental_ground(plan, runtime.config.skin_width * 2.)
+                self.kcc_ground(plan, runtime.config.skin_width * 2.)
             } else {
                 None
             };
@@ -103,13 +126,11 @@ impl PhysicsWorld3d {
             }
         }
         self.characters = characters;
-        self.query_updates.clear();
-        self.finish_statistics();
-        self.end_backend_motion_tick();
+        self.finish_fixed_step();
         self.actual_motion_result()
     }
 
-    fn experimental_ground(&self, plan: &MovePlan, distance: f32) -> Option<ColliderRef> {
+    fn kcc_ground(&self, plan: &MovePlan, distance: f32) -> Option<ColliderRef> {
         let up = plan.controller.up;
         let min_up = plan.controller.max_slope_climb_angle.cos();
         let options = ShapeCastOptions {
@@ -223,12 +244,29 @@ impl PhysicsWorld3d {
             snap_to_ground: None,
             ..plan.controller
         };
+        let moving_support = runtime
+            .state
+            .ground
+            .filter(|_| grounded && jump == 0.)
+            .map(|ground| native_id(ground.body))
+            .filter(|&handle| {
+                let support = &self.backend.bodies[handle];
+                match support.body_type() {
+                    rp::RigidBodyType::KinematicPositionBased => {
+                        support.position() != support.next_position()
+                    }
+                    rp::RigidBodyType::KinematicVelocityBased => {
+                        support.linvel() != rp::Vector::ZERO || support.angvel() != rp::Vector::ZERO
+                    }
+                    _ => false,
+                }
+            });
         // A zero move asks Rapier to depenetrate even when movement input follows.
         plan.translation = self
-            .kcc_move(&plan, simple, rp::Vector::ZERO, None)
+            .kcc_move(&plan, simple, rp::Vector::ZERO, moving_support)
             .translation;
         let mut controller = plan.controller;
-        if !grounded || jump > 0. || vertical_speed > 0. {
+        if !grounded || jump > 0. || vertical_speed > 0. || moving_support.is_some() {
             controller.snap_to_ground = None;
         }
         let desired = (rp::Vector::from(runtime.input.velocity)
@@ -238,7 +276,7 @@ impl PhysicsWorld3d {
             * dt;
         runtime.collisions.clear();
         let pose = rp::Pose::from_translation(plan.translation) * plan.shape_pose;
-        let movement = self.kcc_query(&plan, pose, None, |query| {
+        let movement = self.kcc_query(&plan, pose, moving_support, |query| {
             controller.move_shape(0., &query, plan.shape.as_ref(), &pose, desired, |hit| {
                 if runtime.config.push_mass > 0. && runtime.collisions.len() < 32 {
                     runtime.collisions.push(hit);
@@ -347,13 +385,31 @@ impl PhysicsWorld3d {
         })
     }
 
-    fn kcc_push_dynamic(&mut self, plan: &MovePlan, runtime: &CharacterRuntime, dt: f32) {
+    fn kcc_push_dynamic(&mut self, plan: &MovePlan, runtime: &mut CharacterRuntime, dt: f32) {
+        let mut before = BTreeMap::new();
+        for hit in &runtime.collisions {
+            let Some(id) = self.backend.colliders[hit.handle].parent() else {
+                continue;
+            };
+            if let Some(body) = self.backend.bodies.get(id).filter(|b| b.is_dynamic()) {
+                before
+                    .entry(id.into_raw_parts())
+                    .or_insert((id, body.linvel()));
+            }
+        }
+        if before.is_empty() {
+            return;
+        }
         let filter = rp::QueryFilter {
             flags: rp::QueryFilterFlags::ONLY_DYNAMIC | rp::QueryFilterFlags::EXCLUDE_SENSORS,
             groups: Some(plan.groups),
             predicate: Some(&|handle, collider| {
-                self.contact_policies
-                    .pair_allows(Some(native_id(plan.id)), collider.parent())
+                collider
+                    .parent()
+                    .is_some_and(|id| before.contains_key(&id.into_raw_parts()))
+                    && self
+                        .contact_policies
+                        .pair_allows(Some(native_id(plan.id)), collider.parent())
                     && self.contact_policies.one_way_allows(
                         handle,
                         collider,
@@ -376,9 +432,163 @@ impl PhysicsWorld3d {
             runtime.config.push_mass,
             &runtime.collisions,
         );
+        // Sample the change across the KCC call alone, before gravity and contacts run.
+        let impulse: rp::Vector = before
+            .values()
+            .map(|&(id, velocity)| {
+                let body = &queries.bodies[id];
+                (body.linvel() - velocity) * body.mass()
+            })
+            .sum();
+        let reaction = impulse / runtime.config.push_mass;
+        let vertical = reaction.dot(plan.controller.up);
+        runtime.state.vertical_speed -= vertical;
+        runtime.external_velocity = (rp::Vector::from(runtime.external_velocity)
+            - (reaction - plan.controller.up * vertical))
+            .to_array();
     }
 
-    fn solve_experimental_crowd(
+    fn stop_blocked_platform_groups(&mut self, paths: &[KinematicPath], dt: f32) -> Vec<BodyId> {
+        let mut platforms: BTreeSet<_> = paths.iter().map(|path| path.body).collect();
+        platforms.extend(self.characters.values().filter_map(|rider| {
+            rider
+                .state
+                .ground
+                .filter(|_| rider.state.grounded)
+                .map(|ground| ground.body)
+        }));
+        platforms.retain(|&id| {
+            let platform = &self.backend.bodies[native_id(id)];
+            platform.is_enabled()
+                && platform.body_type() == rp::RigidBodyType::KinematicPositionBased
+                && platform.position() != platform.next_position()
+        });
+        if platforms.is_empty() {
+            return Vec::new();
+        }
+
+        self.refresh_path_motion_queries();
+        let schedule = self.backend_pass_schedule();
+        let mut blocked = Vec::new();
+        for id in platforms {
+            let platform = &self.backend.bodies[native_id(id)];
+            let riders: Vec<_> = self
+                .characters
+                .iter()
+                .filter(|(_, rider)| {
+                    rider.state.grounded
+                        && rider.input.jump_speed == 0.
+                        && rider.state.ground.is_some_and(|ground| ground.body == id)
+                })
+                .map(|(&rider, _)| native_id(rider))
+                .collect();
+            let members = std::iter::once(native_id(id)).chain(riders.iter().copied());
+            let sweep_sensors = paths
+                .iter()
+                .any(|path| path.body == id && path.sweep_sensors);
+            let blocked_group = members.clone().any(|handle| {
+                self.backend.bodies[handle]
+                    .colliders()
+                    .iter()
+                    .any(|&fixture| {
+                        let collider = &self.backend.colliders[fixture];
+                        if !collider.is_enabled() || (collider.is_sensor() && !sweep_sensors) {
+                            return false;
+                        }
+                        let motion = if handle == native_id(id) {
+                            accepted_collider_motion(platform, collider, dt, &schedule)
+                        } else {
+                            let start = *collider.position();
+                            let delta = *platform.next_position()
+                                * platform
+                                    .position()
+                                    .inverse_transform_point(start.translation)
+                                - start.translation;
+                            NonlinearRigidMotion::new(
+                                start,
+                                rp::Vector::ZERO,
+                                delta,
+                                rp::Vector::ZERO,
+                            )
+                        };
+                        let bounds = motion_bounds(collider.shape(), &motion);
+                        self.backend
+                            .query_pipeline()
+                            .intersect_aabb_conservative(bounds)
+                            .any(|(other_id, other)| {
+                                if !other.is_enabled()
+                                    || other.is_sensor()
+                                    || members.clone().any(|member| other.parent() == Some(member))
+                                    || !collider.collision_groups().test(other.collision_groups())
+                                    || !self
+                                        .contact_policies
+                                        .pair_allows(Some(handle), other.parent())
+                                    || !self.contact_policies.one_way_allows(
+                                        other_id,
+                                        other,
+                                        collider.shape(),
+                                        collider.position(),
+                                    )
+                                {
+                                    return false;
+                                }
+                                let other_body =
+                                    other.parent().and_then(|id| self.backend.bodies.get(id));
+                                if other_body
+                                    .is_some_and(|body| body.is_dynamic() || !body.is_enabled())
+                                {
+                                    return false;
+                                }
+                                let other_motion = other_body.map_or_else(
+                                    || NonlinearRigidMotion::constant_position(*other.position()),
+                                    |body| accepted_collider_motion(body, other, dt, &schedule),
+                                );
+                                let hit = if motion.angvel == rp::Vector::ZERO
+                                    && other_motion.angvel == rp::Vector::ZERO
+                                {
+                                    if motion.linvel == other_motion.linvel {
+                                        return false;
+                                    }
+                                    cast_shapes(
+                                        &motion.start,
+                                        motion.linvel,
+                                        collider.shape(),
+                                        &other_motion.start,
+                                        other_motion.linvel,
+                                        other.shape(),
+                                        ShapeCastOptions {
+                                            max_time_of_impact: 1.,
+                                            stop_at_penetration: false,
+                                            ..Default::default()
+                                        },
+                                    )
+                                } else {
+                                    cast_shapes_nonlinear(
+                                        &motion,
+                                        collider.shape(),
+                                        &other_motion,
+                                        other.shape(),
+                                        0.,
+                                        1.,
+                                        false,
+                                    )
+                                };
+                                hit.is_ok_and(|hit| hit.is_some_and(|hit| hit.time_of_impact < 1.))
+                            })
+                    })
+            });
+            if blocked_group {
+                blocked.push(id);
+            }
+        }
+        for &id in &blocked {
+            let body = &mut self.backend.bodies[native_id(id)];
+            body.set_next_kinematic_position(*body.position());
+        }
+        blocked
+    }
+
+    fn separate_kcc_crowd(
         &self,
         plans: &mut [MovePlan],
         characters: &mut std::collections::BTreeMap<BodyId, CharacterRuntime>,
@@ -387,6 +597,7 @@ impl PhysicsWorld3d {
             return;
         }
         let mut cut = vec![1_f32; plans.len()];
+        let mut groups: Vec<_> = (0..plans.len()).collect();
         let swept_bounds: Vec<_> = plans
             .iter()
             .map(|plan| {
@@ -394,10 +605,14 @@ impl PhysicsWorld3d {
                 initial.merged(&initial.translated(plan.translation))
             })
             .collect();
+        let options = ShapeCastOptions {
+            max_time_of_impact: 1.,
+            stop_at_penetration: false,
+            ..ShapeCastOptions::default()
+        };
         for (i, a) in plans.iter().enumerate() {
             for (j, b) in plans.iter().enumerate().skip(i + 1) {
-                if a.translation == b.translation
-                    || !swept_bounds[i].intersects(&swept_bounds[j])
+                if !swept_bounds[i].intersects(&swept_bounds[j])
                     || !a.groups.test(b.groups)
                     || !self
                         .contact_policies
@@ -405,11 +620,16 @@ impl PhysicsWorld3d {
                 {
                     continue;
                 }
-                let options = ShapeCastOptions {
-                    max_time_of_impact: 1.,
-                    stop_at_penetration: false,
-                    ..ShapeCastOptions::default()
-                };
+                // One common fraction prevents an earlier stop from allowing a
+                // following rider to finish a different part of the same motion.
+                let left = crowd_group(&mut groups, i);
+                let right = crowd_group(&mut groups, j);
+                let group = left.min(right);
+                groups[left.max(right)] = group;
+                cut[group] = cut[left].min(cut[right]);
+                if a.translation == b.translation {
+                    continue;
+                }
                 if let Ok(Some(hit)) = cast_shapes(
                     &a.shape_pose,
                     a.translation,
@@ -419,12 +639,12 @@ impl PhysicsWorld3d {
                     b.shape.as_ref(),
                     options,
                 ) {
-                    cut[i] = cut[i].min(hit.time_of_impact);
-                    cut[j] = cut[j].min(hit.time_of_impact);
+                    cut[group] = cut[group].min(hit.time_of_impact);
                 }
             }
         }
-        for (plan, fraction) in plans.iter_mut().zip(cut) {
+        for (index, plan) in plans.iter_mut().enumerate() {
+            let fraction = cut[crowd_group(&mut groups, index)];
             if fraction < 1. {
                 plan.translation *= fraction;
                 characters
@@ -505,6 +725,14 @@ impl PhysicsWorld3d {
     }
 }
 
+fn crowd_group(parents: &mut [usize], mut index: usize) -> usize {
+    while index != parents[index] {
+        parents[index] = parents[parents[index]];
+        index = parents[index];
+    }
+    index
+}
+
 #[test]
 fn p1b_kcc_chooses_the_nearest_walkable_part_of_a_compound() {
     use crate::physics3d::{BodyDesc, BodyKind, ShapePart, WorldConfig};
@@ -577,8 +805,5 @@ fn p1b_kcc_chooses_the_nearest_walkable_part_of_a_compound() {
         controller: runtime.config.controller(),
         translation: rp::Vector::ZERO,
     };
-    assert_eq!(
-        world.experimental_ground(&plan, 0.02).unwrap().body,
-        support
-    );
+    assert_eq!(world.kcc_ground(&plan, 0.02).unwrap().body, support);
 }

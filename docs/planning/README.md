@@ -18,7 +18,7 @@
 | [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) | 사용자 승인·R1~R3, F1~F5·F5b, E1, C1(C1b·C1c·C1d 포함) 로컬 검증 완료(엔진 개선 1순위) | 남은 일은 PR CI 정리이며 [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md)로 넘겼다. |
 | [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md) | S1 완료·S1b와 S1c 로컬 검증 완료 | PR 기본 검사와 수동 브라우저 job을 각각 통합 검증한다. S2는 Studio 검사 단언을 분류하는 일부터 시작한다. |
 | [통합 3D 물리](unified-3d-physics-plan.md) | 사용자 승인·개발 진행 중 | 오픈소스 비교, Rust/Wasm 3D 백엔드 도입, 2D 평면·HD-2D 통합 및 수용 검증. 회전 상자 접촉의 운동 증명 한계(물리 실험실 4개 시나리오, 벽돌 깨기 CCD 멈춤)는 [운동 증명 방식 검토](physics-motion-proof-review.md)의 B 결정으로 처리 |
-| [3D 물리 운동 증명 방식 검토](physics-motion-proof-review.md) | B 확정·P2a 강체 전환 완료(PR #114 main 머지)·P2b 캐릭터 품질 검증에서 보류 | 외부 충격 뒤 운동량 증가와 발판의 벽 겹침을 재현했다. 캐릭터 품질 기준을 통과한 뒤 지정 경로와 투사체로 진행 |
+| [3D 물리 운동 증명 방식 검토](physics-motion-proof-review.md) | B 확정·P2a 강체 전환 완료(PR #114 main 머지)·P2b 재개 후 캐릭터 단계에서 보류 | 외부 충격 10의 운동량과 벽 앞 운반 묶음 정지 기준을 통과했다. 동적 지지체 운반과 접근 상자의 충격 전달 회귀가 남았다 |
 | [게임 개발 편의성](game-development-convenience-review.md) | 설계 후보·미착수 / 제품 결정 대기 | 외부 맵·실행 진단·reload의 실제 필요와 저장 경계 확정 |
 | [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 연동 미착수 | VX-00 최소 출력·실게임 검증 후 공용 리소스화. 외부 VFX 제작 도구와 Ferrum2D Studio를 구분 |
 | [HD-2D 후속 기능·검증](feature-candidates.md) | 설계 후보 / 환경 검증·제품 결정 대기 | 대상 씬·GPU·브라우저·성능/외형 수용 조건 확보 후 검증 또는 확장 선택. 복원한 Engine의 Data Scene 도구 재연결, 실행 중 native world 재적용 결정 포함 |

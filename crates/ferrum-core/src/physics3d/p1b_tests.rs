@@ -422,7 +422,6 @@ fn p2b_kcc_capsules_cannot_swap_places_in_one_tick() {
 }
 
 #[test]
-#[ignore = "P2b compares the trial and baseline when a platform and its rider reach a wall"]
 fn p2b_compare_platform_and_rider_at_wall() {
     for mode in MODES {
         let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
@@ -462,11 +461,23 @@ fn p2b_compare_platform_and_rider_at_wall() {
                 },
             )],
         };
+        let before_rider = world.body_state(rider).unwrap().pose;
         let result = world.step_with_kinematic_paths(&[path]);
         let platform_x = world.body_state(platform).unwrap().pose.position[0];
         let rider_x = world.body_state(rider).unwrap().pose.position[0];
         let ground = world.character_state(rider).unwrap().grounded;
-        println!("P2B_PLATFORM_WALL mode={mode:?} result={result:?} platform_x={platform_x} rider_x={rider_x} grounded={ground}");
+        let overlap = ((platform_x + 0.5).min(1.5) - (platform_x - 0.5).max(1.3)).max(0.);
+        println!("P2B_PLATFORM_WALL mode={mode:?} result={result:?} platform_x={platform_x} rider_x={rider_x} grounded={ground} overlap={overlap}");
+        result.unwrap();
+        assert!(
+            overlap <= 0.005 && ground,
+            "{mode:?}: overlap={overlap}, grounded={ground}"
+        );
+        assert_eq!(world.step_statistics().kinematic_path_stops, 1);
+        if matches!(mode, Mode::Kcc) {
+            assert_eq!(platform_x, 0.);
+            assert_eq!(world.body_state(rider).unwrap().pose, before_rider);
+        }
     }
 }
 
