@@ -1,4 +1,4 @@
-//! Test-only comparison using Rapier's KCC and ordinary rigid-body step.
+//! Test-only comparison using Rapier KCC and the ordinary rigid-body step.
 use super::*;
 use crate::physics3d::kinematic_motion::{accepted_collider_motion, motion_bounds};
 use crate::physics3d::KinematicPath;
@@ -75,6 +75,7 @@ impl PhysicsWorld3d {
         self.character_order.extend(characters.keys().copied());
         let mut plans = Vec::with_capacity(characters.len());
         for (&id, runtime) in &mut characters {
+            runtime.support_motion = None;
             if runtime.state.grounded
                 && runtime.input.jump_speed == 0.
                 && runtime
@@ -109,11 +110,17 @@ impl PhysicsWorld3d {
         }
         self.characters = characters;
         self.step_with_joints(0., 1.);
+        self.reconcile_dynamic_character_support();
         let mut characters = std::mem::take(&mut self.characters);
         for plan in &mut plans {
             let runtime = characters.get_mut(&plan.id).unwrap();
             plan.shape_pose = *self.backend.colliders[native_collider(runtime.collider)].position();
-            let support = if runtime.state.vertical_speed <= 0. {
+            let moved_up = rp::Vector::from(runtime.tick_velocity).dot(plan.controller.up) > 0.
+                && (rp::Vector::from(runtime.state.translation)
+                    - rp::Vector::from(runtime.state.carry_translation))
+                .dot(plan.controller.up)
+                    > 0.;
+            let support = if runtime.state.vertical_speed <= 0. && !moved_up {
                 self.kcc_ground(plan, runtime.config.skin_width * 2.)
             } else {
                 None
@@ -140,7 +147,7 @@ impl PhysicsWorld3d {
             compute_impact_geometry_on_penetration: true,
         };
         let shape = plan.shape.as_ref();
-        let handle = self.kcc_query(plan, plan.shape_pose, None, |queries| {
+        let handle = self.kcc_query(plan, plan.shape_pose, None, false, |queries| {
             let (first, hit) = queries.cast_shape(&plan.shape_pose, -up, shape, options)?;
             if hit.normal1.dot(up) >= min_up {
                 return Some(first);
@@ -255,7 +262,7 @@ impl PhysicsWorld3d {
                     rp::RigidBodyType::KinematicPositionBased => {
                         support.position() != support.next_position()
                     }
-                    rp::RigidBodyType::KinematicVelocityBased => {
+                    rp::RigidBodyType::KinematicVelocityBased | rp::RigidBodyType::Dynamic => {
                         support.linvel() != rp::Vector::ZERO || support.angvel() != rp::Vector::ZERO
                     }
                     _ => false,
@@ -275,14 +282,42 @@ impl PhysicsWorld3d {
             + up * walking_speed)
             * dt;
         runtime.collisions.clear();
+        let mut external = rp::Vector::from(runtime.external_velocity);
+        let mut dropped_contacts = 0;
         let pose = rp::Pose::from_translation(plan.translation) * plan.shape_pose;
-        let movement = self.kcc_query(&plan, pose, moving_support, |query| {
-            controller.move_shape(0., &query, plan.shape.as_ref(), &pose, desired, |hit| {
-                if runtime.config.push_mass > 0. && runtime.collisions.len() < 32 {
-                    runtime.collisions.push(hit);
-                }
-            })
-        });
+        let movement = self.kcc_query(
+            &plan,
+            pose,
+            moving_support,
+            desired == rp::Vector::ZERO,
+            |query| {
+                controller.move_shape(0., &query, plan.shape.as_ref(), &pose, desired, |hit| {
+                    if runtime.config.push_mass == 0. {
+                        return;
+                    }
+                    let target = &self.backend.colliders[hit.handle];
+                    let dynamic = target
+                        .parent()
+                        .is_some_and(|id| self.backend.bodies[id].is_dynamic());
+                    if !dynamic {
+                        let normal = super::super::character_geometry::collision_normal(
+                            target,
+                            plan.shape.as_ref(),
+                            &hit,
+                        );
+                        let horizontal = normal - up * normal.dot(up);
+                        if let Some(direction) = horizontal.try_normalize() {
+                            external -= direction * external.dot(direction).min(0.);
+                        }
+                    } else if runtime.collisions.len() < 32 {
+                        runtime.collisions.push(hit);
+                    } else {
+                        dropped_contacts += 1;
+                    }
+                })
+            },
+        );
+        runtime.external_velocity = external.to_array();
         plan.translation += movement.translation;
 
         // Walk against the current platform pose, then transport the resulting anchor.
@@ -307,9 +342,31 @@ impl PhysicsWorld3d {
                 }
                 _ => None,
             };
-            if let Some(next) = next {
-                let anchor = plan.shape_pose.translation + plan.translation;
-                let local = platform.position().inverse_transform_point(anchor);
+            if next.is_some() || platform.is_dynamic() {
+                let pose = rp::Pose::from_translation(plan.translation) * plan.shape_pose;
+                let shape = plan.shape.as_ref();
+                let fixture = &self.backend.colliders[native_collider(support.collider)];
+                let local = rotating_face_anchor(fixture, shape, &pose, up, platform.angvel())
+                    .or_else(|| {
+                        contact(
+                            fixture.position(),
+                            fixture.shape(),
+                            &pose,
+                            shape,
+                            runtime.config.skin_width * 2.05,
+                        )
+                        .ok()
+                        .flatten()
+                        .map(|hit| platform.position().inverse_transform_point(hit.point1))
+                    })
+                    .unwrap_or_else(|| {
+                        platform
+                            .position()
+                            .inverse_transform_point(pose.translation)
+                    });
+                let anchor = *platform.position() * local;
+                runtime.support_motion = Some((support.body, local, anchor));
+                let next = next.unwrap_or(*platform.position());
                 let delta = next * local - anchor;
                 if delta.length_squared() > 1.0e-12 {
                     carry = self
@@ -331,6 +388,7 @@ impl PhysicsWorld3d {
             vertical_speed: if hit_ceiling { 0. } else { vertical_speed },
             sliding: movement.is_sliding_down_slope,
             hit_ceiling,
+            dropped_contacts,
             carried_by,
             carry_translation: carry.to_array(),
             ..CharacterState::default()
@@ -343,6 +401,7 @@ impl PhysicsWorld3d {
         plan: &MovePlan,
         pose: rp::Pose,
         ignore: Option<rp::RigidBodyHandle>,
+        exclude_dynamic: bool,
         query: impl FnOnce(rp::QueryPipeline<'_>) -> T,
     ) -> T {
         let allowed = |handle, c: &rp::Collider| {
@@ -362,8 +421,13 @@ impl PhysicsWorld3d {
                     .contact_policies
                     .one_way_allows(handle, c, plan.shape.as_ref(), &pose)
         };
+        let mut flags = rp::QueryFilterFlags::EXCLUDE_SENSORS;
+        if exclude_dynamic {
+            // Rapier separates incoming dynamic bodies from the kinematic actor.
+            flags |= rp::QueryFilterFlags::EXCLUDE_DYNAMIC;
+        }
         query(self.backend.query_pipeline_with_filter(rp::QueryFilter {
-            flags: rp::QueryFilterFlags::EXCLUDE_SENSORS,
+            flags,
             groups: Some(plan.groups),
             exclude_rigid_body: Some(native_id(plan.id)),
             predicate: Some(&allowed),
@@ -380,7 +444,7 @@ impl PhysicsWorld3d {
     ) -> EffectiveCharacterMovement {
         let pose = rp::Pose::from_translation(plan.translation) * plan.shape_pose;
         // Platform transport is applied explicitly. A zero query dt disables KCC surface friction.
-        self.kcc_query(plan, pose, ignore, |q| {
+        self.kcc_query(plan, pose, ignore, desired == rp::Vector::ZERO, |q| {
             controller.move_shape(0., &q, plan.shape.as_ref(), &pose, desired, |_| {})
         })
     }
@@ -630,6 +694,16 @@ impl PhysicsWorld3d {
                 if a.translation == b.translation {
                     continue;
                 }
+                characters
+                    .get_mut(&a.id)
+                    .unwrap()
+                    .state
+                    .character_pair_casts += 1;
+                characters
+                    .get_mut(&b.id)
+                    .unwrap()
+                    .state
+                    .character_pair_casts += 1;
                 if let Ok(Some(hit)) = cast_shapes(
                     &a.shape_pose,
                     a.translation,
@@ -647,11 +721,16 @@ impl PhysicsWorld3d {
             let fraction = cut[crowd_group(&mut groups, index)];
             if fraction < 1. {
                 plan.translation *= fraction;
-                characters
-                    .get_mut(&plan.id)
-                    .unwrap()
-                    .state
-                    .blocked_by_character = true;
+                let runtime = characters.get_mut(&plan.id).unwrap();
+                runtime.state.blocked_by_character = true;
+                runtime.state.carry_translation =
+                    (rp::Vector::from(runtime.state.carry_translation) * fraction).to_array();
+                let end = plan.shape_pose.translation + plan.translation;
+                // A peer can stop us before a proposed hit on a dynamic body.
+                runtime.collisions.retain(|hit| {
+                    (end - hit.character_pos.translation).dot(hit.hit.normal1)
+                        <= runtime.config.skin_width * 0.01
+                });
             }
         }
         let mut corrections = vec![rp::Vector::ZERO; plans.len()];
@@ -674,6 +753,16 @@ impl PhysicsWorld3d {
                     {
                         continue;
                     }
+                    characters
+                        .get_mut(&a.id)
+                        .unwrap()
+                        .state
+                        .character_pair_contact_checks += 1;
+                    characters
+                        .get_mut(&b.id)
+                        .unwrap()
+                        .state
+                        .character_pair_contact_checks += 1;
                     let Some(hit) = contact(
                         &poses[i].0,
                         a.shape.as_ref(),

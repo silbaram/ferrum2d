@@ -106,8 +106,7 @@ fn locomotion_does_not_hit_the_old_pose_of_a_receding_wall() {
     w.step();
     assert!((w.body_state(a).unwrap().pose.position[0] - 2.0).abs() < 0.001);
 }
-#[test]
-fn fast_incoming_wall_pushes_an_idle_capsule_without_passing_through() {
+fn incoming_wall_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
     let mut w = world();
     let a = actor(&mut w, pose(0.0, 0.0, 0.0));
     let wall = block(
@@ -117,9 +116,28 @@ fn fast_incoming_wall_pushes_an_idle_capsule_without_passing_through() {
         [0.25, 2.0, 5.0],
     );
     w.set_kinematic_target(wall, pose(-3.0, 0.0, 0.0)).unwrap();
+    (w, a, wall)
+}
+
+#[test]
+fn fast_incoming_wall_pushes_an_idle_capsule_without_passing_through() {
+    let (mut w, a, _) = incoming_wall_fixture();
     w.step();
     let p = w.body_state(a).unwrap().pose.position;
     assert!((p[0] + 3.51).abs() < 0.02, "{p:?}");
+}
+
+#[test]
+#[ignore = "P2b records the KCC candidate's prescribed kinematic wall regression"]
+fn p2b_compare_incoming_kinematic_wall() {
+    for mode in super::p1b_tests::MODES {
+        let (mut w, a, wall) = incoming_wall_fixture();
+        mode.configure(&mut w);
+        w.step_checked().unwrap();
+        let actor_x = w.body_state(a).unwrap().pose.position[0];
+        let wall_x = w.body_state(wall).unwrap().pose.position[0];
+        println!("P2B_KINEMATIC_WALL mode={mode:?} actor_x={actor_x} wall_x={wall_x}");
+    }
 }
 #[test]
 fn incoming_wall_preserves_the_capsules_tangent_locomotion() {
