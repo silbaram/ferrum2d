@@ -52,12 +52,18 @@ impl PhysicsWorld3d {
         if self.character_motion.p1b_ticks.is_none() {
             return self.step_with_kinematic_paths(paths);
         }
+        // Path validation can return before the physics clock is reset for this attempt.
+        self.character_motion.p1b_tick_started = false;
         let start = (!cfg!(debug_assertions)).then(Instant::now);
         let result = self.step_with_kinematic_paths(paths);
         let time_us = start.map(|t| t.elapsed().as_secs_f64() * 1e6);
         let sample = TickSample {
             error: result.err(),
-            completed: self.actual_motion_completed_time(),
+            completed: if self.character_motion.p1b_tick_started {
+                self.actual_motion_completed_time()
+            } else {
+                0.
+            },
             overlap: self.p1b_character_overlap(),
             time_us,
         };
@@ -198,6 +204,134 @@ fn character(world: &mut PhysicsWorld3d, position: [f32; 3]) -> BodyId {
         .enable_character(id, CharacterConfig::default())
         .unwrap();
     id
+}
+
+#[test]
+fn p1b_kcc_keeps_support_when_the_platform_descends_and_reverses() {
+    let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+    let platform = body(
+        &mut world,
+        BodyKind::KinematicPosition,
+        [0.; 3],
+        Shape::Box {
+            half_extents: [2.5, 0.2, 2.5],
+        },
+    );
+    let rider = character(&mut world, [0., 0.959, 0.]);
+    Mode::Kcc.configure(&mut world);
+    for _ in 0..4 {
+        world.step_checked().unwrap();
+    }
+    let initial_y = world.body_state(rider).unwrap().pose.position[1];
+    let mut previous_y = 0.;
+    for y in [-0.05, -0.1, -0.15, -0.1, -0.05, 0.] {
+        let path = KinematicPath {
+            body: platform,
+            sweep_sensors: false,
+            knots: vec![(
+                1.,
+                Pose {
+                    position: [0., y, 0.],
+                    ..Pose::default()
+                },
+            )],
+        };
+        world.step_with_kinematic_paths(&[path]).unwrap();
+        let at = world.body_state(rider).unwrap().pose.position[1];
+        let state = world.character_state(rider).unwrap();
+        assert_eq!(state.ground.unwrap().body, platform, "support at y={y}");
+        assert_eq!(state.carried_by, Some(platform));
+        assert!((state.carry_translation[1] - (y - previous_y)).abs() < 1.0e-5);
+        assert!(
+            (at - y - initial_y).abs() < 1.0e-5,
+            "rider at {at}, platform at {y}"
+        );
+        previous_y = y;
+    }
+}
+
+#[test]
+fn p1b_kcc_finds_walkable_ground_past_an_overlapping_wall() {
+    let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+    let floor = body(
+        &mut world,
+        BodyKind::Fixed,
+        [0., -0.1, 0.],
+        Shape::Box {
+            half_extents: [4., 0.1, 4.],
+        },
+    );
+    let wall = body(
+        &mut world,
+        BodyKind::KinematicPosition,
+        [0.52, 1., 0.],
+        Shape::Box {
+            half_extents: [0.25, 2., 2.],
+        },
+    );
+    let rider = character(&mut world, [0., 0.759, 0.]);
+    Mode::Kcc.configure(&mut world);
+    for _ in 0..4 {
+        world.step_checked().unwrap();
+    }
+    assert_eq!(
+        world.character_state(rider).unwrap().ground.unwrap().body,
+        floor
+    );
+    world
+        .set_kinematic_target(
+            wall,
+            Pose {
+                position: [0.49, 1., 0.],
+                ..Pose::default()
+            },
+        )
+        .unwrap();
+    world.step_checked().unwrap();
+    let position = world.body_state(rider).unwrap().pose.position;
+    assert!(
+        position[0] + 0.25 > 0.49 - 0.25,
+        "wall must overlap the rider"
+    );
+    assert_eq!(
+        world.character_state(rider).unwrap().ground.unwrap().body,
+        floor
+    );
+}
+
+#[test]
+fn p1b_observer_records_zero_time_for_an_invalid_path() {
+    for mode in MODES {
+        let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+        let platform = body(
+            &mut world,
+            BodyKind::KinematicPosition,
+            [0.; 3],
+            Shape::Box {
+                half_extents: [2.5, 0.2, 2.5],
+            },
+        );
+        character(&mut world, [0., 0.959, 0.]);
+        mode.configure(&mut world);
+        world.observe_p1b_ticks();
+        world.p1b_step_observed(&[]).unwrap();
+        let invalid = KinematicPath {
+            body: platform,
+            sweep_sensors: false,
+            knots: vec![(0.5, Pose::default())],
+        };
+        assert_eq!(
+            world.p1b_step_observed(&[invalid]),
+            Err(PhysicsError::InvalidBody)
+        );
+        world.p1b_step_observed(&[]).unwrap();
+        let samples = world.take_p1b_ticks();
+        let dt = f64::from(world.config().step_seconds);
+        assert_eq!(samples[0].completed, dt);
+        assert_eq!(samples[1].error, Some(PhysicsError::InvalidBody));
+        assert_eq!(samples[1].completed, 0.);
+        assert_eq!(samples[2].completed, dt);
+    }
 }
 
 #[test]

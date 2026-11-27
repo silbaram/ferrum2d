@@ -5796,6 +5796,10 @@ impl PhysicsWorld3d {
         }
     }
     pub(in crate::physics3d) fn begin_backend_motion_tick(&mut self) {
+        #[cfg(test)]
+        {
+            self.character_motion.p1b_tick_started = true;
+        }
         self.character_motion.backend_motion.begin_tick();
     }
     pub(in crate::physics3d) fn backend_motion_enabled(&self) -> bool {
@@ -5815,7 +5819,7 @@ impl PhysicsWorld3d {
         }
         #[cfg(test)]
         if self.character_motion.experiment
-            == crate::physics3d::character::experimental::Experiment::RigidRapier
+            == crate::physics3d::character::experimental_tests::Experiment::RigidRapier
         {
             return false;
         }

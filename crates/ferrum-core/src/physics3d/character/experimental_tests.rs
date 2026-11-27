@@ -2,7 +2,10 @@
 use super::*;
 use crate::physics3d::KinematicPath;
 use rapier3d::control::EffectiveCharacterMovement;
-use rapier3d::parry::{bounding_volume::BoundingVolume, query::contact};
+use rapier3d::parry::{
+    bounding_volume::BoundingVolume,
+    query::{cast_shapes, contact},
+};
 
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
 pub(in crate::physics3d) enum Experiment {
@@ -70,26 +73,11 @@ impl PhysicsWorld3d {
         for plan in &mut plans {
             let runtime = characters.get_mut(&plan.id).unwrap();
             plan.shape_pose = *self.backend.colliders[native_collider(runtime.collider)].position();
-            let up = plan.controller.up;
-            let support = (runtime.state.vertical_speed <= 0.)
-                .then(|| {
-                    self.kcc_query(plan, plan.shape_pose, None, |queries| {
-                        queries.cast_shape(
-                            &plan.shape_pose,
-                            -up,
-                            plan.shape.as_ref(),
-                            ShapeCastOptions {
-                                max_time_of_impact: runtime.config.skin_width * 2.,
-                                target_distance: 0.,
-                                stop_at_penetration: true,
-                                compute_impact_geometry_on_penetration: true,
-                            },
-                        )
-                    })
-                })
-                .flatten()
-                .filter(|(_, hit)| hit.normal1.dot(up) >= runtime.config.max_slope_angle.cos())
-                .and_then(|(handle, _)| collider_ref(handle, &self.backend.colliders[handle]));
+            let support = if runtime.state.vertical_speed <= 0. {
+                self.experimental_ground(plan, runtime.config.skin_width * 2.)
+            } else {
+                None
+            };
             runtime.state.ground = support;
             runtime.state.grounded = support.is_some();
             if support.is_some() {
@@ -102,6 +90,73 @@ impl PhysicsWorld3d {
         self.finish_statistics();
         self.end_backend_motion_tick();
         self.actual_motion_result()
+    }
+
+    fn experimental_ground(&self, plan: &MovePlan, distance: f32) -> Option<ColliderRef> {
+        let up = plan.controller.up;
+        let min_up = plan.controller.max_slope_climb_angle.cos();
+        let options = ShapeCastOptions {
+            max_time_of_impact: distance,
+            target_distance: 0.,
+            stop_at_penetration: true,
+            compute_impact_geometry_on_penetration: true,
+        };
+        let shape = plan.shape.as_ref();
+        let handle = self.kcc_query(plan, plan.shape_pose, None, |queries| {
+            let (first, hit) = queries.cast_shape(&plan.shape_pose, -up, shape, options)?;
+            if hit.normal1.dot(up) >= min_up {
+                return Some(first);
+            }
+            // A wall can win the down cast at time zero. Filter by slope before
+            // ranking the remaining hits, including parts of that collider.
+            let bounds = shape.compute_aabb(&plan.shape_pose);
+            let sweep = bounds.merged(&bounds.translated(-up * distance));
+            let cast = |pose: &rp::Pose, target: &dyn rp::Shape| {
+                cast_shapes(
+                    pose,
+                    rp::Vector::ZERO,
+                    target,
+                    &plan.shape_pose,
+                    -up,
+                    shape,
+                    options,
+                )
+                .ok()
+                .flatten()
+                .filter(|hit| (pose.rotation * hit.normal1).dot(up) >= min_up)
+                .map(|hit| hit.time_of_impact)
+            };
+            queries
+                .intersect_aabb_conservative(sweep)
+                .filter_map(|(id, collider)| {
+                    let pose = collider.position();
+                    let target = collider.shape();
+                    let time = if let Some(composite) = target.as_composite_shape() {
+                        let bounds = shape.compute_aabb(&pose.inv_mul(&plan.shape_pose));
+                        let local_travel = pose.rotation.inverse() * (-up * distance);
+                        let bounds = bounds.merged(&bounds.translated(local_travel));
+                        let mut best = None;
+                        for id in composite.bvh().intersect_aabb(&bounds) {
+                            composite.map_part_at(id, &mut |offset, part, _| {
+                                let part_pose = offset.map_or(*pose, |p| pose * p);
+                                if let Some(time) = cast(&part_pose, part) {
+                                    best = Some(best.map_or(time, |old| f32::min(old, time)));
+                                }
+                            });
+                        }
+                        best
+                    } else {
+                        cast(pose, target)
+                    }?;
+                    Some((time, id))
+                })
+                .min_by(|(a, a_id), (b, b_id)| {
+                    a.total_cmp(b)
+                        .then_with(|| collider_id(*a_id).cmp(&collider_id(*b_id)))
+                })
+                .map(|(_, id)| id)
+        })?;
+        collider_ref(handle, &self.backend.colliders[handle])
     }
 
     fn kcc_plan(&self, id: BodyId, runtime: &mut CharacterRuntime, dt: f32) -> Option<MovePlan> {
@@ -146,6 +201,18 @@ impl PhysicsWorld3d {
         plan.translation = self
             .kcc_move(&plan, simple, rp::Vector::ZERO, None)
             .translation;
+        let mut controller = plan.controller;
+        if !grounded || jump > 0. {
+            controller.snap_to_ground = None;
+        }
+        let desired = (rp::Vector::from(runtime.input.velocity)
+            + rp::Vector::from(runtime.tick_velocity)
+            + up * walking_speed)
+            * dt;
+        let movement = self.kcc_move(&plan, controller, desired, None);
+        plan.translation += movement.translation;
+
+        // Walk against the current platform pose, then transport the resulting anchor.
         let mut carried_by = None;
         let mut carry = rp::Vector::ZERO;
         if let Some((support, platform)) = runtime
@@ -176,20 +243,12 @@ impl PhysicsWorld3d {
                         .kcc_move(&plan, simple, delta, Some(handle))
                         .translation;
                     plan.translation += carry;
-                    carried_by = Some(support.body);
+                    if carry.length_squared() > 1.0e-12 {
+                        carried_by = Some(support.body);
+                    }
                 }
             }
         }
-        let mut controller = plan.controller;
-        if !grounded || jump > 0. {
-            controller.snap_to_ground = None;
-        }
-        let desired = (rp::Vector::from(runtime.input.velocity)
-            + rp::Vector::from(runtime.tick_velocity)
-            + up * walking_speed)
-            * dt;
-        let movement = self.kcc_move(&plan, controller, desired, None);
-        plan.translation += movement.translation;
         if self.config.space == Space::PlanarXy {
             plan.translation.z = 0.;
         }
@@ -330,4 +389,82 @@ impl PhysicsWorld3d {
             }
         }
     }
+}
+
+#[test]
+fn p1b_kcc_chooses_the_nearest_walkable_part_of_a_compound() {
+    use crate::physics3d::{BodyDesc, BodyKind, ShapePart, WorldConfig};
+
+    let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+    let part = |position, half_extents| ShapePart {
+        pose: Pose {
+            position,
+            ..Pose::default()
+        },
+        shape: Shape::Box { half_extents },
+    };
+    let support = world
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Compound {
+                parts: vec![
+                    part([0.49, 1., 0.], [0.25, 2., 2.]),
+                    part([0., -0.1, 0.], [4., 0.1, 4.]),
+                ],
+            }),
+        )
+        .unwrap();
+    world
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                pose: Pose {
+                    position: [0., -0.105, 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [4., 0.1, 4.],
+            }),
+        )
+        .unwrap();
+    let id = world
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::KinematicPosition,
+                pose: Pose {
+                    position: [0., 0.759, 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Capsule {
+                half_height: 0.5,
+                radius: 0.25,
+            }),
+        )
+        .unwrap();
+    world
+        .enable_character(id, CharacterConfig::default())
+        .unwrap();
+    world.refresh_queries();
+    let runtime = &world.characters[&id];
+    let collider = &world.backend.colliders[native_collider(runtime.collider)];
+    let plan = MovePlan {
+        id,
+        body_pose: *world.backend.bodies[native_id(id)].position(),
+        shape_pose: *collider.position(),
+        shape: collider.shared_shape().clone(),
+        groups: collider.collision_groups(),
+        controller: runtime.config.controller(),
+        translation: rp::Vector::ZERO,
+    };
+    assert_eq!(
+        world.experimental_ground(&plan, 0.02).unwrap().body,
+        support
+    );
 }
