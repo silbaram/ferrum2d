@@ -5799,20 +5799,27 @@ impl PhysicsWorld3d {
         self.character_motion.backend_motion.begin_tick();
     }
     pub(in crate::physics3d) fn backend_motion_enabled(&self) -> bool {
-        self.step_motion.enabled
+        if self.step_motion.enabled
             || !self.characters.is_empty()
             || !self
                 .character_motion
                 .backend_motion
                 .prescribed_paths
                 .is_empty()
-            || (self.config.solver.continuous
-                && self.backend.bodies.iter().any(|(_, body)| {
-                    // Linear force/constraint kernels need the same actual
-                    // coverage as rotating ones; orientation invariance is
-                    // not a certificate for a whole-pass endpoint chord.
-                    body.is_enabled() && body.is_dynamic()
-                }))
+        {
+            return true;
+        }
+        #[cfg(test)]
+        if self.character_motion.experimental_rigid_rapier_ccd {
+            return false;
+        }
+        self.config.solver.continuous
+            && self.backend.bodies.iter().any(|(_, body)| {
+                // Linear force/constraint kernels need the same actual
+                // coverage as rotating ones; orientation invariance is
+                // not a certificate for a whole-pass endpoint chord.
+                body.is_enabled() && body.is_dynamic()
+            })
     }
 
     pub(in crate::physics3d) fn prepare_backend_motion(

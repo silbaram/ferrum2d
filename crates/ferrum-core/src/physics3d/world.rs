@@ -9,6 +9,8 @@ use super::{
 use rapier3d::prelude as rp;
 use std::collections::BTreeMap;
 use std::fmt;
+#[cfg(test)]
+mod p1a_tests;
 pub(super) mod tick_outputs;
 
 /// Rust-owned simulation. Space selection changes constraints, not the solver backend.
@@ -134,6 +136,11 @@ impl PhysicsWorld3d {
     pub(crate) fn nominal_step_seconds(&self) -> f32 {
         self.interval_nominal_seconds
             .unwrap_or(self.config.step_seconds)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn enable_experimental_rigid_rapier_ccd(&mut self) {
+        self.character_motion.experimental_rigid_rapier_ccd = true;
     }
 
     pub(crate) fn has_active_interval(&self) -> bool {
