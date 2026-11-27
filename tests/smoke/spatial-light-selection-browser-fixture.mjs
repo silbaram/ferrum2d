@@ -24,7 +24,7 @@ async function probe(backend, projection, colorManagement, pinned, presentationO
   const makeEngine = async () => {
     const instance = await createEngine(state => {
       frame = state; packet = { ...state.renderCommandBuffer, buffer: state.renderCommandBuffer.buffer.slice(), spatial: ownedSpatial(state.renderCommandBuffer.spatial) };
-    }, undefined, undefined, () => renderer.viewportSize());
+    }, undefined, undefined, () => renderer.viewportSize(), { physicsBackend: "legacy" });
     instance.configureFixedTimestep(false); engines.push(instance); return instance;
   };
   const camera = x => ({ projection, position: { x, y: -220, elevation: 164 }, target: { x, y: 0, elevation: 64 },

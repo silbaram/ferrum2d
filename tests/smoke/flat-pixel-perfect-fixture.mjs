@@ -76,7 +76,7 @@ export async function probeFlatPixels(preferred, colorManagement = 'legacy') {
     document.body.append(canvas);
     const renderer = await createRenderer(canvas, { preferred, colorManagement, pixelPerfect: config, webgl2: { preserveDrawingBuffer: true }, fallbackBehavior: 'silent' });
     const backend = typeof renderer.gpuDevice === 'function' ? 'webgpu' : 'webgl2';
-    check(backend === (colorManagement === 'linear-srgb' ? 'webgl2' : preferred), 'backend selection');
+    check(backend === preferred, `expected ${preferred} for ${colorManagement}, got ${backend}`);
     const device = backend === 'webgpu' ? renderer.gpuDevice() : undefined, errors = [];
     device?.addEventListener('uncapturederror', event => errors.push(event.error.message));
     let final;

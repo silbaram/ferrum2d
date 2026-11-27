@@ -33,6 +33,7 @@ export function installPlacementViewportNavigation(options: {
   navigationSettings?: HTMLElement;
   viewer: ScenePlacementViewer;
   onChange(state: ScenePlacementViewerState): unknown;
+  resizePresentation?(): void;
   isEditing(): boolean;
 }) {
   const { runtime, canvas, stage, viewer } = options;
@@ -124,15 +125,18 @@ export function installPlacementViewportNavigation(options: {
     if (notify) options.onChange(state);
     return state;
   }
-  function apply(camera: PlacementEditCamera, notify = true) {
-    view.setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.zoom)));
-    view.setCamera({
-      x: Math.max(-CAMERA_LIMIT, Math.min(CAMERA_LIMIT, camera.x)),
-      y: Math.max(-CAMERA_LIMIT, Math.min(CAMERA_LIMIT, camera.y)),
-      smoothTimeSeconds: 0,
-    });
+  function applyPresentation(camera: { x: number; y: number; zoom?: number }) {
+    if (camera.zoom !== undefined) view.setZoom(camera.zoom);
+    view.setCamera({ x: camera.x, y: camera.y, smoothTimeSeconds: 0 });
     // A stale world pointer must not leave an Add ghost at its former camera location.
     viewer.pointerAtScreen();
+  }
+  function apply(camera: PlacementEditCamera, notify = true) {
+    applyPresentation({
+      x: Math.max(-CAMERA_LIMIT, Math.min(CAMERA_LIMIT, camera.x)),
+      y: Math.max(-CAMERA_LIMIT, Math.min(CAMERA_LIMIT, camera.y)),
+      zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.zoom)),
+    });
     if(notify)refresh();
   }
   function restore(camera: PlacementEditCamera = initial) {
@@ -380,6 +384,7 @@ export function installPlacementViewportNavigation(options: {
   });
   const observer = new ResizeObserver(() => {
     try {
+      options.resizePresentation?.();
       refresh();
     } catch (error) {
       // A native preview can still be unavailable while an edit awaits retry.
@@ -405,6 +410,8 @@ export function installPlacementViewportNavigation(options: {
     snapshot,
     restore,
     restorePresentation: (camera: PlacementEditCamera) => apply(camera,false),
+    applyPresentation,
+    setPresentationZoom: view.setZoom,
     cancelGesture,
     refresh,
     isNavigationGesture,

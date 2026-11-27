@@ -16,7 +16,8 @@ export async function startNativeScene(canvas) {
     sceneComposition: { initialFragment: "island", prefabs: { object: {} }, fragments: { island: { instances: [
       instance("ground", 800, 600, -10, { texture: 1, width: 2400, height: 1800, tint: "#008800" }, { collider: "none", layer: "wall" }),
       instance("actor", 800, 600, 0, { texture: 2, originY: 1, tint: "#ff0000", depthSort: "hd2d" },
-        { body: { type: "kinematic", heightSpan: { floorId: 0, elevation: 0, height: 1 } } }),
+        { collider: { type: "aabb", halfWidth: 8, halfHeight: 8, isTrigger: false },
+          body: { type: "kinematic", heightSpan: { floorId: 0, elevation: 0, height: 1 } } }),
       instance("tree", 800, 620, 0, { texture: 3, width: 64, height: 120, originY: 1, tint: "#0000ff", depthSort: "hd2d" }, { collider: "none", layer: "wall" }),
       instance("shell", 850, 650, 0, { texture: 4, width: 12, height: 12, tint: "#ffff00" },
         { collider: { type: "circle", radius: 6, isTrigger: true }, layer: "pickup" }),
@@ -50,7 +51,7 @@ export async function startNativeScene(canvas) {
     apply();
     const move = (dx, dy) => {
       const moved = engine.moveHd2dKinematicBodyWithTilemap(actor, { displacementX: dx, displacementY: dy, solidMaskBits: 8 });
-      if (!moved) throw new Error("Expected a current kinematic actor with a height span");
+      if (!moved) throw new Error("Expected a current solid AABB kinematic actor with a height span");
       light.x = moved.body.x; light.y = moved.body.y;
       return moved.body;
     };

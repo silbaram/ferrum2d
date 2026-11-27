@@ -6,8 +6,24 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ## Unreleased
 
+### Added
+
+- `createFerrumRuntime`에서 시작 에셋을 Data Scene 적용 전에 읽고 진행률과 결과를 제공한다.
+  시작을 `AbortSignal`로 취소할 수 있으며, 실제 렌더러 종류와 WebGPU 대체 정보를 조회할 수 있다.
+- 평면 Data Scene에서 `display.fit`이나 런타임 `fit` 기본값으로 월드 사각형을 캔버스에 맞출 수 있다.
+  `runtime.dataScene.view`는 씬을 다시 적용하거나 전환한 뒤에도 현재 카메라와 배율로 좌표를 변환한다.
+- Ferrum2D Studio의 게임 미리보기와 실행에서 씬의 `display.fit`을 적용한다. 2D로 돌아오면 편집 카메라와 배율을 복원한다.
+- `createFerrumRuntime({ releaseCanvasContext: true })`는 런타임 전용 캔버스의 GPU 컨텍스트를 종료하거나 시작에 실패할 때 해제한다.
+
 ### Fixed
 
+- Data Scene 적용 중 조명 사전 검증이 이미 해석한 문서를 재사용해 중복 검증 비용을 줄였다.
+- Data Scene을 적용하거나 장면 상태를 복원할 때 조명 사전 검증도 호출자가 선택한 프래그먼트에서 탐색 장애물을 확인한다.
+- 공간 씬 아틀라스 스모크를 고정 시간 입력으로 실행하고 스프라이트 애니메이션 스모크를 게임 루프의 짧은 간격 누적과 지원되는 진행 저장 경로에 맞췄다.
+- 공간 렌더링과 HD-2D 전투 스모크가 지원되는 장면 상태·진행 저장을 사용하도록 고쳤다. 장치 복구·픽셀·핸들 및 전투 체크포인트 회귀 검사를 유지한다.
+- WebGPU 장치 복구 중 캔버스 크기가 바뀌면 복구 완료 후 최신 크기에 맞춰 배율을 갱신한다. 게임 카메라 위치와 일시 정지 상태를 유지한다.
+- 픽셀 퍼펙트 스모크에서 타일 검사에 레거시 Shooter 스냅샷을 사용하고 `linear-srgb` 검사에서 WebGPU 출력을 확인하도록 고쳤다.
+- 평면 native 물리에서 Data Scene 레시피의 HD-2D actor가 이동하도록 solid AABB 콜라이더를 명시하고 문서 예시도 맞췄다.
 - Linux Studio `.deb`의 Debian 패키지 이름을 `ferrum2d-studio`로 고정했다. beta.10은 Tauri가 제품명에서 만든
   `ferrum2-d-studio`였으며, 새 패키지가 이 이름을 `Replaces`/`Conflicts`로 대체해 업그레이드 설치 시 함께 정리한다.
 - SDK 게임 루프가 0.1ms보다 짧은 브라우저 프레임 간격을 받으면 native 가변 시계가 거부해 멈추던 문제를 고쳤다.
@@ -37,6 +53,8 @@ GitHub staging의 네 설치 package는 `0.1.0-beta.10`으로 맞춘다.
 
 ### Changed
 
+- `main` 대상 PR에서 CI 기본 검증을 실행하고, TypeScript 검사와 스모크가 같은 빌드 산출물을 사용한다.
+- 예제 사이트의 스프라이트 그리기, 충돌과 트리거, 벽돌 깨기가 렌더러·에셋 준비, 화면 맞춤, 캔버스 컨텍스트 해제를 런타임에 맡긴다.
 - Ferrum2D 개발·CI와 게임 생성·에이전트 CLI의 최소 버전을 Node.js 24로 올렸다.
   개발 저장소와 GitHub Actions는 Node.js 24 LTS를 사용한다.
 - 출시 전 Studio 명칭을 패키지·명령·소스 경로·배포 파일에 적용했다. 보조 라이브러리는

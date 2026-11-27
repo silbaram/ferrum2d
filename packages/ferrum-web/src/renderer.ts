@@ -247,6 +247,8 @@ export interface Renderer {
   setPostProcess?(postProcess: PostProcessStackInput): void;
   renderPostProcess?(postProcess?: PostProcessStackInput): RendererStats;
   destroy(): void;
+  /** Release a dedicated canvas context after destroying the renderer. */
+  releaseContext?(): void;
 }
 
 export function emptyRendererStats(): RendererStats {

@@ -1,4 +1,5 @@
 import type { ShaderPreparationOptions } from "./shaderPreparation";
+import type { AssetLoadOptions, AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "./assetLoader.js";
 import { BrowserPlatformHost } from "./browserPlatformHost.js";
 import { createEngineWithFramePipeline } from "./createEngine.js";
 import { initializeFerrumWasm } from "./initializeFerrumWasm.js";
@@ -29,9 +30,12 @@ import type {
   FerrumRuntimeLevelStreamingTarget,
 } from "./levelStreamingRuntime.js";
 import { LevelChunkStreamer } from "./levelStreamingStreamer.js";
-import { createRenderer, resolveRendererColorManagement, resolveRendererPixelPerfect } from "./createRenderer.js";
+import { createRuntimeRenderer, resolveRendererColorManagement, resolveRendererPixelPerfect } from "./createRenderer.js";
+import type { RendererFallbackInfo } from "./createRenderer.js";
 import { pixelPerfectPointToViewport, type PixelPerfectOptions } from "./pixelPerfect.js";
-import { resolveSceneDisplay } from "./sceneDisplay.js";
+import { resolveSceneDisplay, resolveSceneFit, type SceneFitSpec } from "./sceneDisplay.js";
+import { bindDataSceneView, fitDataSceneZoom, type DataSceneView } from "./dataSceneView.js";
+import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { RendererStats } from "./renderer.js";
 import type { FerrumRuntimeRenderer } from "./runtimeRenderer.js";
 import { AnimationTimelinePlayer } from "./animationTimeline.js";
@@ -81,14 +85,15 @@ import { createHudOverlayState } from "./hudToolkit.js";
 import type { CreateHudOverlayStateOptions, HudComponentSpec } from "./hudToolkit.js";
 import { UiOverlay } from "./uiOverlay.js";
 import type { UiOverlayActionEvent, UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
-import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
+import { WebGL2Renderer, type WebGL2RendererOptions } from "./webgl2Renderer.js";
 import type { ColorManagementMode } from "./colorManagement.js";
-import type { WebGPURendererOptions } from "./webgpuRenderer.js";
+import { observeWebGpuDeviceRecovery, WebGPURenderer, type WebGPURendererOptions } from "./webgpuRenderer.js";
 import type { PhysicsDebugLineBufferView } from "./wasmBridge.js";
 import { RuntimeFrameRenderer } from "./runtimeFrameRenderer.js";
 import { playRuntimeCutsceneAudio } from "./runtimeCutsceneAudio.js";
 import {
   applyDataSceneAuthoringDocument,
+  applyDataSceneAuthoringDocumentWithCommit,
   type ApplyDataSceneAuthoringDocumentOptions,
   type ApplyDataSceneAuthoringDocumentResult,
 } from "./dataSceneRuntimeTarget.js";
@@ -256,6 +261,8 @@ export interface FerrumRuntimeDataSceneOptions extends ApplyDataSceneAuthoringDo
 export interface FerrumRuntimeDataScene {
   readonly result: ApplyDataSceneAuthoringDocumentResult;
   readonly variables: DataSceneVariableStore;
+  /** View bound to this runtime, including after a scene reapply or transition. */
+  readonly view: DataSceneView;
   document(): ApplyDataSceneAuthoringDocumentResult["document"];
   state(): DataSceneGameState | undefined;
   pause(): boolean;
@@ -274,6 +281,8 @@ export interface FerrumRuntimeDataScene {
 export interface FerrumRuntimeOptions {
   /** Flat 2D default; per-scene display.pixelPerfect overrides it (including false). */
   pixelPerfect?: PixelPerfectOptions | false;
+  /** Flat Data Scene fit default; each document can override or disable it. */
+  fit?: SceneFitSpec | false;
   canvas: HTMLCanvasElement;
   webgl2?: WebGL2RendererOptions;
   /** Applied when this runtime creates its renderer. */
@@ -281,10 +290,22 @@ export interface FerrumRuntimeOptions {
   webgpu?: WebGPURendererOptions;
   shaderPreparation?: ShaderPreparationOptions;
   rendererPreference?: "webgl2" | "webgpu";
+  /** Reports WebGPU fallback when the runtime creates its renderer. */
+  onRendererFallback?: (info: RendererFallbackInfo) => void;
   renderer?: FerrumRuntimeRenderer;
+  /** Release the dedicated canvas context on destroy or failed startup. Defaults to false. */
+  releaseCanvasContext?: boolean;
   input?: InputManager;
   inputOptions?: InputManagerOptions;
   assetHost?: AssetHost;
+  /** Loaded into this runtime's asset host before the initial Data Scene is applied. */
+  assets?: AssetManifest;
+  /** Options for the startup manifest. Cancellation uses the startup signal. */
+  assetLoadOptions?: Omit<AssetLoadOptions, "signal">;
+  /** Reports progress for the startup manifest. */
+  onAssetProgress?: AssetLoadProgressCallback;
+  /** Cancels startup only. A successfully created runtime is destroyed by its caller. */
+  signal?: AbortSignal;
   debugParent?: HTMLElement;
   debug?: boolean | DebugOverlayOptions;
   uiParent?: HTMLElement;
@@ -325,8 +346,12 @@ export interface FerrumRuntimeOptions {
 export interface FerrumRuntime {
   engine: FerrumEngine;
   renderer: FerrumRuntimeRenderer;
+  /** The active renderer backend, or "custom" for an unrecognized injected renderer. */
+  readonly rendererBackend: "webgl2" | "webgpu" | "custom";
   input: InputManager;
   assetHost: AssetHost;
+  /** The loaded startup manifest, present when assets were requested. */
+  readonly assets?: LoadedAssets;
   profiler?: RuntimeProfiler;
   physicsScene?: PhysicsSceneProfileApplyResult;
   hud?: FerrumRuntimeHud;
@@ -347,7 +372,12 @@ export interface FerrumRuntime {
 }
 
 export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promise<FerrumRuntime> {
+  const { signal } = options;
+  throwIfRuntimeStartupAborted(signal);
   const ownsRenderer = options.renderer === undefined;
+  const releaseCanvasContext = options.releaseCanvasContext === true;
+  if (releaseCanvasContext && !ownsRenderer)
+    throw new Error("releaseCanvasContext requires a runtime-owned renderer.");
   const ownsInput = options.input === undefined;
   const ownsAssetHost = options.assetHost === undefined;
   const ownsUiOverlay = options.uiOverlay === undefined;
@@ -366,6 +396,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   let ownedDialogueSession: DialogueSession | undefined;
   let physicsScene: PhysicsSceneProfileApplyResult | undefined;
   let restoreExternalDisplay: (() => void) | undefined;
+  let restoreExternalFit: (() => void) | undefined;
   let displayViewportCommitted = false;
 
   let destroyed = false;
@@ -374,24 +405,37 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const colorManagement = ownsRenderer ? resolveRendererColorManagement(options) : options.colorManagement;
     const explicitPixelDefault = [options.pixelPerfect,options.webgl2?.pixelPerfect,options.webgpu?.pixelPerfect].some(value=>value!==undefined);
     const pixelDefault = explicitPixelDefault ? resolveRendererPixelPerfect(options) : renderer?.pixelPerfectPresentation?.()?.settings;
-    const initialDocument = options.dataScene ? normalizeRuntimeDataSceneOptions(options.dataScene).document : undefined;
-    const scenePixel = (doc?: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument) => {
-      const display=resolveSceneDisplay(doc?.display);
-      const config=display?.pixelPerfect===false?undefined:display?.pixelPerfect??pixelDefault;
-      if(config && doc?.spatial)throw Error("Flat pixelPerfect cannot be combined with spatial; use spatial.environment.pixelArt");
-      return config;
+    const fitDefault = resolveSceneFit(options.fit, "runtime.fit");
+    const initialScene = options.dataScene ? normalizeRuntimeDataSceneOptions(options.dataScene) : undefined;
+    const initialDocument = initialScene?.document;
+    const sceneDisplay = (doc: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument | undefined, path: string) => {
+      const display = resolveSceneDisplay(doc?.display);
+      const pixelPerfect = display?.pixelPerfect === false ? undefined : display?.pixelPerfect ?? pixelDefault;
+      const fit = display?.fit ?? fitDefault;
+      if (fit && pixelPerfect) throw sceneCompositionDiagnosticError(`${path}.fit`, "cannot be combined with pixelPerfect");
+      if (fit && doc?.spatial) throw sceneCompositionDiagnosticError(`${path}.fit`, "cannot be combined with spatial");
+      if (pixelPerfect && doc?.spatial) throw Error("Flat pixelPerfect cannot be combined with spatial; use spatial.environment.pixelArt");
+      return { pixelPerfect, fit: fit || undefined };
     };
-    const initialPixel = scenePixel(initialDocument);
-    renderer ??= await createRenderer(options.canvas, {
+    const initialPath = initialScene?.path ?? "dataScene";
+    const initialDisplay = sceneDisplay(initialDocument, `${initialPath}.display`);
+    const initialPixel = initialDisplay.pixelPerfect;
+    renderer ??= await createRuntimeRenderer(options.canvas, {
       preferred: options.rendererPreference ?? "webgl2",
+      onFallback: options.onRendererFallback,
       colorManagement: options.colorManagement,
       pixelPerfect: initialPixel,
       webgl2: {...options.webgl2,pixelPerfect:initialPixel},
       shaderPreparation: options.shaderPreparation,
       webgpu: {...webGpuOptionsWithStaticPostProcess(options),pixelPerfect:initialPixel},
-      spatial: options.dataScene ? normalizeRuntimeDataSceneOptions(options.dataScene).document.spatial : undefined,
-    });
+      spatial: initialDocument?.spatial,
+    }, releaseCanvasContext);
+    throwIfRuntimeStartupAborted(signal);
     const runtimeRenderer = renderer;
+    const rendererBackend = runtimeRenderer instanceof WebGPURenderer ? "webgpu"
+      : ownsRenderer || runtimeRenderer instanceof WebGL2Renderer ? "webgl2" : "custom";
+    if (initialDocument && initialDisplay.fit && !runtimeRenderer.setViewportZoom)
+      throw sceneCompositionDiagnosticError(`${initialPath}.display.fit`, "renderer does not support viewport zoom");
     if(initialPixel || explicitPixelDefault || initialDocument?.display?.pixelPerfect!==undefined) {
       if(!runtimeRenderer.setPixelPerfect || !runtimeRenderer.pixelPerfectPresentation)throw Error("Renderer does not support pixelPerfect presentation");
       if(!ownsRenderer) {
@@ -410,7 +454,10 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const hud = createRuntimeHud(options.hud);
     const animationTimeline = createRuntimeAnimationTimeline(options.animationTimeline);
     const localization = createRuntimeLocalization(options.localization);
-    if (dialogueOptions) await initializeFerrumWasm();
+    if (dialogueOptions) {
+      await initializeFerrumWasm();
+      throwIfRuntimeStartupAborted(signal);
+    }
     dialogue = createRuntimeDialogue(dialogueOptions);
     if (dialogueOptions && dialogueOptions.session === undefined) ownedDialogueSession = dialogue?.session;
     const cutscene = createRuntimeCutscene(options.cutscene, localization, assetHost);
@@ -454,11 +501,14 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
 
     const runtimeInput = input;
     const runtimeAssetHost = assetHost;
+    const { canvas } = options;
+    const initialWidth = canvas.clientWidth;
+    const initialHeight = canvas.clientHeight;
+    const initialDpr = globalThis.devicePixelRatio;
     runtimeRenderer.resize();
     configureStaticLighting(runtimeRenderer, options.lighting);
     configureStaticPostProcess(runtimeRenderer, options.postProcess);
     configureStaticSpriteMaterial(runtimeRenderer, options.spriteMaterial);
-    detachRendererResize = observeRendererResize(options.canvas, runtimeRenderer);
 
     const inputProvider: InputProvider = () => {
       let snapshot = runtimeInput.snapshot();
@@ -495,34 +545,121 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       onFrame: options.onFrame,
     });
 
-    engine ??= await createEngineWithFramePipeline({
+    const createRuntimeEngine = () => createEngineWithFramePipeline({
       needsFrameState: needsFullFrame,
       needsPhysicsDebugLineBuffer: shouldRenderPhysicsDebugLines,
       onRenderFrame: (renderFrame) => runtimeFrameRenderer.renderFrame(renderFrame),
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
-    const configureDisplay = (doc: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument) => {
-      const next=scenePixel(doc), previous=runtimeRenderer.pixelPerfectPresentation?.()?.settings;
-      if(!next && !previous)return undefined;
-      if(!runtimeRenderer.setPixelPerfect || !runtimeRenderer.pixelPerfectPresentation)throw Error("Renderer does not support pixelPerfect presentation");
-      const previousViewport = runtimeRenderer.viewportSize();
-      let committed = false;
-      runtimeRenderer.setPixelPerfect(next??false);
-      // Changing the native viewport can clamp a bounded/follow camera. Keep it
-      // untouched until authoring validation/application has succeeded.
+    throwIfRuntimeStartupAborted(signal);
+    const manifest = options.assets;
+    let assets: LoadedAssets | undefined;
+    if (manifest === undefined) {
+      engine ??= await createRuntimeEngine();
+    } else {
+      const loadStartupAssets = async () => {
+        const loaded = await runtimeAssetHost.loadAssets(manifest, (progress) => {
+          if (destroyed || signal?.aborted) return;
+          profiler?.recordAssetProgress(progress);
+          options.onAssetProgress?.(progress);
+        }, { ...options.assetLoadOptions, signal });
+        throwIfRuntimeStartupAborted(signal);
+        return loaded;
+      };
+      const startEngine = async () => {
+        if (engine !== undefined) return engine;
+        const created = await createRuntimeEngine();
+        // An asset failure can settle startup before Wasm finishes initializing.
+        if (destroyed) {
+          disposeRuntimeResources([() => created.destroy()], false);
+        } else {
+          engine = created;
+          throwIfRuntimeStartupAborted(signal);
+        }
+        return created;
+      };
+      [assets, engine] = await Promise.all([loadStartupAssets(), startEngine()]);
+    }
+    throwIfRuntimeStartupAborted(signal);
+    // Startup does not observe resize events. Catch up if the canvas changed while awaiting work.
+    if (canvas.clientWidth !== initialWidth || canvas.clientHeight !== initialHeight || globalThis.devicePixelRatio !== initialDpr) {
+      runtimeRenderer.resize();
+      throwIfRuntimeStartupAborted(signal);
+    }
+    const runtimeEngine = engine;
+    const viewBinding = bindDataSceneView(runtimeEngine, runtimeRenderer, canvas, true);
+    let activeFit: SceneFitSpec | undefined;
+    let applyingInitialScene = true;
+    const configureDisplay = (doc: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument, path: string): RuntimeDisplayChange | undefined => {
+      const { pixelPerfect: nextPixel, fit: nextFit } = sceneDisplay(doc, `${path}.display`);
+      const previousPresentation = runtimeRenderer.pixelPerfectPresentation?.();
+      const previousPixel = previousPresentation?.settings;
+      const previousFit = activeFit;
+      const fitChanges = previousFit !== undefined || nextFit !== undefined;
+      const pixelChanges = previousPixel !== undefined || nextPixel !== undefined;
+      if (!fitChanges && !pixelChanges) return undefined;
+      if (fitChanges && !runtimeRenderer.setViewportZoom)
+        throw sceneCompositionDiagnosticError(`${path}.display.fit`, "renderer does not support viewport zoom");
+      if (pixelChanges && (!runtimeRenderer.setPixelPerfect || !runtimeRenderer.pixelPerfectPresentation))
+        throw Error("Renderer does not support pixelPerfect presentation");
+      const previousViewport = fitChanges ? undefined : runtimeRenderer.viewportSize();
+      const previousZoom = fitChanges ? viewBinding.currentZoom(previousPresentation) : undefined;
+      const previousViewportCommitted = displayViewportCommitted;
+      let zoomAttempted = false;
+      let viewportAttempted = false;
+      if (pixelChanges) runtimeRenderer.setPixelPerfect!(nextPixel ?? false);
+
+      const syncViewport = () => {
+        const viewport = runtimeRenderer.viewportSize();
+        viewportAttempted = true;
+        displayViewportCommitted = true;
+        runtimeEngine.setViewportSize(viewport.width, viewport.height);
+      };
       return {
+        transactional: fitChanges,
         commit() {
-          const viewport=runtimeRenderer.viewportSize();
-          committed = true;
-          displayViewportCommitted = true;
-          engine!.setViewportSize(viewport.width,viewport.height);
+          if (!fitChanges) {
+            syncViewport();
+            return;
+          }
+          const zoom = nextFit ? fitDataSceneZoom(canvas, nextFit) : 1;
+          if (zoom !== undefined) {
+            zoomAttempted = true;
+            viewBinding.setRendererZoom(zoom);
+          }
+          if (zoom !== undefined || pixelChanges) syncViewport();
+          if (nextFit) viewBinding.view.setCamera({
+            x: (nextFit.x ?? 0) + nextFit.width / 2,
+            y: (nextFit.y ?? 0) + nextFit.height / 2,
+          });
+          activeFit = nextFit;
+          if (applyingInitialScene && !ownsRenderer && previousZoom !== undefined && zoomAttempted) {
+            restoreExternalFit = () => {
+              viewBinding.setRendererZoom(previousZoom);
+              if (!ownsEngine && !restoreExternalDisplay) syncViewport();
+            };
+          }
         },
         rollback() {
-          runtimeRenderer.setPixelPerfect!(previous??false);
-          if (committed) engine!.setViewportSize(previousViewport.width, previousViewport.height);
+          if (fitChanges) {
+            // The native checkpoint already restored the viewport and camera, including follow/bounds.
+            activeFit = previousFit;
+            displayViewportCommitted = previousViewportCommitted;
+            if (applyingInitialScene) restoreExternalFit = undefined;
+            disposeRuntimeResources([
+              () => { if (zoomAttempted && previousZoom !== undefined) viewBinding.setRendererZoom(previousZoom); },
+              () => { if (pixelChanges) runtimeRenderer.setPixelPerfect!(previousPixel ?? false); },
+            ]);
+          } else {
+            runtimeRenderer.setPixelPerfect!(previousPixel ?? false);
+            if (viewportAttempted && previousViewport) runtimeEngine.setViewportSize(previousViewport.width, previousViewport.height);
+          }
         },
       };
     };
-    const dataScene = createRuntimeDataScene(engine, options.dataScene, colorManagement, configureDisplay);
+    const dataScene = initialScene
+      ? createRuntimeDataScene(runtimeEngine, initialScene, viewBinding.view, colorManagement, configureDisplay)
+      : undefined;
+    applyingInitialScene = false;
     if (!dataScene && (initialPixel || explicitPixelDefault)) {
       const viewport = runtimeRenderer.viewportSize();
       displayViewportCommitted = true;
@@ -532,12 +669,13 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       physicsScene = applyPhysicsSceneProfile(engine, options.physicsScene);
     }
 
-    const runtimeEngine = engine;
     const runtime: FerrumRuntime = {
       engine: runtimeEngine,
       renderer: runtimeRenderer,
+      rendererBackend,
       input: runtimeInput,
       assetHost: runtimeAssetHost,
+      ...(assets === undefined ? {} : { assets }),
       ...(profiler === undefined ? {} : { profiler }),
       ...(physicsScene === undefined ? {} : { physicsScene }),
       ...(hud === undefined ? {} : { hud }),
@@ -572,19 +710,49 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
           () => { if (ownsInput) runtimeInput.destroy(); },
           () => { if (ownsAssetHost) destroyAssetHost(runtimeAssetHost); },
           () => { if (ownsRenderer) runtimeRenderer.destroy(); },
+          () => { if (releaseCanvasContext) runtimeRenderer.releaseContext?.(); },
         ]);
       },
     };
 
+    throwIfRuntimeStartupAborted(signal);
     if (options.autostart) {
       runtime.start();
     }
 
+    throwIfRuntimeStartupAborted(signal);
+    let fitResizePending = false;
+    const resize = (): void => {
+      if (!activeFit) {
+        runtimeRenderer.resize();
+        return;
+      }
+      if (runtimeRenderer.isRenderReady?.() === false) {
+        fitResizePending = true;
+        return;
+      }
+      fitResizePending = false;
+      const zoom = fitDataSceneZoom(canvas, activeFit);
+      if (zoom !== undefined) viewBinding.view.setZoom(zoom);
+    };
+    detachRendererResize = observeRendererResize(canvas, resize);
+    if (dataScene && runtimeRenderer instanceof WebGPURenderer) {
+      const detachResize = detachRendererResize;
+      const detachRecovery = observeWebGpuDeviceRecovery(runtimeRenderer, () => {
+        if (fitResizePending && activeFit) resize();
+      });
+      detachRendererResize = () => disposeRuntimeResources([detachRecovery, detachResize]);
+    }
     return runtime;
   } catch (error) {
+    const startupError = signal?.aborted && !(error instanceof DOMException && error.name === "AbortError")
+      ? runtimeStartupAbortError()
+      : error;
+    destroyed = true;
     // Preserve the startup error after attempting every owned resource cleanup.
     disposeRuntimeResources([
       () => detachRendererResize?.(),
+      () => restoreExternalFit?.(),
       () => restoreExternalDisplay?.(),
       () => levelStreaming?.destroy(),
       () => ownedDialogueSession?.destroy(),
@@ -594,10 +762,19 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       () => { if (ownsInput) input?.destroy(); },
       () => { if (ownsAssetHost && assetHost) destroyAssetHost(assetHost); },
       () => { if (ownsRenderer) renderer?.destroy(); },
+      () => { if (releaseCanvasContext) renderer?.releaseContext?.(); },
       () => { if (ownsEngine) engine?.destroy(); },
     ], false);
-    throw error;
+    throw startupError;
   }
+}
+
+function runtimeStartupAbortError(): DOMException {
+  return new DOMException("Runtime startup was aborted.", "AbortError");
+}
+
+function throwIfRuntimeStartupAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw runtimeStartupAbortError();
 }
 
 function disposeRuntimeResources(disposers: readonly (() => void)[], rethrow = true): void {
@@ -967,6 +1144,7 @@ function createRuntimeCutscene(
 }
 
 interface RuntimeDisplayChange {
+  transactional: boolean;
   commit(): void;
   rollback(): void;
 }
@@ -985,14 +1163,11 @@ function failRuntimeDisplayChange(change: RuntimeDisplayChange | undefined, erro
 
 function createRuntimeDataScene(
   engine: FerrumEngine,
-  option: FerrumRuntimeOptions["dataScene"],
-  colorManagement?: ColorManagementMode,
-  configureDisplay?: (document: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument) => RuntimeDisplayChange | undefined,
-): FerrumRuntimeDataScene | undefined {
-  if (option === undefined || option === false) {
-    return undefined;
-  }
-  const runtimeOptions = normalizeRuntimeDataSceneOptions(option);
+  runtimeOptions: FerrumRuntimeDataSceneOptions,
+  view: DataSceneView,
+  colorManagement: ColorManagementMode | undefined,
+  configureDisplay: (document: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument, path: string) => RuntimeDisplayChange | undefined,
+): FerrumRuntimeDataScene {
   const {
     document,
     ...applyOptions
@@ -1006,31 +1181,40 @@ function createRuntimeDataScene(
   applyOptions.colorManagement = colorManagement ?? applyOptions.colorManagement;
   const basePath = applyOptions.path ?? "dataScene";
   let currentDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument = document;
-  let result: ApplyDataSceneAuthoringDocumentResult;
-  const initialDisplay=configureDisplay?.(currentDocument);
-  try { result = applyDataSceneAuthoringDocument(engine, currentDocument, {
-    ...applyOptions,
-    path: basePath,
-  }); initialDisplay?.commit(); } catch(error) { failRuntimeDisplayChange(initialDisplay, error); }
+  const applyDocument = (
+    nextDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
+    options: ApplyDataSceneAuthoringDocumentOptions & { path: string },
+  ) => {
+    const display = configureDisplay(nextDocument, options.path);
+    try {
+      if (display?.transactional)
+        return applyDataSceneAuthoringDocumentWithCommit(engine, nextDocument, options, display.commit);
+      const applied = applyDataSceneAuthoringDocument(engine, nextDocument, options);
+      display?.commit();
+      return applied;
+    } catch (error) {
+      failRuntimeDisplayChange(display, error);
+    }
+  };
+  let result = applyDocument(currentDocument, { ...applyOptions, path: basePath });
   const applyNextDocument = (
     nextDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
     nextOptions: ApplyDataSceneAuthoringDocumentOptions,
   ): ApplyDataSceneAuthoringDocumentResult => {
     checkColorManagement(nextOptions.colorManagement);
-    const display=configureDisplay?.(nextDocument);
-    let nextResult: ApplyDataSceneAuthoringDocumentResult;
-    try { nextResult = applyDataSceneAuthoringDocument(engine, nextDocument, {
+    const nextResult = applyDocument(nextDocument, {
       ...applyOptions,
       ...nextOptions,
       colorManagement: colorManagement ?? nextOptions.colorManagement ?? applyOptions.colorManagement,
       path: nextOptions.path ?? basePath,
-    }); display?.commit(); } catch(error) { failRuntimeDisplayChange(display, error); }
+    });
     currentDocument = nextDocument;
     result = nextResult;
     return result;
   };
 
   return {
+    view,
     get result() {
       return result;
     },
@@ -1274,28 +1458,32 @@ function createRuntimeProfiler(option: FerrumRuntimeOptions["profiler"]): Runtim
   return new RuntimeProfiler(option);
 }
 
-function observeRendererResize(canvas: HTMLCanvasElement, renderer: FerrumRuntimeRenderer): () => void {
+function observeRendererResize(canvas: HTMLCanvasElement, resizeRenderer: () => void): () => void {
+  let active = true;
   const resize = (): void => {
-    renderer.resize();
+    if (active) resizeRenderer();
   };
   const cleanup: Array<() => void> = [];
-
-  if (typeof ResizeObserver !== "undefined") {
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-    cleanup.push(() => observer.disconnect());
-  }
-
-  if (typeof window !== "undefined") {
-    window.addEventListener("resize", resize);
-    cleanup.push(() => window.removeEventListener("resize", resize));
-  }
-
-  return () => {
-    for (const dispose of cleanup.splice(0).reverse()) {
-      dispose();
-    }
+  const detach = (rethrow = true) => {
+    active = false;
+    disposeRuntimeResources(cleanup.splice(0).reverse(), rethrow);
   };
+  try {
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(resize);
+      cleanup.push(() => observer.disconnect());
+      observer.observe(canvas);
+    }
+    if (typeof window !== "undefined") {
+      const eventTarget = window;
+      cleanup.push(() => eventTarget.removeEventListener("resize", resize));
+      eventTarget.addEventListener("resize", resize);
+    }
+  } catch (error) {
+    detach(false);
+    throw error;
+  }
+  return detach;
 }
 
 function destroyAssetHost(assetHost: AssetHost): void {

@@ -38,7 +38,7 @@ async function probe(canvas, backend, projection) {
         const frame = owned(state.renderCommandBuffer.spatial), model = engine.dataSceneSpatialModelDrawSnapshot(handles.proxy);
         pixels(renderer, canvas).then(data => request.resolve({ frame, model, stats: { ...stats.spatial }, data }), request.reject);
       } catch (error) { engine.stop(); request.reject(error); }
-    }, undefined, undefined, () => renderer.viewportSize());
+    }, undefined, undefined, () => renderer.viewportSize(), { physicsBackend: "legacy" });
     renderer.resize(); const size = renderer.viewportSize(); engine.setViewportSize(size.width, size.height);
     check(engine.registerDataSceneSpatialModel("proxy", asset), "proxy asset registration failed");
     const view = createDataSceneSpatialView(engine, canvas);

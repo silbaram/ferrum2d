@@ -1,8 +1,18 @@
 # Ferrum2D 예제 안내
 
-예제는 **주제별 기능 실험 → 게임 응용** 순서로 체험한다. 제작 도구는 게임과 구분한다.
-Pages 첫 화면은 예제 갤러리다. 기능 실험실은 10개 기능 주제를, 게임 데모는 게임마다 체험할 기능을 왼쪽 목록에서 고르고, 상단의 **예제 이동**으로 다른 예제를 연다. 물리 7개 시나리오는 물리·충돌 주제에서도 선택한다. 화면은 공통 글꼴·색상·조작·관찰 안내를 사용한다.
-각 기능 화면에는 게임에서 쓰는 상황을 표시한다. 31개 기능 학습 화면은 조작 순서·객체 역할·범례와 실제 상태를 함께 보여준다.
+Pages 첫 화면은 새 예제 사이트(`site/`)다. Pixelforge 편집기형 틀(상단 막대·예제 목록·가운데 화면·상태 막대)에
+2D 게임의 필수 기능을 하나씩 눈으로 확인하는 예제를 차례로 추가한다([예제 사이트 다시 만들기](../docs/planning/example-site-rebuild-plan.md)).
+목록은 그리기·움직임과 화면·충돌과 물리·효과와 소리·게임 구성·게임 데모·도구로 나뉘고, 지금은 '스프라이트 그리기'(`?example=sprite`), '충돌과 트리거'(`?example=collision`), 게임 데모 '벽돌 깨기'(`?example=breakout`)가 있다.
+예제 화면은 재생 막대·실행 화면·아래 패널(설명·씬 파일·API·소스·엔진)·오른쪽 인스펙터(해 보기·볼 것)와 상태 막대의 엔진 수치로 이뤄진다.
+넓은 화면에서는 목록·인스펙터·아래 패널의 경계선을 끌어 크기를 바꾸고, 목록과 인스펙터는 아이콘 줄로 접을 수 있다.
+상단 언어 선택에서 **한국어** 또는 **English**를 고른다. 처음 방문할 때는 브라우저의 기본 언어가 한국어면 한국어, 그 외에는 영어를 표시한다.
+선택한 언어는 새로고침 뒤에도 적용된다. 실행 중에 바꿔도 예제의 조작값과 열린 탭을 유지한다.
+검색은 두 언어의 예제 이름과 설명을 찾으며, 상단 문서는 화면 언어에 맞는 문서로 연결된다.
+예제 코드는 `site/src/examples/<id>/`에 있고, 틀과 주고받는 계약은 `site/src/example.ts`에 있다.
+
+아래의 이전 예제(기능 실험실·물리 심화 실험실·게임 데모 4개)는 공개 사이트에서 빠졌다. 폴더는 그대로 두고 단독 실행할 수 있으며,
+엔진 검사 데이터로 쓰인다(`topdown-shooter`의 Game Spec·골든 데이터, `minimal-game` 렌더 smoke, `physics-sandbox`의 Physics Spec 등).
+옛 주소(`/starter-runtime/` 등)는 새 첫 화면으로 보내는 안내 페이지다.
 
 ## 예제 실행
 
@@ -14,10 +24,8 @@ pnpm build:pages
 pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 ```
 
-`http://localhost:4173/`는 모든 예제를 썸네일과 함께 보여주는 갤러리다. 예제 안에서는 상단의 **Ferrum2D 예제**로 갤러리에 돌아가고,
-**예제 이동**으로 다른 앱을 고르며, **소스**는 그 예제 폴더를 GitHub에서 연다. 이미 빌드했다면 마지막 명령만 실행하면 된다.
-예제 화면이 바뀌면 `pnpm thumbnails:examples`로 갤러리 썸네일(`examples/shared/thumbnails/`)을 다시 찍는다.
-기능 실험실은 `/starter-runtime/`, 개별 실험은 `?feature=lighting`처럼 직접 연다.
+`http://localhost:4173/`는 새 예제 사이트다. 사이트 틀만 고칠 때는 `pnpm --dir examples/site dev`로 연다.
+이전 예제는 각 폴더의 단독 개발 명령(아래 표)으로 연다. 이전 예제 목록의 썸네일(`examples/shared/thumbnails/`)은 검사 데이터로 남긴다.
 
 ## 공개 예제의 역할
 
@@ -83,8 +91,9 @@ Breakout·Platformer는 `P/Esc`, 터치 이동·점프와 색상 안내를 제�
 - `shared/featureTopics.json`, `physicsExamples.json`: 공통 주제 순서·설명과 물리 시나리오의 직접 진입점. `physicsExamples.json`은 물리 시나리오 이름의 단일 원본이며 물리 실험실도 이 이름을 쓴다.
 - `shared/exampleHeader.ts`, `exampleTheme.css`: 공개 예제 공통 탐색과 화면 토큰.
 - `pnpm validate:example-catalog`: 중복 ID/경로·없는 명령·관련 기능·씬 파일 검사. Pages 빌드에도 포함된다.
-- `pnpm test:example-catalog-build`: 누락된 예제 입력·잘못된 HTML이 기존 Pages를 지우기 전에 거절되는지, 통합 탐색 표식이 발행 복사본에만 들어가는지 검사한다.
-- `pnpm smoke:example-suite`: 빌드된 전체 예제를 전제로 기능 실험실 진입·공통 이동 메뉴·모바일·키보드·중첩 경로·단독 실행과 실제 게임 입력 검사.
+- `pnpm test:pages-build`: 사이트·Studio 빌드가 없거나 HTML이 잘못되면 기존 Pages를 지우기 전에 거절하는지, 사이트가 첫 화면이고 옛 예제 주소가 안내 페이지인지 검사한다.
+- `pnpm smoke:example-site`: 빌드된 Pages에서 새 사이트 틀·예제 목록·검색·언어 전환·없는 예제 안내·옛 주소 이동·좁은 화면 서랍·넘침과,
+  예제마다 화면·조작·씬 파일·리셋·렌더러 전환·떠날 때 자원 해제(시작 중 이동 포함)를 검사한다.
 - `pnpm smoke:feature-examples`: 기능별 native 상태·픽셀·상호작용·자원 회귀.
 
 게임 규칙은 Rust, 입력·렌더링·메뉴는 TypeScript 플랫폼 계층이 담당한다. 공통 UI가 시뮬레이션 상태를 소유하지 않는다.

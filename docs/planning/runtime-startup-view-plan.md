@@ -1,0 +1,690 @@
+# 런타임 시작·화면 맞춤 개선
+
+상태: 사용자 승인·결정 D1~D4 확정(2026-11-24), D5 확정(2026-11-25). 단계(R1→F1→R2a→F2→R2b→R3→F3→E1→F4→C1)마다 Codex가 구현하고 통합 담당이 검증한다.
+- R1 완료(`77f94fa`): 통합 검증에서 SDK 테스트 2,053개, 에셋 로딩 smoke, Data Scene smoke의 R1 시작 사례 통과.
+- [선행 수정 F1](#선행-수정-f1-data-scene-smoke의-hd-2d-이동-실패) 완료(`e09767d`): Data Scene smoke 전체 통과.
+- R2a 완료(`fd200dd`, 2026-11-25): 통합 검증에서 SDK 테스트 2,061개, Data Scene smoke 전체(화면 맞춤 사례 포함), 예제 사이트 smoke 통과.
+- [선행 수정 F2](#선행-수정-f2-픽셀-퍼펙트-smoke의-shooter-스냅샷-실패) 완료(`d6e7f63`, 2026-11-25): SDK 픽셀 퍼펙트 smoke 전체 통과.
+- R2b 완료(`39fffff`, 2026-11-25): 통합 검증에서 Studio 타입 검사·빌드, 문서 링크 검사, Studio viewer smoke(fit 문서의 미리보기·실행,
+  크기 변경 시 게임 카메라 유지, 2D 편집 카메라와 선택 좌표계 복원, 작성 이력 보존), 공식 Studio 브라우저 smoke(`--mode=studio`) 통과.
+  공식 Studio 브라우저 smoke는 Codex 환경에서만 390×500의 조명 탭 열기에서 시간 초과했다(R2b 이전 `d6e7f63`에서도 같음).
+  통합 검증에서는 재현되지 않았으므로 R2b와 무관한 간헐적 시간 초과로 본다. 다시 나타나면 후보로 올린다.
+- R3 완료(`17f5439`, 2026-11-25): 통합 검증에서 SDK 테스트 2,068개, 공개 API 범위·문서 링크 검사, Data Scene smoke 통과.
+  전용 캔버스로 런타임 20개를 만들고 없앤 뒤 활성 WebGL2 컨텍스트 0, 시작 실패·취소 때도 0, 옵션이 없으면 기존처럼 남고 재사용된다.
+- WebGPU 복구 중 화면 맞춤 수정 완료(`a917965`, 후보 표의 항목): 일시정지한 런타임의 복구 사례가 창 크기 2개 × DPR 1·2에서 통과했다.
+- [선행 수정 F3](#선행-수정-f3-webgpu-공간-smoke의-진행-저장-거절) 완료(`a9046ee`, 2026-11-25): SDK·Rust 소스 변경 없음.
+  통합 검증에서 공식 WebGPU 복구 smoke, 공간 조명 보고서 테스트 8종, 평면 조명 smoke, HD-2D 전투 8개 모드 통과.
+  CI 오프스크린 smoke의 화면 조합 4개(1280×720·390×844, DPR 1·2)도 통합 검증에서 모두 통과했다.
+- [예제 반영 E1](#예제-반영-e1-세-예제를-새-api로) 완료(`bb6b6f1a`). 스프라이트 그리기, 충돌과 트리거, 벽돌 깨기의 시작과 화면 맞춤을 새 API로 이관했다.
+  예제 시작 코드는 176→169, 280→269, 303→292줄. 런타임 view는 다시 적용해도 같은 객체라 예제가 한 번 받아 쓴다.
+- 전체 끝 검증(2026-11-26, E1을 합친 상태): `pnpm build`, `pnpm lint`, `pnpm package:check:ferrum-web`, `pnpm smoke:example-site` 통과.
+  처음에는 `pnpm lint`가 빌드 전의 오래된 `packages/ferrum-web/dist` 타입을 읽어 실패했고, 빌드 뒤 통과했다.
+  `dist`가 없으면 예제 타입 검사가 실패하므로 CI의 단계 순서 문제로 [C1](#c1-pr에서-ci-자동-실행-d5-b)에 넣었다.
+- [선행 수정 F4](#선행-수정-f4-기존-smoke-6개-진단) 완료(2026-11-26). 여섯 실패를 재현하고 오래된 애니메이션 검사 두 개를 고쳐 전체 통과했다.
+  Data Scene 적용, 통합 물리 성능과 소프트웨어 렌더링 두 사례의 후속은 F4 표에 기록했다.
+  통합 검증에서 고친 두 smoke(`smoke:spatial-scene` 4개 사례, `smoke:sprite-animation-runtime` WebGL2·WebGPU)가 통과했다.
+- [선행 수정 F5](#선행-수정-f5-조명-사전-검증의-프래그먼트-누락) 완료(`2199a9d`, 2026-11-26). Data Scene 적용·장면 상태 복원에서 조명 사전 검증이 선택한 프래그먼트를 해석한다.
+  통합 검증에서 SDK 테스트 2,073개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
+- [리뷰 후속 F5b](#리뷰-후속-f5b-적용-경로의-중복-해석) 완료(`10a4dc5`). 적용 중 조명 사전 검증이 이미 해석한 문서를 재사용한다.
+  통합 검증에서 SDK 테스트 2,075개, 공개 API 범위, `smoke:data-scene-gameplay` 전체, Data Scene 브라우저, Flat Lit smoke 통과.
+- [C1](#c1-pr에서-ci-자동-실행-d5-b) 완료(`b2291e6`·`611d39b`·`dec5a8d`, 2026-11-26). `main` 대상 PR에서 `validate`가 돌고, lint는 빌드 뒤에 실행한다.
+  [리뷰 후속 C1b](#리뷰-후속-c1b)는 Aseprite 슬라이스 테스트를 복구하고 예제 사이트를 독립 셸로 등록했다.
+  [리뷰 후속 C1c](#리뷰-후속-c1c)는 C1b에서 찾은 실패를 고쳤다(런타임 예산 문서 문구, 템플릿 replay 픽스처, Shooter replay의 레거시 물리).
+  통합 검증에서 TypeScript 빌드 결과를 모두 지우고 CI 순서로 SDK 테스트 2,075개, 나머지 패키지 빌드, lint, 예제 하네스 보고서,
+  런타임 예산 문서 검사, 슬라이스 테스트, create-game 패키지 검사, 템플릿 보고서, Gameplay 작성 보고서·replay 17개 시나리오·보고서 검사 통과.
+  첫 PR #113은 Core Rust 포맷 검사에서 멈췄다. [리뷰 후속 C1d](#리뷰-후속-c1d)의 로컬 포맷 검증은 통과했으며 PR 재실행 결과를 확인한다.
+
+우선순위: 엔진 개선이 1순위다. [예제 사이트](example-site-rebuild-plan.md)의 새 API 이관은 E1에서 마쳤다.
+
+## 배경: 예제를 만들며 드러난 문제
+
+예제 사이트의 예제 3개(스프라이트·충돌과 트리거·벽돌 깨기)는 시작 코드가 각 60줄 남짓이고 거의 같다.
+대부분은 게임 규칙이 아니라 엔진이 맡아야 할 시작·화면·정리 일이다.
+
+| # | 문제 | 지금 앱이 하는 일 |
+| --- | --- | --- |
+| 1 | 그림 이름을 쓰는 Data Scene은 적용 시점에 텍스처가 등록돼 있어야 한다(`TextureRegistry.textureId`가 없으면 오류). 그런데 `createFerrumRuntime`이 렌더러를 만들면 씬 적용 전에 그림을 읽을 방법이 없다. | `createRenderer` → `new AssetLoader(renderer).loadAssets` → `createFerrumRuntime({ renderer, assetHost })` 3단계를 직접 하고 렌더러 수명도 직접 관리한다. |
+| 2 | 시작을 취소할 수 없다. | 화면을 떠나도 시작이 끝나길 기다렸다가 정리한다. 앱이 먼저 렌더러를 정리하면, 시작 중 붙은 크기 감시가 정리된 렌더러에 `resize()`를 부를 수 있다(예제 사이트 계획의 기존 후보). |
+| 3 | WebGPU를 요청했다가 WebGL2로 대체됐는지 알 공식 방법이 없다. `createRenderer`의 `onFallback`도 런타임에서 넘길 수 없다. | `"gpuDevice" in renderer`로 추정한다. |
+| 4 | 고정 크기 월드(예: 640 × 384)를 크기가 바뀌는 캔버스에 비율 유지로 맞추는 기능이 없다. `pixelPerfect`는 가상 해상도·정수 배율·여백으로 픽셀아트용이다. | 예제마다 `createDataSceneView` + `ResizeObserver` + `setZoom(min(w/640, h/384))`, 씬을 다시 적용할 때마다 view를 다시 만든다. |
+| 5 | `renderer.destroy()`는 GPU 자원은 풀지만 WebGL 컨텍스트를 남긴다(같은 캔버스 재사용용). 런타임을 만들고 없애는 SPA는 컨텍스트가 쌓여 브라우저 한도(보통 16)에 닿는다. | 예제 사이트 틀이 `WEBGL_lose_context`로 직접 놓아준다. |
+
+## 목표
+
+완료 뒤 예제의 시작 코드는 아래 정도가 된다. 옵션을 쓰지 않는 기존 호출은 동작이 완전히 같아야 한다.
+
+```ts
+const runtime = await createFerrumRuntime({
+  canvas,
+  signal,                                   // R1: cancels startup
+  rendererPreference: "webgpu",
+  onRendererFallback: info => console.info(info.reason),
+  assets: { textures: { robot: url("robot.png"), panel: url("panel.png") } }, // R1: before the scene applies
+  dataScene: document,                      // R2: document.display.fit = { width: 640, height: 384 }
+  releaseCanvasContext: true,               // R3: the canvas belongs to this runtime only
+  onFrame,
+});
+runtime.rendererBackend;                    // R1: "webgl2" | "webgpu" | "custom"
+runtime.dataScene?.view.pointerToWorld({ x: event.clientX, y: event.clientY }); // R2: survives reapply
+```
+
+범위 밖: Rust/Wasm 변경, 새 프로덕션 의존성, 예제 사이트 코드 변경(이 계획 완료 뒤 별도 단계), 공간(spatial) 화면 맞춤.
+
+## 결정 (2026-11-24 확정)
+
+| # | 질문 | 결정 | 이유 |
+| --- | --- | --- | --- |
+| D1 | `signal`을 시작 뒤에 abort하면? | 시작만 취소한다. 시작이 끝난 뒤의 abort는 무시하고 `runtime.destroy()`는 호출자가 부른다. | `fetch`·`loadAssets`와 같은 의미. 성공 뒤 자동 정리는 소유권이 흐려진다. |
+| D2 | 화면 맞춤을 어디에 두나? | 씬 문서 `display.fit` + 런타임 기본값 `fit` 옵션. 우선순위는 `pixelPerfect`와 같다(문서 값 우선, 문서 `false`는 해제, 생략은 런타임 기본값). | 이미 있는 `display.pixelPerfect`와 같은 구조라 배우기 쉽고, 씬마다 월드 크기가 달라도 된다. |
+| D3 | `releaseCanvasContext` 기본값 | `false`(지금과 같음). | 같은 캔버스에 런타임을 다시 만드는 기존 앱이 깨지지 않는다. |
+| D4 | Studio 미리보기에 `display.fit` 반영 | R2에 포함(별도 커밋 R2b). | Studio가 이미 `display.pixelPerfect`를 미리보기·실행에 적용하므로, fit 설정도 함께 반영해야 프로젝트 런타임과 화면이 일치한다. |
+
+## R1. 시작: 에셋 미리 읽기·시작 취소·렌더러 종류
+
+### 공개 API
+
+```ts
+// packages/ferrum-web/src/createFerrumRuntime.ts
+interface FerrumRuntimeOptions {
+  /** Loaded into the runtime's asset host after the renderer exists and before the Data Scene applies. */
+  assets?: AssetManifest;
+  /** Concurrency etc. for `assets`; the startup `signal` is used for cancellation. */
+  assetLoadOptions?: Omit<AssetLoadOptions, "signal">;
+  onAssetProgress?: AssetLoadProgressCallback;
+  /** Cancels startup only. After the promise resolves, the caller owns `runtime.destroy()`. */
+  signal?: AbortSignal;
+  /** Forwarded to `createRenderer` when the runtime creates the renderer. */
+  onRendererFallback?: (info: RendererFallbackInfo) => void;
+}
+interface FerrumRuntime {
+  /** Result of `options.assets`; absent when no manifest was given. */
+  readonly assets?: LoadedAssets;
+  /** The backend that actually runs. "custom" for an injected renderer the SDK does not recognize. */
+  readonly rendererBackend: "webgl2" | "webgpu" | "custom";
+}
+```
+
+### 동작 규칙
+
+1. **순서:** 렌더러 생성 → 에셋 호스트 준비 → `assets` 읽기 시작과 엔진(Wasm) 생성을 **함께** 진행 → 둘 다 끝나면 Data Scene 적용 →
+   `physicsScene` 적용 → 반환. 읽기는 런타임이 쓰는 그 에셋 호스트(소유한 `BrowserPlatformHost` 또는 주입한 `assetHost`)에 한다.
+2. **주입한 에셋 호스트:** `assets`는 그 호스트로 읽고, 소유권은 바뀌지 않는다(런타임이 주입 호스트를 정리하지 않는다).
+3. **실패:** 첫 오류를 그대로 reject하고 소유 자원을 모두 정리한다(기존 `catch` 정리 경로). 에셋 읽기와 엔진 생성이 둘 다 실패해도
+   처리되지 않은 promise 거절(unhandled rejection)이 생기면 안 된다.
+4. **취소(`signal`):**
+   - 호출 시점에 이미 abort면 아무것도 만들지 않고 `AbortError`(`DOMException`)로 reject한다.
+   - 각 `await` 뒤(렌더러, 엔진, 에셋)에 확인하고, `loadAssets`에는 같은 signal을 넘긴다.
+   - abort되면 소유 자원을 정리하고 `AbortError`로 reject한다. 주입한 renderer/engine/assetHost는 정리하지 않는다.
+   - 시작이 끝난 뒤의 abort는 무시한다(D1).
+5. **크기 감시:** 시작이 성공하기 전에는 크기 감시(`observeRendererResize`)가 렌더러를 부르지 않아야 한다.
+   권장 구현은 반환 직전에 감시를 붙이고 `resize()`를 한 번 더 부르는 것(엔진 생성 중 놓친 크기 변화를 반영).
+   어떤 실패·취소·`destroy` 뒤에도 `renderer.resize()`가 불리지 않는다.
+6. **렌더러 종류:** 런타임이 만든 렌더러는 `createRenderer`의 실제 결과(`WebGPURenderer`면 `"webgpu"`, 아니면 `"webgl2"`)로 정한다.
+   주입한 렌더러는 SDK의 두 클래스면 그 값, 아니면 `"custom"`. `onRendererFallback`은 `createRenderer`의 `onFallback`으로 넘긴다
+   (기존 경고 출력 기본값은 유지).
+7. **프로파일러:** 프로파일러가 켜져 있으면 에셋 진행률을 `profiler.recordAssetProgress`에도 넘긴다(레벨 스트리밍과 같은 방식).
+
+### 테스트 (`packages/ferrum-web/test/`)
+
+기존 `createFerrumRuntime.integration.test.ts`의 가짜 renderer·engine 주입 방식과, 기존 에셋 로더 테스트의 가짜 로딩 방식을 재사용한다.
+새 파일이 깔끔하면 `createFerrumRuntimeStartup.test.ts`로 분리해도 된다.
+
+| 테스트 | 확인할 것 |
+| --- | --- |
+| 에셋 먼저, 씬 나중 | 이름 텍스처(`"hero"`)를 쓰는 Data Scene이 `assets`와 함께 성공하고, 같은 문서를 `assets` 없이 주면 지금처럼 텍스처 오류다. |
+| 진행률·결과 | `onAssetProgress`가 불리고 `runtime.assets`에 읽은 결과가 있다. |
+| 시작 전 abort | 이미 abort된 signal이면 `AbortError`, 렌더러·엔진·에셋 호스트를 만들지 않는다. |
+| 읽는 중 abort | `AbortError`, 소유 에셋 호스트 정리, 주입 renderer/engine은 정리하지 않음, Data Scene 미적용. |
+| 에셋 실패 | 같은 오류로 reject, 소유 자원 정리, unhandled rejection 없음(테스트에서 `process.on("unhandledRejection")` 감시). |
+| 크기 감시 | 실패·abort·destroy 뒤 `window` resize 이벤트를 보내도 `renderer.resize` 호출 수가 늘지 않는다. |
+| 렌더러 종류 | 주입한 가짜 renderer는 `"custom"`. |
+| 기존 호출 | 새 옵션 없이 부르면 호출 순서·결과가 지금과 같다(기존 테스트 전부 통과). |
+
+브라우저 smoke: `tests/smoke/data-scene-browser-smoke.mjs`(`pnpm smoke:data-scene`)에 사례 하나를 더한다.
+런타임이 렌더러를 만들고(`rendererPreference: "webgpu"`, 헤드리스에선 WebGL2로 대체) `assets`로 읽은 텍스처의 스프라이트가 실제로 그려지는지(픽셀 확인),
+`rendererBackend`가 실제 값인지, 에셋 읽기 중 abort하면 `AbortError`이고 그리기가 시작되지 않는지 본다.
+
+### 문서
+
+- `docs/engine/public-api/core.md`: "Runtime 생성"에 `assets`·`assetLoadOptions`·`onAssetProgress`·`signal`·`onRendererFallback`·`rendererBackend`,
+  "에셋 묶음 로딩과 취소"에 런타임 시작 경로 한 단락.
+- `docs/engine/public-api-surface.json`: 새로 export하는 타입이 있으면 등록(`pnpm validate:public-api-surface`).
+- `docs/development/architecture/architecture.md`: 런타임 시작 순서(에셋 → 씬)와 취소 규칙 한 줄.
+- `CHANGELOG.md` `Unreleased`.
+
+## 선행 수정 F1: Data Scene smoke의 HD-2D 이동 실패
+
+R1 통합 검증에서 찾은 결함이다. 기존 소비자 smoke가 첫 이동에서 멈춰 R2a 착수 전에 수정했다.
+
+- **증상:** `node tests/smoke/data-scene-browser-smoke.mjs`가 첫 소비자 사례에서
+  `Expected a current kinematic actor with a height span`(`examples/data-scene-native/main.mjs`의 `move`)으로 멈춘다.
+  `engine.moveHd2dKinematicBodyWithTilemap(actor, …)`가 결과 없이 돌아온다. smoke의 `s.move(0, 50)` 단계다.
+- **재현:** 같은 Wasm으로 R1 이전 커밋 `13715b6`과 R1 `77f94fa`에서 같은 이동 오류가 발생했다.
+- **원인:** Data Scene의 `isTrigger` 기본값은 `true`이고, 평면 native 이동은 단일 solid AABB kinematic actor를 요구한다
+  ([물리 문서](../engine/physics-spec.md)). 같은 SDK와 Wasm으로 비교했을 때 높이 정보가 정상인 트리거 actor는 Y=600에 남았고,
+  `isTrigger: false`를 명시한 actor는 Y=650까지 이동했다. 두 경우 모두 백엔드는 `unified-3d`였다.
+- **수정:** 레시피의 actor와 [Data Scene native 문서](../engine/data-scene-native-runtime.md) 예시에 `isTrigger: false`를 명시했다.
+  스모크는 실제 actor가 solid AABB kinematic이고 50 단위 이동하는지 확인한다.
+- **검증:** 준비된 Wasm으로 SDK를 빌드했다. SDK 테스트 2,053개, 브라우저 소비자 4개 조합과 R1 시작 사례,
+  `pnpm validate:docs-links`, `pnpm validate:public-api-surface`가 통과했다.
+
+## 선행 수정 F2: 픽셀 퍼펙트 smoke의 Shooter 스냅샷 실패
+
+R2a 통합 검증에서 찾은 기존 결함이다. R2b의 검증 명령(`pnpm smoke:flat-pixel-perfect`)이 이 smoke 뒤에 Studio viewer smoke를 이어 실행하므로
+R2b보다 먼저 고친다.
+
+- **증상:** `node tests/smoke/flat-pixel-perfect-smoke.mjs`가 `native tile snap: missing native snapshot`으로 멈춘다.
+  `tests/smoke/pixel-snap-native-tiles-fixture.mjs`가 `createFerrumRuntime`의 기본 엔진에 `setGameSpec`(내장 Shooter)을 넣고
+  `runtime.engine.captureShooterStateSnapshot()`으로 카메라 위상을 바꾸려 하는데, 결과가 `undefined`다.
+- **R2a와 무관함:** R2a 이전 커밋 `e09767d`와 R2a `fd200dd`에서 같은 오류로 실패한다(같은 Wasm).
+- **확인한 원인:** 기본 통합 물리는 [Core API](../engine/public-api/core.md) 계약대로 레거시 Shooter 스냅샷을 거절한다.
+  같은 SDK와 Wasm에서 타일 조각만 `engine: { physicsBackend: "legacy" }`로 바꾸면 카메라 위상·배율 조합 16개와
+  렌더링 전후 스냅샷 불변 검사가 통과했다. 이 조각은 Wasm 타일 렌더링을 그대로 검사한다.
+- **같은 smoke의 후속 실패:** 타일 검사를 통과한 뒤 `linear-srgb` 사례가 WebGPU를 요청하고도 WebGL2를 기대해서 멈췄다.
+  현재 SDK의 색 관리 계약에 맞춰 요청한 WebGPU가 실행되도록 기대값을 고쳤다.
+- **수정과 검증:** 타일 fixture에만 legacy 물리를 지정하고 실제 backend를 기록한다. 기존 Wasm으로 SDK를 빌드한 뒤
+  `node tests/smoke/flat-pixel-perfect-smoke.mjs`를 실행했다. WebGL2·WebGPU 각각 DPR 1·1.5·2와 조합별 타일 위상 16개,
+  WebGPU `linear-srgb` 사례가 통과했다. SDK 테스트 2,061개, 문서 링크·공개 API 검사도 통과했다.
+
+## 선행 수정 F3: WebGPU 공간 smoke의 진행 저장 거절
+
+R3 통합 검증에서 찾은 기존 결함이다. 통합 담당의 전체 끝 검증과 예제 반영보다 먼저 고친다.
+
+- **증상:** `pnpm smoke:webgpu-recovery`(`spatial-webgpu-browser-smoke.mjs --recovery-only --offscreen-target`)가
+  `Data Scene physics capture/restore requires native physics snapshots, which are not yet supported.`로 멈춘다.
+  `tests/smoke/spatial-webgpu-browser-fixture.mjs`의 `probe`가 기본 엔진으로 `captureGameStateSnapshot(..., { includeDataSceneProgress: true })`를 부른다.
+  같은 smoke의 기본 실행(`node tests/smoke/spatial-webgpu-browser-smoke.mjs`)도 `spatial-light-probes-browser-fixture.mjs`의 `probe`에서 같은 오류로 멈춘다.
+  두 실행 모두 CI의 WebGPU 단계에 있다.
+- **R3와 무관함:** R3 이전 `844b0ab`에서도 같은 오류로 실패한다(같은 Wasm, Rust 마지막 변경 뒤 빌드).
+- **확인한 원인:** `4213a0a`(2026-11-21, 통합 물리를 SDK에 연결)부터 `dataSceneProgress.ts`의 `assertDataScenePhysicsProgressSupported`가
+  엔진이 `unified-3d`이거나 문서에 `physics`가 있으면 진행 저장·복원을 거절한다. 새 물리의 snapshot/restore는
+  [통합 3D 물리](unified-3d-physics-plan.md)의 미완료 항목이라 이 거절은 의도된 계약이다. 그런데 `includeDataSceneProgress`를 쓰는
+  smoke fixture 20여 개가 기본 엔진(`unified-3d`)으로 진행을 저장한다.
+- **CI가 못 잡은 이유:** `.github/workflows/ci.yml`은 수동 실행(`workflow_dispatch`)만 있고 2026-06-15 이후 실행 기록이 없다. `origin/main`에도 같은 결함이 있다.
+
+**수정 방향 (테스트만 고친다. SDK·Rust 소스와 거절 규칙은 바꾸지 않는다):**
+1. 목록: `includeDataSceneProgress`를 쓰는 fixture를 실행하는 공식 smoke(`package.json` 스크립트와 CI 단계)를 돌려 이 오류로 멈추는 사례를 모두 적는다.
+2. 렌더링·장치 복구가 주제이고 진행 저장은 수단인 사례: 저장 범위를 그 사례가 실제로 검사하는 것으로 줄이거나(예: 진행 대신 상태만 저장),
+   레거시 물리 엔진으로 띄운다. 단 `spatial-webgpu-browser-fixture.mjs`의 `probe`는 같은 엔진으로 native 물리 debug 선(`probeNativeDebugGeometry`)도
+   검사하므로 레거시로 바꾸지 않는다. 기존 렌더링·handle·픽셀 단언은 줄이지 않는다.
+3. 진행 저장 자체가 주제인 사례(예: HD-2D 전투 저장): 레거시 엔진으로 같은 의미를 검사할 수 있으면 그렇게 한다.
+   새 물리에서만 의미가 있으면 고치지 않고 목록에 남겨 통합 3D 물리 계획의 snapshot 항목으로 넘긴다.
+
+**검증:** 고친 공식 smoke가 모두 통과한다(`pnpm smoke:webgpu-recovery`와 기본 `spatial-webgpu-browser-smoke.mjs` 포함).
+SDK·Rust 소스 변경이 없음을 확인한다. 넘긴 사례 목록은 보고와 이 문서에 적는다.
+
+### 재현 목록과 조치
+
+준비된 Wasm과 SDK로 `package.json`과 CI의 브라우저 명령을 실행했다. 아래 명령과 하위 모드에서 동일한 진행 저장 거절을 확인했다.
+
+| 범위 | 변경 전 재현 | 조치 |
+| --- | --- | --- |
+| 공간 기본·CI 오프스크린·장치 복구 | `smoke:spatial-webgpu`, `smoke:spatial-webgpu-offscreen`, `smoke:webgpu-recovery` | 정적 작성 씬은 문서와 장면 상태를 저장한다. 기본 공간 probe의 통합 물리 디버그 선, 새 핸들, 렌더링·픽셀·장치 복구 단언을 유지한다. |
+| 공간 조명 세부 모드 | `smoke:spatial-light-probes`, `smoke:spatial-light-shafts`, `smoke:spatial-height-fog`, `smoke:spatial-light-selection`, `smoke:spatial-point-pcss`, `smoke:spatial-sun-pcss`, `smoke:spatial-point-shadows`, `smoke:spatial-wide-bloom` | 카메라, 라이브 조명, 선택 이력과 스냅샷 버전 검사는 레거시 물리에서 기존 진행 저장을 사용한다. |
+| 평면 조명 | `smoke:flat-lit`, 같은 러너의 `--surface-only`, `--masks-only` | 시험이 저장하는 정적 프레임과 수신 마스크의 작성 문서·장면 상태를 복원한다. 애니메이션, 픽셀, 오래된 핸들 거절 단언을 유지한다. |
+| HD-2D 전투 체크포인트 | `hd2d-combat-browser-smoke.mjs --actions-only`, `--visuals-only`, `--input-only` | 액션, 투사체 애니메이션, 비행 중 투사체 체크포인트는 레거시 물리를 명시한다. 입력 모드의 시간 초과 아래에서 실제 진행 저장 거절을 관찰했다. |
+
+HD-2D의 탐색·군집·스케줄러·이동·스폰은 변경 전에 gameplay 설정 단계에서 막혔다.
+이 fixture들도 레거시 진행 저장을 검사하므로 레거시 물리를 명시하고 기존 이동·전투·저장 단언을 유지한다.
+WebGPU 폴백 전용 모드는 사전 검사에서 통과했다.
+
+통합 3D 물리의 JSON 진행 스냅샷 후속 항목으로 넘긴 fixture는 없다. 공간 디버그 선은 기존과 같이 통합 물리에서 검사하며
+Village의 네이티브 런타임 체크포인트와 `smoke:unified-physics-web`의 JSON 저장 거절 검사는 그대로 둔다.
+
+준비된 Wasm으로 SDK 테스트 2,068개, CI 공간 조명 보고서 테스트 38개, `smoke:webgpu-recovery`, `smoke:flat-lit`가 통과했다.
+CI 오프스크린 스모크의 1280×720·390×844, DPR 1·2 네 조합은 기존 단언을 그대로 두고 화면 조합별로 나눠 실행해 모두 통과했다.
+HD-2D `--actions-only`, `--visuals-only`, `--input-only`, `--spawn-only`도 두 창 크기와 DPR 1·2에서 통과했다.
+스폰의 복원 타이머는 소프트웨어 렌더링의 DPR 2에서 감소하는 것을 확인한 뒤 해당 대기 한도만 15초에서 30초로 늘렸다.
+
+별개 검증 후속은 다음과 같다.
+
+- 기본 `smoke:spatial-webgpu`는 소프트웨어 Chromium의 네이티브 캔버스 공유 이미지 생성 실패 후 픽셀 읽기에서 중단됐다.
+- 기본 `smoke:hd2d-combat`은 적 128명에서 9프레임을 그려 기존 10프레임 기준에 미달했다. 같은 사례의 revision 9 체크포인트는 복원됐다.
+- 사전 실행의 `smoke:spatial-scene`과 `smoke:sprite-animation-runtime`은 애니메이션 프레임 단언,
+  `smoke:data-scene-gameplay`는 장애물의 인스턴스 참조 검증, `smoke:unified-physics-web`은 네이티브 탐색 단언에서 각각 중단됐다.
+
+## 선행 수정 F4: 기존 smoke 6개 진단
+
+F3 검증 중 찾은 별개 실패다(위 "재현 목록과 조치"의 별개 검증 후속). 처음 관찰한 여섯 실패 중 5개는 CI 단계에 있다.
+CI(`.github/workflows/ci.yml`)는 수동 실행만 있어 2026-06-15 이후 돈 적이 없으므로 언제부터 실패했는지 알 수 없다.
+
+| smoke | Rust 재빌드 없는 재현 명령 | CI 단계 | 분류와 재현 결과 | 수정 또는 후속 |
+| --- | --- | --- | --- | --- |
+| `smoke:spatial-scene` | `node tests/smoke/spatial-scene-browser-smoke.mjs` | 있음 | 오래된 테스트. 아틀라스 재생 구간의 RAF 간격을 약 525ms로 늦추면 F3와 같은 0.20초·프레임 0이 나온다. 프레임 1에는 시뮬레이션 0.25초가 필요한데, 실제 시간 2초를 기다려도 50ms 입력 상한 때문에 부족했다. | `spatial-visibility-browser-fixture.mjs`가 실제 GameLoop에 50ms 간격 6개를 전달한다. 프레임 번호, 렌더 픽셀, 일시 정지 시각과 저장 복원 검사를 유지했다. 1280×720·390×844 × DPR 1·2 네 조합이 모두 통과했다. |
+| `smoke:sprite-animation-runtime` | `node --test tests/smoke/sprite-animation-runtime-report.test.mjs` 및 `node tests/smoke/sprite-animation-runtime-smoke.mjs --require-webgpu` | 있음 | 오래된 테스트. `0fbbc7f6`부터 GameLoop가 0.1ms 미만 간격을 누적해, 89.99ms 뒤 0.02ms 입력에서 프레임 1을 기다리던 검사가 프레임 0에서 실패했다. 시간 입력을 고치니 `4213a0a2`의 기본 native 물리에서 기존 JSON 진행 저장도 거절됐다. | `sprite-animation-runtime-fixture.mjs`에서 경계 전후 프레임을 지원되는 입력으로 검사하고 누적도 단언한다. 애니메이션 진행 저장에는 레거시 물리를 명시했다. 보고서 테스트와 필수 WebGL2·오프스크린 WebGPU 통과(각 186렌더·프레임 이벤트 331개·완료 4개·픽셀 22개). |
+| `smoke:data-scene-gameplay` | `node tests/smoke/data-scene-gameplay-smoke.mjs` | 있음 | 엔진 결함. 빈 초기 프래그먼트를 가진 문서에서 `{ fragment: "island" }`로 적용해도 조명 사전 검증이 옵션을 전달하지 않아 `site`를 빈 프래그먼트에서 찾다가 거절한다. `d31b85ac`가 이 경로에 프래그먼트 옵션 없는 resolve 호출을 추가했다. | [F5](#선행-수정-f5-조명-사전-검증의-프래그먼트-누락)에서 조명 사전 검증의 두 문서 해석에 적용 경로의 옵션을 공유해 수정했다. 장애물 참조 검증과 기존 적용 단언을 유지했고 소비자 smoke 37개 사례를 통과했다. |
+| `smoke:unified-physics-web` | `pnpm smoke:unified-physics-web` | 있음 | 엔진 성능 예산 초과. 64명·50ms 고정 입력에서 81프레임·405스텝을 마쳤고 위치·탐색 통계 해시가 기준 `da6e9fd4…`와 일치했다. Rust warm p95는 Chromium 148에서 69.8/13.96ms와 65.0/13.0ms(프레임/스텝), Chromium 153에서 86.0/17.2ms로 기준 43/11ms를 넘었다. | [통합 3D 물리의 군중 성능 단계](unified-3d-physics-plan.md#코드-리뷰-후속-수정-2026-11-22)로 넘긴다. 캐릭터 접촉 `physics3d/character_contacts.rs`와 회피 `engine/unified_physics/combat_navigation/crowd.rs`를 같은 빌드·기기에서 프로파일링해 비용과 환경 영향의 비중을 확인한다. 최초 실패 커밋과 비용 증가 위치는 미확정이다. |
+| `smoke:hd2d-combat`(기본) | `node tests/smoke/hd2d-combat-browser-smoke.mjs` | 있음 | 환경 한계. Chromium 148의 ANGLE SwiftShader에서 1280×720·DPR 1·적 128명은 2.5초 샘플에 11프레임(4.31fps)이었고, DPR 2·적 0명은 3프레임(1.10fps)으로 기준 10에 못 미쳤다. 후자의 RAF 간격 p95는 955.1ms, Rust 업데이트와 렌더 호출 p95는 각각 0.4ms, 7.2ms였다. | 프레임 기준을 유지한다. 실제 GPU에서 같은 네 화면 조합을 다시 측정한다. |
+| `smoke:spatial-webgpu`(기본 캔버스) | `node tests/smoke/spatial-webgpu-browser-smoke.mjs` (로그 축소 재현은 `DEBUG=pw:browser`와 `--light-probes-only`) | 없음(CI는 `--offscreen-target`) | 환경 한계. Chromium 148의 SwiftShader가 1280×720·DPR 1의 640×480 RGBA8 WebGPU swap-chain 텍스처용 `SharedImageBackingFactory`를 찾지 못했다. 장치 오류 뒤 `mapAsync`가 중단됐다. | 같은 1280×720·DPR 1의 `--offscreen-target --light-probes-only`는 두 색 모드에서 통과했다. 실제 GPU의 캔버스에서 기본 검사를 다시 실행한다. |
+
+2026-11-26에 `b5cfff83`의 기존 SDK와 Wasm(SHA-256 `16203669b538…`)으로 재현했다.
+
+**할 일:**
+1. 각 실패를 지금 브랜치에서 재현하고 원인을 좁힌다. 가능하면 처음 실패한 커밋을 찾는다.
+   Codex 작업 폴더에서는 Rust를 빌드하지 않는다. 원인이 Rust 쪽이면 거기까지 좁혀 보고한다.
+2. 원인별로 처리한다.
+   - 오래된 테스트(엔진 계약이 바뀌었는데 테스트가 따라가지 못함): F1~F3처럼 테스트를 고친다. 기존 단언은 줄이지 않는다.
+   - 엔진 결함: 고치지 않고 재현 명령·원인·고칠 위치를 보고한다. 통합 담당이 별도 단계로 계획한다.
+   - 환경 한계(소프트웨어 렌더링 속도·GPU 기능): 기준을 바꾸지 않고 근거(같은 사례의 실제 수치 등)를 보고한다. 기준 조정은 보고 뒤 정한다.
+3. [통합 3D 물리](unified-3d-physics-plan.md)가 진행 중인 영역(예: `unified-physics-web`의 탐색)은 진단만 하고 그 계획의 항목으로 넘긴다.
+
+**검증:** 테스트를 고친 smoke는 전체 통과. 나머지는 보고에 재현 명령·원인·제안을 적고, 이 문서의 표에 결과를 남긴다.
+
+## 선행 수정 F5: 조명 사전 검증의 프래그먼트 누락
+
+F4에서 찾은 엔진 결함이다(2026-11-26 사용자 승인). `smoke:data-scene-gameplay`가 CI 단계에 있으므로 C1 전에 고친다.
+
+- **증상:** 초기 프래그먼트에 없는 인스턴스를 `navigation.obstacles`가 참조하는 문서를
+  `applyDataSceneAuthoringDocument(engine, document, { fragment: "island" })`로 적용하면, 선택한 프래그먼트에는 인스턴스가 있는데도
+  `navigation.obstacles: must reference an instance in the applied fragment`로 거절한다.
+- **원인:** `packages/ferrum-web/src/dataSceneRuntimeTarget.ts`의 `preflightDataSceneLighting`이 문서를 다시 해석하는 두 호출
+  (lit가 아닌 경우와 lit인 경우)이 `path`·`componentTemplates`·`allowComponentTemplates`만 넘긴다. `fragment`·`maxDepth` 등 바인딩 옵션이 빠져
+  초기 프래그먼트로 장애물 참조를 검증한다. 같은 함수의 `bindSceneBehaviorRecipes`와 적용 경로의 해석(`...bindingOptions`)은 옵션을 모두 넘긴다.
+  `d31b85ac`(Flat 스프라이트 표면 재질)가 이 해석 호출을 더했다. 이 함수는 저장 복원(`gameStateSnapshot.ts`의 `dataSceneAuthoringApplyOptions`)에서도 불린다.
+
+**할 일:**
+1. 사전 검증의 두 해석 호출이 적용 경로와 같은 해석 옵션을 쓰게 한다. 두 곳에서 옵션을 따로 고르지 않도록, 적용 옵션에서
+   해석 옵션을 만드는 부분을 한 곳(작은 내부 도우미 등)으로 모은다. 공개 API와 오류 문구는 바꾸지 않는다.
+2. 노드 테스트(`packages/ferrum-web/test/`): 초기 프래그먼트가 비었거나 장애물 인스턴스가 없는 문서를 `fragment`로 적용할 때
+   lit가 아닌 경우와 lit인 경우 모두 통과한다. `fragment` 없이 적용하면 지금처럼 거절한다. 저장 복원 경로에서도 `fragment`가 사전 검증에 전달되는지 본다
+   (진행 저장이 맞춤 옵션을 거절하는 기존 규칙은 그대로다).
+3. 같은 함수 안에 적용 경로와 옵션이 어긋나는 다른 해석이 있으면 함께 보고한다. 범위를 넓혀 고치지는 않는다.
+
+**지킬 것:** Rust/Wasm 변경 없음. 이 작업 폴더에서 Rust를 빌드하지 않는다(기존 Wasm 사용). F4에서 고친 테스트와 smoke의 단언은 그대로 둔다.
+
+**검증:** `pnpm --filter @ferrum2d/ferrum-web lint`, `pnpm --filter @ferrum2d/ferrum-web test`, `pnpm validate:public-api-surface`,
+`node tests/smoke/data-scene-gameplay-smoke.mjs` 전체 통과, 적용 경로 회귀로 `node tests/smoke/data-scene-browser-smoke.mjs`와
+`node tests/smoke/flat-lit-browser-smoke.mjs`. 문서: `CHANGELOG.md`의 Fixed, 이 문서 F4 표의 해당 행.
+
+**결과:** 기존 Wasm으로 새 노드 회귀 5개와 SDK 테스트 2,073개, SDK 타입 검사·공개 API 범위·문서 링크 검사를 통과했다.
+Data Scene gameplay 37개, Data Scene 브라우저의 네 화면 조합과 화면 맞춤 2개, Flat Lit 60개 검증을 통과했다.
+
+**추가 점검:** 같은 함수의 별도 바인딩 호출은 `path`가 없으면 `gameplayAuthoring`을 쓰고 적용 경로는
+`dataSceneAuthoring`을 전달한다. 컴포넌트 직접 해석은 `allowTemplate: true`와 문서 경로를 사용한다.
+적용 경로는 템플릿 허용 정책과 `instances.<id>` 경로를 전달한다. 이 호출들은 F5의 문서 해석 옵션 수정 범위 밖이다.
+
+### 리뷰 후속 F5b: 적용 경로의 중복 해석
+
+F5 뒤 `preflightDataSceneLighting`은 적용 경로와 같은 옵션(`validateBindings`·`validateComponents` 기본 true 포함)으로 문서를 해석한다.
+적용 경로(`applyDataSceneAuthoringDocumentWithCommit`)는 바로 앞에서 같은 문서를 같은 옵션으로 이미 해석했으므로 같은 일을 두 번 한다.
+F5 전 사전 검증은 가벼운 해석이었다. 통합 검증에서 `resolveSceneAuthoringDocument`만 잰 비용(중앙값)은 다음과 같다.
+
+| 인스턴스 | 가벼운 해석(F5 전 사전 검증) | 전체 검증(F5 뒤 사전 검증) | 적용마다 늘어난 비용 |
+| --- | ---: | ---: | ---: |
+| 100 | 0.05ms | 0.65ms | 0.59ms |
+| 1,000 | 0.08ms | 4.49ms | 4.41ms |
+| 5,000 | 0.49ms | 9.75ms | 9.26ms |
+
+예제 사이트처럼 조작값을 바꿀 때 프레임마다 `reapply`하면 프레임 예산의 상당 부분이 된다.
+
+**할 일:**
+1. 적용 경로는 이미 해석한 문서를 사전 검증에 넘겨 다시 해석하지 않게 한다. 예: 내부 함수가 해석된 문서와 옵션을 받고,
+   공개 `preflightDataSceneLighting`은 F5의 같은 옵션으로 해석한 뒤 그 함수를 부른다. 저장 복원 경로는 지금처럼 해석해 변경 전에 거절한다.
+2. 공개 API·오류 문구·오류 순서(어떤 오류가 먼저 나는지)는 바꾸지 않는다. F5의 노드 테스트 5개는 그대로 통과해야 한다.
+3. F5 전부터 있던 중복(사전 검증 안의 `bindSceneBehaviorRecipes`·컴포넌트 재해석, 기본 경로가 `gameplayAuthoring`인 바인딩 호출)은 고치지 않고,
+   비용을 같은 방식으로 재서 보고한다.
+
+**검증:** F5 검증 명령 전체. 보고에 위 표와 같은 방식으로 잰 적용 1회 비용(F5 뒤 → F5b 뒤, 1,000·5,000개)을 적는다.
+
+**결과**
+
+F5 노드 회귀 5개와 해석 횟수·오류 순서 회귀 2개를 포함해 SDK 테스트 2,075개가 통과했다.
+SDK 타입 검사, 공개 API 범위와 문서 링크 검사, 기존 Wasm을 사용한 세 스모크가 통과했다.
+
+**적용 비용 측정**
+
+Node v24.19.0, Ryzen AI Max+ 395, 동일 Wasm의 레거시 물리 엔진에서 측정했다.
+같은 스프라이트 프리팹 문서를 각 SDK에서 12회 예열한 뒤 F5와 F5b를 번갈아 각각 31회 적용했다.
+아래는 한 번의 `applyDataSceneAuthoringDocument` 전체 실행 시간의 중앙값이다. 브라우저 렌더링과 GPU 에셋 준비는 측정 범위 밖이다.
+
+| 인스턴스 | 조명 | F5 뒤 | F5b 뒤 |
+| ---: | --- | ---: | ---: |
+| 1,000 | 비`lit` 인라인 | 10.65ms | 8.99ms |
+| 1,000 | `lit` 인라인 | 17.58ms | 13.96ms |
+| 5,000 | 비`lit` 인라인 | 74.29ms | 65.35ms |
+| 5,000 | `lit` 인라인 | 92.18ms | 79.99ms |
+
+F5 전부터 있던 사전 검증의 바인딩(기본 진단 경로 `gameplayAuthoring`)과 컴포넌트 해석은 별도로 계측했다.
+아래는 F5b의 적용 1회당 각 구간 중앙값이다. 비`lit` 인라인 문서는 컴포넌트를 다시 해석하지 않으며, 템플릿은 인스턴스별 해석 구간을 합산했다.
+
+| 인스턴스 | 조명 | 사전 바인딩 | 사전 컴포넌트 해석 |
+| ---: | --- | ---: | ---: |
+| 1,000 | 비`lit` 인라인 | 0.62ms | 해당 없음 |
+| 1,000 | `lit` 인라인 | 0.69ms | 1.23ms |
+| 1,000 | 비`lit` 템플릿 | 0.30ms | 1.24ms |
+| 5,000 | 비`lit` 인라인 | 2.35ms | 해당 없음 |
+| 5,000 | `lit` 인라인 | 3.49ms | 6.66ms |
+| 5,000 | 비`lit` 템플릿 | 1.66ms | 6.38ms |
+
+## 결정 D5: CI 실행 방식 (2026-11-25 확정: B)
+
+결정 D5 당시 CI는 `c0ad85a`(2026-06-16)부터 수동 실행 전용이었다. 저장소가 공개라 GitHub Actions 비용은 없다.
+
+| 안 | 내용 | 장단점 |
+| --- | --- | --- |
+| A. 지금처럼 수동 | PR·머지 전에 통합 담당이 수동으로 한 번 실행한다(브랜치 푸시 필요). | 정책 변경 없음. 잊으면 이번처럼 실패가 묻힌다. |
+| B. PR 자동 실행 추가 | `main` 대상 `pull_request`에 기본 검사를 자동 실행하고, 확장 브라우저 묶음은 수동으로 둔다. | 머지 전에 자동으로 확인한다. AGENTS.md와 운영 문서의 "자동 실행 아님" 문구를 고친다. |
+| C. 주기 실행 추가 | 주 1회 `schedule`로 `main`을 검사한다. | 머지가 드물어도 실패를 잡는다. 작업 브랜치는 검사하지 않는다. |
+
+사용자가 B를 골랐다(2026-11-25). F4·F5·F5b로 깨진 검사와 F5의 비용 증가를 먼저 고친 뒤 [C1](#c1-pr에서-ci-자동-실행-d5-b)에서 적용한다.
+성능 예산 초과(`smoke:unified-physics-web`)와 소프트웨어 렌더링 한계(`smoke:hd2d-combat`)를 PR 검사에서 어떻게 다룰지는
+C1 뒤 첫 실제 CI 실행에서 GitHub 러너의 수치를 보고 정한다.
+
+## C1: PR에서 CI 자동 실행 (D5-B)
+
+F5b 뒤에 한다. 지금 `validate` job은 조건 없이 돌고, `consumer-smoke`·`extended-browser-smoke`는 태그나 수동 입력일 때만 돈다.
+
+- `.github/workflows/ci.yml`의 `on`에 `main` 대상 `pull_request`를 더한다. `workflow_dispatch` 입력, 태그 조건, 두 수동 job의 조건은 그대로 둔다.
+  PR에서는 `validate`만 돌고 두 수동 job은 건너뛰는지 확인한다. Pages 워크플로(`pages.yml`)는 바꾸지 않는다.
+- 같은 PR에 새 커밋이 오면 이전 실행을 취소하도록 `concurrency`(PR 번호 기준, `cancel-in-progress`)를 둔다.
+- `validate`의 단계 순서를 고친다. 예제 패키지의 타입 검사는 `@ferrum2d/ferrum-web`의 빌드된 `dist` 타입을 읽는데,
+  지금 `Lint TypeScript packages`(`pnpm lint`)는 `build:web`보다 앞에 있어 새 checkout에서 실패한다(2026-11-26 `dist`를 치우고 재현).
+  웹 패키지를 lint 전에 빌드하거나 lint를 빌드 뒤로 옮기고, 같은 빌드를 두 번 하지 않게 한다.
+  다른 단계도 앞 단계의 산출물에 기대는지 확인하고, 깨끗한 작업 폴더에서 CI 단계 순서대로 재현한 결과를 보고한다.
+- 문서: AGENTS.md "CI 정합 검증", `docs/development/operations/demo-deploy.md`, `docs/development/operations/npm-release.md`,
+  `docs/development/architecture/flat-lighting-composition.md`의 "수동 실행 전용·push/PR 자동 실행 아님" 문구를 바꾼다.
+- 검증: 워크플로 문법 검사(가능하면 `actionlint`)와 job별 실행 조건 표(수동·PR·태그)를 보고한다.
+  실제 실행 확인은 브랜치를 푸시하고 PR을 열어야 하므로 사용자가 정한 시점에 한다.
+
+
+**로컬 검증 결과**
+
+- `actionlint` 1.7.7과 문서 링크 검사 통과. 두 선택형 job, 수동 입력 및 `pages.yml`은 비교 결과 변경이 없었다.
+- 별도 checkout에 `pnpm install --frozen-lockfile --offline`로 의존성을 설치하고 개인 npm 설정을 분리했다. `dist`와 `dist-test`가 없는 상태에서 기존 Wasm을 복사하고, 이전의 Studio Kit → lint 순서가 예제의 SDK 선언 누락(TS2307)으로 실패하는 것을 재현했다.
+- 이전 순서에서 만든 Studio Kit 산출물을 치운 뒤 새 순서로 적용했다. `test:web`이 SDK를 한 번 빌드하고, 나머지 패키지 빌드에서 Studio가 Studio Kit을 한 번 빌드했다. 예제 빌드 뒤 `pnpm lint`가 통과했다. 공통 빌드를 쓰는 후속 검사는 독립 실행용 빌드 절차를 반복하지 않는다.
+- Studio의 저장 활성화 번들과 테스트 모드 두 변형을 각각 한 번 빌드했다. 테스트는 자기 임시 복사본에 장면 픽스처를 추가하며 공유 번들을 그대로 둔다.
+  하네스 실패와 분리해 실행한 Studio 저장·배치 그리드·Aseprite 트림·예제 사이트 브라우저 검사와 Data Scene 샘플·gameplay 작성 보고서 검사가 통과했다.
+- lint 다음의 `pnpm report:example-demo-harness`는 `examples/site/src/main.ts`가 목록에 없어 실패했다. 예제 사이트 분류는 아래 C1b에서 해결했다. Rust/WASI 빌드와 전체 브라우저 행렬은 이 로컬 순서 검증에서 제외했다.
+
+| 실행 방식 | `validate` | `consumer-smoke` | `extended-browser-smoke` |
+| --- | --- | --- | --- |
+| 브랜치 ref 수동 실행 | 실행 | `consumer_smoke` 입력 시 | `extended_browser_smoke` 입력 시 |
+| `main` 대상 PR | 실행 | 건너뜀 | 건너뜀 |
+| `ferrum-web-v*` 태그 ref 수동 실행 | 실행 | 실행 | 실행 |
+| 태그 push | 트리거 없음 | 트리거 없음 | 트리거 없음 |
+
+두 선택형 job은 `validate` 성공 뒤 실행한다. 실제 GitHub 실행은 푸시와 draft PR 이후 확인한다.
+
+### 리뷰 후속 C1b
+
+- 슬라이스 단계 맨 앞에 `pnpm test:aseprite-slices`를 복구했다. 기존 브라우저 검사 두 개가 뒤따른다.
+- 예제 사이트는 예제 목록·인스펙터·뷰포트를 유지하는 독립 `editor-shell`로 사유와 함께 등록했다. 공유 셸 import 의무는 이 분류에만 면제한다.
+  예제 사이트에 로컬 `createButton`을 넣으면 실패하고, 기존 공유 셸 예제에서 import나 `createRuntimeDemoShell` 호출을 빼면 각각 실패하는 것을 임시 checkout에서 확인했다.
+- [배포 문서](../development/operations/demo-deploy.md)의 “자동 검증의 성공은 Pages 배포 완료를 뜻하지 않는다.” 문장을 복구했다.
+
+**로컬 순서 검증**
+
+`dist`·`dist-test`가 없는 별도 checkout에서 Node.js 24.19.0과 pnpm 10.8.0을 사용했다. 개인 npm 설정을 분리하고
+`pnpm install --frozen-lockfile --offline`로 설치했다. Wasm 빌드 단계에서 기존 산출물을 복사했다. 저장된 Wasm의 Core 소스
+지문(`b6d68fd5e63aa8c8`)은 현재 소스와 일치했다. 브라우저·Rust가 필요한 검사를 건너뛰고 혼합 단계에서는 Node 검사와 빌드만
+실행했다. 패키지 확인의 라이선스 비교는 읽기 전용 `cargo metadata`를 호출했다. Rust 컴파일은 실행하지 않았다.
+
+`validate`의 45개 단계에서 67개 명령을 순서대로 실행했다(설치와 Wasm 복사·해시 확인 포함). 40개 단계가 통과했고 5개가
+실패했다. 실패 뒤에도 나머지 검사를 실행해 추가 실패를 확인했다. `pnpm test:web`의 SDK 테스트 2,075개, 나머지 패키지 빌드,
+`pnpm lint`, `pnpm report:example-demo-harness`, `pnpm test:aseprite-slices` 8개, `pnpm test:pages-build` 및
+`pnpm build:pages`가 통과했다. `actionlint` 1.7.7과 문서 링크 검사도 통과했다.
+
+| 실패 단계 | 재현 명령 | 원인과 후속 |
+| --- | --- | --- |
+| Runtime budget productization guard (lint 앞의 첫 재현 실패) | `pnpm validate:runtime-budget-product` | C1에서 [smoke-check.md](../development/quality/smoke-check.md)의 `tag/manual opt-in` 문구를 뺐지만 `check-runtime-budget-productization.mjs`는 여전히 이 문자열을 요구한다. 임시 checkout에 해당 문구만 복원하면 통과했다. 문서와 검사 조건을 맞춘다. |
+| Package artifact checks | `node scripts/package/check-create-game-package.mjs --verify-pack --skip-build` | breakout의 기존 runtime replay 픽스처와 현재 Native 저장 파일 SHA-256이 다르다(`8af8084d…` → `8f0d410d…`). 아래 템플릿 보고서와 같은 원인이다. 이 단계의 다른 패키지 검사는 통과했다. |
+| Gameplay replay report | `node tests/smoke/gameplay-replay-smoke.mjs --artifact-dir artifacts/gameplay-replay-smoke` | 기본 통합 물리의 `Engine`은 테스트가 쓰는 레거시 `capture_shooter_snapshot()`을 거절한다. 동일 Wasm에서 기본 엔진은 `false`, 레거시 물리 엔진은 `true`를 반환했다. Shooter golden 검사가 사용할 물리와 스냅샷 방식을 정한다. |
+| Gameplay report artifact validation | `pnpm validate:gameplay-report-artifacts` | 직전 Gameplay replay 단계가 실패해 JSON을 만들지 못했다(`ENOENT`). Gameplay replay 수정 뒤 함께 확인한다. |
+| Create-game template report smoke | `node tests/smoke/create-game-template-report-envelope-smoke.mjs` | minimal의 Native 저장 파일 SHA-256이 픽스처와 다르다(`f376e095…` → `2ccbffc5…`). SDK 빌드 식별자가 저장 파일에 포함된다. 임시 checkout에서 `4a7ef591`의 식별자만 되돌리면 minimal·topdown·breakout 보고서가 모두 통과했다. 현재 SDK로 템플릿 픽스처를 다시 생성하고 차이를 확인한다. |
+
+추가 실패는 이번 변경 범위에서 진단 결과만 남겼다. 브라우저와 Rust를 사용하는 검사, GitHub 러너에서의 실행 및 artifact 업로드는
+실제 PR 검증에 남아 있다. 위 순서에서 재현한 첫 실패는 런타임 예산 문서 검사다.
+
+### 리뷰 후속 C1c
+
+- 런타임 예산 검사는 문서에서 PR·수동 실행의 기본 gate와 선택형 job 분류를 안내하는지 확인한다. [smoke-check.md](../development/quality/smoke-check.md)에
+  `tag/manual opt-in`을 복구해 브랜치 ref 수동 입력과 `ferrum-web-v*` 태그 ref 수동 실행의 의미를 설명했다. 검사 조건은 기존대로다.
+- minimal·topdown·breakout·platformer를 CLI로 생성하고 각 프로젝트에서 `node scripts/ferrum-runtime-replay.mjs update-fixture`를 실행했다.
+  해시 값만 가리고 JSON 전체를 비교했다. 총 18개 스냅샷에서 Native 파일의 `sha256`과 파생 `snapshotHash`·`replayHash` 58개만 달라졌다.
+  현재 SDK로 네 프로젝트의 runtime replay 보고서를 확인했다.
+- `cb110be7`이 `Engine::new()`의 기본값을 통합 물리로 바꾸면서 `capture_shooter_snapshot()`에 레거시 스냅샷 거절을 추가했다.
+  해당 커밋의 부모에서 Shooter replay는 기본 엔진을 만들고 같은 메서드를 호출했다. `cb110be7`은 `origin/main`에 포함되어 있다.
+  Shooter 시나리오가 쓰는 12개 실행 함수의 초기화에만 레거시 물리를 명시했다. 기존 Shooter golden, 단언, 별도 Data Scene 작성·복원
+  경로는 유지했다. 이 검사의 Shooter 범위는 레거시 물리다. 네 create-game 템플릿의 Native replay는 통합 물리에서 확인했다.
+- 산출물이 없는 별도 checkout에서 기존 Wasm을 재사용해 C1b와 동일한 순서의 45개 단계와 67개 명령이 모두 통과했다.
+  `pnpm validate:runtime-budget-product`, `node scripts/package/check-create-game-package.mjs --verify-pack --skip-build`,
+  `node tests/smoke/create-game-template-report-envelope-smoke.mjs`, Gameplay replay 17개 시나리오·94개 스냅샷,
+  `pnpm validate:gameplay-report-artifacts`가 통과했다. 패키지 라이선스 검사는 읽기 전용 `cargo metadata`를 호출했다.
+  실제 PR의 브라우저 smoke와 Rust 검증 결과는 GitHub 러너에서 확인한다.
+
+### 리뷰 후속 C1d
+
+- 첫 PR #113의 `validate`는 `Check Ferrum core Rust formatting`에서 멈췄다. 로컬에서 설정 추가 전 Core 포맷 검사 실패를
+  재현했다. 1.97.1은 Rapier의 `geometry/narrow_phase/validation/tests.rs`에서, 1.100.0은 해당 파일과 Parry의
+  `query/query_dispatcher.rs`에서 차이를 냈다.
+- `ci.yml`의 세 job이 `CI_RUST_TOOLCHAIN` 값 1.97.1을 쓴다. 통합 담당의 1.97.1 Clippy 통과 결과를 기준으로 고정했다.
+  `rustfmt`·`clippy`와 `wasm32-wasip1` 설치, 별도 `wasm32-unknown-unknown` 추가 단계는 유지했다.
+- `crates/ferrum-core/vendor/rustfmt.toml`에서 `disable_all_formatting = true`로 vendor를 제외했다. 상류 코드와 이미 기록한 패치의
+  바이트를 보존했다. 두 Rust 버전에서 Core·Studio Desktop의 `cargo fmt --manifest-path … --all -- --check`가 모두 통과했다.
+  별도 checkout에 Core `src/lib.rs` 포맷 위반을 추가하면 두 버전 모두 같은 파일을 지목하고 종료 코드 1을 반환했다.
+- `actionlint` 1.7.7과 Wasm 소스 지문·라이선스 고지 Node 계약 검사가 통과했다. 기존 Wasm의 Core 지문 `b6d68fd5e63aa8c8`과
+  라이선스 고지 SHA-256은 변경 전과 같았다. 고지 검사는 읽기 전용 `cargo metadata`를 사용했다.
+  요청 범위에 따라 Clippy와 Cargo 빌드를 실행하지 않았다. 1.100 전환은 아래 후보에 기록했다.
+- 통합 검증(`6109f30`): 1.97.1(기본 stable)과 1.100.0에서 Core·Studio Desktop 포맷 검사, Wasm 소스 지문·라이선스 고지 테스트 11개 통과.
+  Rust 소스는 바뀌지 않아 C1d 직전의 1.97.1 Core Clippy(`--all-targets -D warnings`) 통과 결과가 그대로 적용된다.
+
+### 리뷰 후속 C1e: HD-2D 작성 화면 smoke
+
+PR #113 재실행(run 45782027817)은 Rust 포맷·Clippy·테스트, `unified-physics-web`을 포함한 앞 단계를 통과하고
+`HD-2D authoring workspace browser smoke`(`node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/studio/dist`)에서 멈췄다.
+로컬에서도 같은 위치에서 재현했고, C1의 미리 만든 Studio 빌드 없이도 같았다. 두 원인 모두 `origin/main`의 통합 물리 전환(2026-11-21) 뒤 갱신되지 않은 테스트다.
+
+| 위치 | 원인 | 수정 |
+| --- | --- | --- |
+| `placement-lighting-upgrade-smoke.mjs`의 `followActor` | `physics` 없이 `spatial.actor`를 쓰는 문서는 새 Engine의 첫 Data Scene일 때만 legacy 경로로 적용된다([공간 문서](../engine/data-scene-spatial.md#통합-3d-물리의-캐릭터-이동)). Studio 탭은 Engine 하나를 공유하므로 두 번째 탭으로 연 문서가 `runtime rejected spatial scene configuration`으로 거절됐다. 오류는 작업 공간 상태 메시지에만 표시된다. | 같은 문서를 새 Studio 페이지의 첫 HD-2D 장면으로 열어 연결 해제 위치·Undo 단언을 그대로 검사한다. 새 페이지의 스크립트 오류도 확인한다. |
+| `placement-threejs-upgrades-smoke.mjs`의 우물 충돌체 | `581c3aa1`이 village를 native 물리로 옮기면서 우물이 원형 legacy 충돌체에서 native `convexHull` 고정 body가 됐다. native body의 실행 정보는 legacy 충돌체 목록 대신 body 종류와 충돌체 개수를 보고한다. | native body·`fixed`·충돌체 1개를 실행 정보와 패널 문구에서 확인한다. |
+| `placement-spatial-transforms-smoke.mjs`의 높이 아이콘 | 같은 전환으로 `west_cottage`도 native body가 됐다. Studio는 native body의 높이를 `body.elevation`에 쓰지만 테스트는 legacy `body.heightSpan.elevation`을 읽었다. | native body인지 확인한 뒤 `body.elevation`의 증가·Undo를 검사한다. |
+
+통합 검증: 고친 조명 단계를 포함한 전체 smoke는 3D 뷰어 단계까지 진행했고(로컬 46분), 그 뒤 하위 검사는 단독 실행했다.
+3D 뷰어·모델 선택·게임 카메라(30분)·에셋 새로고침·여섯 패널이 통과했고, 변환은 고친 뒤 orthographic DPR 1 회차가 통과했다.
+이 smoke는 로컬에서만 1시간이 넘으므로 PR CI의 실행 시간을 첫 완주 결과로 판단한다.
+
+**PR #113 세 번째 실행(run 45816254388, `1a764ae`)과 중단 상태(2026-11-26)**
+
+- 앞 45단계는 약 47분에 통과했고, HD-2D 작성 화면 smoke가 71분 뒤 `placement-asset-usage-smoke.mjs:82`에서 실패했다.
+  스캔 뒤 `**/levels/closed.json` 요청을 15초 안에 받지 못했다. 같은 부분은 로컬 전체 실행에서 통과했으므로 느린 러너의 시간 한도로 본다(미확정).
+- 로컬에서 하위 검사 시간을 합치면 이 smoke 하나가 약 2시간이다(게임 카메라 저장 30분, 변환 42분, 1440×1000·DPR 2 소프트웨어 렌더링).
+  Rust 빌드 캐시가 없어 브라우저 검사 전에도 약 20분이 걸린다. `validate` 한 번이 4~6시간(GitHub 기본 job 한도 6시간)에 이를 수 있다.
+- step 47 이후를 로컬에서 CI 순서로 일부 실행했다. 배치 계약, 입력 context, Data Scene gameplay·runtime, Spatial Scene(17분)은 통과했다.
+  Blender HD-2D village smoke는 62분 뒤 DPR 2 구간에서 실패했지만, 실패 스크린샷이 30초 한도를 넘어 원래 오류를 가렸다.
+  실패 스크린샷 오류가 원래 오류를 덮지 않도록 고쳤고(`placement-village-smoke.mjs`), 원래 원인은 다시 실행해 확인한다.
+  Spatial WebGPU offscreen 단계 실행 중에 중단했다.
+
+**다음에 이어서 할 일**
+
+1. 결정: PR CI를 나눌지 정한다. 제안은 PR에서는 Rust·SDK·빌드·lint·패키지와 가벼운 브라우저 smoke만 돌리고(목표 30~40분, Rust 캐시 추가),
+   HD-2D 작성 화면·Blender village·Placement workspace 같은 무거운 Studio smoke는 수동 입력 또는 야간 실행으로 옮기는 것이다(D5-B의 PR 범위 조정).
+2. 결정에 따라 `ci.yml`을 고치고, 에셋 사용처 시간 한도와 village DPR 2 실패를 무거운 검사 쪽에서 확인한다.
+3. 그 뒤 PR #113을 다시 실행한다. CI용으로 설치한 Rust 1.97.1·1.100.0 toolchain과 `~/.cache/ferrum2d-ci-rust-1.100`은 CI가 안정된 뒤 정리한다.
+
+## R2. 화면 맞춤: `display.fit`와 `runtime.dataScene.view`
+
+### 문서 형식
+
+```json
+{ "display": { "fit": { "width": 640, "height": 384 } } }
+```
+
+```ts
+// packages/ferrum-web/src/sceneDisplay.ts
+interface SceneFitSpec {
+  /** World rectangle kept fully visible; the canvas shows it as large as possible at its aspect ratio. */
+  width: number;
+  height: number;
+  /** Top-left of the rectangle in world units. Default 0, 0. */
+  x?: number;
+  y?: number;
+}
+interface SceneDisplaySpec {
+  pixelPerfect?: PixelPerfectOptions | false;
+  fit?: SceneFitSpec | false;
+}
+// createFerrumRuntime option: runtime default, same precedence as pixelPerfect.
+interface FerrumRuntimeOptions { fit?: SceneFitSpec | false; }
+interface FerrumRuntimeDataScene {
+  /** Coordinate helper bound to this runtime. Stays valid across reapply/transition. */
+  readonly view: DataSceneView;
+}
+```
+
+### 검증
+
+- `width`·`height`: 유한한 양수, 상한 100,000. `x`·`y`: 유한한 수, 기본 0. 알 수 없는 필드는 오류(`display` 규칙과 같음).
+- 한 문서에 `fit`와 `pixelPerfect`가 둘 다 켜지면 경로가 있는 진단 오류. `spatial` 문서에 `fit`가 켜져도 오류.
+- 런타임 기본값과 문서 값의 조합 규칙은 `pixelPerfect`와 같다. 기본값 `fit`와 문서의 `pixelPerfect`처럼 결과적으로 둘 다 켜지면 오류.
+
+### 동작 규칙
+
+1. **적용(처음·`reapply`·`transition`의 commit):** fit가 켜지면 zoom = min(캔버스 CSS 폭 / width, 캔버스 CSS 높이 / height)
+   (기존 `validateZoom` 범위로 제한), `renderer.setViewportZoom(zoom)`, `engine.setViewportSize(viewport)`,
+   카메라 중심 = (x + width/2, y + height/2)(`setDataSceneCamera`, follow·bounds 없음).
+   기존 `configureDisplay`의 commit/rollback 흐름에 넣어, 적용이 실패하면 이전 zoom·카메라·fit 상태로 되돌린다.
+2. **크기 변화:** 렌더러 크기 감시에서 zoom만 다시 계산한다. 카메라 중심은 건드리지 않는다(게임이 옮긴 카메라·follow를 유지).
+3. **숨은 캔버스:** CSS 크기가 0이면 건너뛰고, 보이게 되면 다음 크기 변화에서 적용한다.
+4. **fit가 꺼진 문서로 바뀔 때:** zoom을 1로 되돌린다(`pixelPerfect: false`가 기본 표시로 돌아가는 것과 같은 원칙). 카메라는 건드리지 않는다.
+5. **fit가 없을 때:** 런타임은 zoom·카메라를 건드리지 않는다(지금과 같음).
+6. **여백:** fit 사각형 밖은 렌더러 배경색으로 보인다. fit는 그리기를 자르지 않는다.
+7. **`view.setZoom`과의 관계:** fit가 켜져 있으면 zoom은 런타임이 정한다. 게임이 `view.setZoom`을 불러도 다음 크기 변화·적용에서 덮인다(문서에 명시).
+
+### `runtime.dataScene.view`
+
+- 런타임이 만들고, `reapply`·`transition` 뒤에도 같은 객체로 계속 쓸 수 있다. 변환(`worldToScreen`·`screenToWorld`·`pointerToWorld`·`snapshot`)은
+  항상 지금의 zoom·카메라를 반영한다.
+- 지금 `createDataSceneView`는 만들 때 zoom·카메라를 설정한다. 런타임 view는 만들 때 아무것도 바꾸지 않아야 하므로,
+  내부에서 "연결"과 "설정"을 나눈다. 공개 함수 `createDataSceneView`의 동작은 그대로 둔다.
+- fit가 꺼진 문서에서도 view는 있다(변환만 제공).
+
+### Studio (R2b, 별도 커밋)
+
+`apps/studio/src/placementScenePresentation.ts`에서 게임 미리보기·실행에 `display.pixelPerfect`와 `display.fit`을 적용한다.
+2D 편집 화면은 지금처럼 넓은 편집 viewport를 유지하고, 게임 미리보기·실행에서만 맞춘다. 알 수 없는 필드로 거절되지 않는지도 확인한다.
+
+### 테스트
+
+| 테스트 | 확인할 것 |
+| --- | --- |
+| 형식 검증(`sceneDisplay`) | 올바른 fit, 0·음수·무한·알 수 없는 필드 오류, `pixelPerfect`와 동시 사용 오류, spatial과 함께 오류, 기본값·`false` 조합. |
+| zoom 계산 | 가짜 캔버스 CSS 1000 × 500에 640 × 384 → zoom 1000/640·500/384 중 작은 값. 크기를 바꾸면 다시 계산. |
+| 카메라 | 적용 시 중심 (320, 192), 크기 변화에서는 중심 유지, `x`·`y`가 있으면 그만큼 이동. |
+| reapply·transition | 같은 view 객체 유지, fit 유지, fit 없는 문서로 바꾸면 zoom 1, 적용 실패 시 이전 상태 복원. |
+| 변환 | fit 상태에서 월드 중심의 `worldToScreen`이 캔버스 중심, `pointerToWorld`가 그 역. |
+| 기존 호출 | fit 없이 부르면 zoom·카메라 호출이 지금과 같다. |
+
+브라우저 smoke: `tests/smoke/flat-pixel-perfect-smoke.mjs`(`pnpm smoke:flat-pixel-perfect`) 또는 data-scene smoke에 fit 사례를 더한다.
+두 캔버스 크기에서 월드 네 모서리 표식이 모두 보이고(잘리지 않음) 비율이 유지되는지, 크기를 바꾼 뒤 포인터 변환이 맞는지 본다.
+R2b는 Studio viewer smoke(`flat-pixel-perfect-viewer-smoke.mjs`)에서 fit 문서를 열고 미리보기·실행에 적용하는 사례를 검사한다.
+
+R2a 검증에서 SDK 테스트 2,061개와 Data Scene 브라우저 스모크 전체가 통과했다. fit 사례는 DPR 2의
+1000×500 및 390×844 캔버스에서 네 모서리 픽셀, 사각형 배율, 포인터 변환과 같은 view의 재사용을 확인했다.
+기존 SDK 픽셀 퍼펙트 스모크의 Shooter 스냅샷 실패는 선행 수정 F2에서 해결했다.
+
+### 문서
+
+- `docs/engine/data-scene-authoring.md` "기본 2D 표시 설정": `display.fit` 형식·검증·`pixelPerfect`와의 차이(연속 배율 vs 정수 배율 픽셀아트).
+- `docs/engine/public-api/core.md`: "기본 2D 픽셀 퍼펙트 표시" 옆에 "화면 맞춤" 절, `runtime.dataScene.view`.
+- `public-api-surface.json`(새 타입), `architecture.md`(표시 설정 흐름), `CHANGELOG.md`.
+
+## R3. 정리: 캔버스 컨텍스트 놓기 (선택)
+
+```ts
+interface FerrumRuntimeOptions {
+  /** The canvas is used by this runtime only: release its GPU context on destroy and on failed startup. */
+  releaseCanvasContext?: boolean; // default false (D3)
+}
+```
+
+- 렌더러에 선택 capability `releaseContext()`를 둔다. WebGL2는 `destroy()` 뒤 `WEBGL_lose_context.loseContext()`,
+  WebGPU는 `destroy()`가 이미 하는 일을 확인하고 남는 것(컨텍스트 unconfigure 등)을 놓는다.
+- 런타임은 `releaseCanvasContext: true`이고 **자기가 만든 렌더러**일 때 `destroy`와 시작 실패·취소 정리에서 부른다.
+  주입한 렌더러와 함께 `true`를 주면 시작 시 오류로 거절한다(호출자 소유를 런타임이 깨지 않게).
+- 문서에 "컨텍스트를 놓은 캔버스는 새 런타임에 다시 쓸 수 없다. 새 런타임에는 새 캔버스를 쓴다"를 적는다.
+- 테스트: 노드 테스트는 옵션 검증(주입 렌더러와 함께 쓰면 오류)과 호출 순서. Data Scene 브라우저 smoke는 새 캔버스로 런타임 20개를 만들고 없앤 뒤
+  살아 있는 WebGL2 컨텍스트가 0인지(예제 사이트 smoke의 `getContext` 감시 방식), 옵션이 없으면 지금처럼 남는지 본다.
+- 문서: `core.md` "Runtime 생성"의 렌더러 수명 단락, `CHANGELOG.md`.
+
+## 예제 반영 E1: 세 예제를 새 API로
+
+2순위 작업이다. 예제 소스 탭에서 "엔진으로 이렇게 시작한다"가 보이게 하는 것이 목적이다.
+예제의 동작·조작·화면·문구는 그대로 두고 시작 코드만 바꾼다.
+
+**바꿀 것** (`examples/site/src/examples/{sprite,collision,breakout}/index.ts`와 `examples/site/src/frame.ts`):
+
+| 지금 | 바꾼 뒤 |
+| --- | --- |
+| `createRenderer`로 렌더러를 만들고 `owner.own(() => renderer.destroy())` | `createFerrumRuntime({ canvas, rendererPreference: host.renderer, webgl2: { clearColor }, webgpu: { clearColor } })`가 렌더러를 만들고 없앤다. |
+| `new AssetLoader(renderer).loadAssets(..., { signal })` | `assets: { textures: { ... } }` |
+| `owner.check()`로 단계마다 떠났는지 확인 | `signal: host.signal`로 시작을 취소한다. 시작 뒤 해제는 지금처럼 `owner.own(() => runtime.destroy())` |
+| `"gpuDevice" in renderer`로 렌더러 추정 | `runtime.rendererBackend` |
+| `createDataSceneView` + 맞춤용 `ResizeObserver` + `setZoom(min(...))`, 다시 적용할 때 view 재생성 | 씬 문서 `display.fit: { width: 640, height: 384 }`와 `runtime.dataScene.view` |
+| `renderer.resourceStats` | `runtime.renderer.resourceStats` |
+| 틀의 `releaseCanvas`(`WEBGL_lose_context`를 직접 호출) | 예제가 `releaseCanvasContext: true`를 쓰고, 틀의 `releaseCanvas`는 지운다. 예제 계약 주석에 이 책임을 적는다. |
+
+- 화면 위 HTML(스프라이트의 기준점 표시 등) 위치를 맞추는 크기 감시는 남긴다. 예제의 화면 요소라 엔진이 맡을 일이 아니다.
+- 스프라이트는 문서를 코드(`documentFor`)로 만들므로 거기에, 충돌·벽돌 깨기는 `scene.json`에 `display.fit`을 넣는다. 씬 파일 탭에 그대로 보인다.
+- WebGPU에서 WebGL2로 대체되면 상태 막대가 이미 실제 렌더러를 보여 준다(`report.renderer`에 `runtime.rendererBackend`). 새 화면 요소는 만들지 않는다.
+- `createOwner`는 시작 뒤 자원(입력 리스너·애니메이션 프레임 등) 정리에 계속 쓴다. `check()`를 쓰는 곳이 없어지면 계약에서 뺄지 보고한다.
+
+**지킬 것:** SDK·Rust 변경 금지. 새 API로 표현할 수 없는 것이 나오면 우회하지 말고 보고한다.
+
+**검증:** `pnpm lint`, `pnpm smoke:example-site`(예제 전환·렌더러 전환 뒤 살아 있는 WebGL2 컨텍스트 수 검사 포함), `git diff --stat -- packages crates`가 비어 있음.
+보고에 예제별 시작 코드 줄 수(바꾸기 전 → 뒤)를 적는다.
+
+**문서:** [예제 사이트 계획](example-site-rebuild-plan.md)의 진행 상황 표(스프라이트 행의 "틀이 직접 놓아준다"), smoke 문서에서 틀의 컨텍스트 해제를 설명하는 곳.
+
+E1 다음에는 사이트 전용 공통 도우미(수치 보내기·'표시' 메뉴·이벤트 연결)와 벽돌 깨기의 엔진 HUD·입력 전환을 판단한다.
+
+## 이 계획 다음의 엔진 후보 (예제에서 찾은 것, 범위 밖)
+
+| 후보 | 문제 | 제안 |
+| --- | --- | --- |
+| 연속 충돌(CCD) 작업 한도 오류 | planar native에서 CCD를 켠 채 dynamic 공이 static 상자 사이 한 칸 틈에 들어가면 프레임 단계가 `physics capacity exceeded`를 던지고 시뮬레이션이 멈춘다. 재현과 관련 원인은 [통합 3D 물리의 미해결 항목](unified-3d-physics-plan.md#미해결-회전-상자-접촉의-운동-증명-2026-11-22)에 합쳤다. | 우선 높음(정확성). 그 항목의 수정 방향 결정과 함께 진행하고, 작업 한도 초과는 멈춤 대신 구분되는 오류로 알린다. |
+| 충돌 쌍 수치의 의미 | `frame.physics.collisionSolidPairs`·`collisionTriggerPairs`는 한 출력 프레임 안 물리 단계마다 더한 값이라 "지금 겹친 쌍"으로 읽으면 틀린다. | 문서 명확화, 필요하면 "지금 쌍 수" 추가. |
+| 고정 속도 body | 벽돌 깨기 공처럼 속도를 일정하게 유지하려면 매 프레임 코드로 맞춰야 한다. | dynamic body의 최대·고정 속도 옵션 검토. |
+| 전투 모드 없는 충돌 시 제거 | `collisionDespawn` 레시피는 씬 문서에서 HD-2D 전투 모드(`gameplay.combat`)가 필요하다. | 탐험 모드에서도 쓸 수 있게 할지 검토. |
+| 입력의 편집 대상 판정 | `InputManager`는 `input·textarea·select·button`만 제외한다. 키로 조작하는 `role="separator"`·슬라이더 등에 초점이 있어도 게임 키로 받는다. | 제외 규칙 확장 또는 옵션 검토. |
+| 충돌체 기본값이 트리거인 함정 | Data Scene 충돌체는 `isTrigger`를 생략하면 트리거다. body를 붙이고 `isTrigger: false`를 잊으면 막지도 않고 HD-2D 이동도 거절된다(F1의 원인). | body가 있는 충돌체의 기본값을 solid로 바꿀지(기존 문서 동작이 바뀌므로 제품 결정) 또는 body+트리거 조합에 진단을 낼지 검토. |
+| 런타임 결과 타입 | `dataScene`을 넘겨도 `runtime.dataScene`이 선택 타입이고, 런타임이 만든 렌더러여도 `rendererBackend`에 `"custom"`이 들어 있어 세 예제가 같은 확인 줄을 반복한다(E1). | 옵션에 따라 반환 타입을 좁힐지 검토(우선 낮음). |
+| 템플릿 replay 픽스처의 SDK 식별자 | create-game 템플릿의 runtime replay 픽스처는 Native 저장 파일의 해시를 비교한다. 이 파일에 SDK 빌드 식별자가 들어 있어, 게임 상태가 같아도 SDK를 바꿀 때마다 픽스처가 깨진다(`4a7ef591`, [C1c](#리뷰-후속-c1c)). PR CI가 도는 지금은 SDK를 바꾸는 PR마다 픽스처를 다시 만들어야 한다. | 비교 해시에서 빌드 식별자를 분리해 게임 상태만 비교할지 검토(우선 중간). |
+| CI Rust 1.100 전환 | Core Clippy에서 `chunks_exact_to_as_chunks` 176건, bool을 반환하는 if guard 19건, 폐기된 `fetch_update` 2건, `needless_range_loop` 3건이 보고됐다(1.100.0 `--all-targets -D warnings`, 중복을 뺀 위치 200곳). | 각 lint와 폐기 API를 정리한 뒤 새 버전으로 포맷·Clippy·Wasm 검증을 통과하고 `CI_RUST_TOOLCHAIN`을 올린다. |
+| 사전 검증 안의 재해석 | F5b 뒤에도 조명 사전 검증은 적용 경로가 이미 만든 바인딩과 컴포넌트를 다시 계산한다(5,000개 `lit` 문서에서 적용 1회당 약 10ms, [F5b 측정](#리뷰-후속-f5b-적용-경로의-중복-해석)). | 적용 경로의 바인딩 결과를 넘겨 재사용할지 검토(우선 낮음, 큰 문서를 자주 `reapply`할 때). |
+| 이동 실패 이유 | `moveHd2dKinematicBodyWithTilemap`은 actor가 조건(단일 solid AABB kinematic, 높이 정보)에 맞지 않으면 이유 없이 결과 없음으로 돌아온다. | 거절 이유를 돌려주거나 개발 모드 진단을 낸다. |
+| WebGPU 복구 중 화면 맞춤 크기 변화 | WebGPU 장치가 준비되기 전에 화면 맞춤 배율을 적용하면 `setViewportZoom`에서 오류가 발생했다. | 완료. 크기 변경은 보류하고 복구 직후 최신 크기로 배율을 적용한다. 일시 정지 상태에서도 게임 카메라 위치를 유지한다. |
+
+## Codex 작업 지시
+
+**먼저 읽을 것:** `AGENTS.md`, 이 문서, `docs/engine/public-api/core.md`("Runtime 생성", "에셋 묶음 로딩과 취소", "기본 2D 픽셀 퍼펙트 표시"),
+`docs/engine/data-scene-authoring.md`("기본 2D 표시 설정"), `packages/ferrum-web/src/`의 `createFerrumRuntime.ts`·`createRenderer.ts`·
+`browserPlatformHost.ts`·`assetLoader.ts`·`sceneDisplay.ts`·`dataSceneView.ts`, `packages/ferrum-web/test/createFerrumRuntime.integration.test.ts`·`dataSceneView.test.ts`.
+
+**작업 단위:** R1, F1~F5·F5b(선행 수정), R2a(SDK), R2b(Studio), R3, E1(예제), C1(CI)을 각각 한 커밋으로 한다(AGENTS "한 작업에 한 논리적 변경"). 코드·테스트·문서·CHANGELOG를 같은 커밋에 넣는다.
+F3·F4는 고칠 사례가 많으면 smoke 묶음별로, E1은 예제별로 커밋을 나눠도 된다.
+앞 단계가 검증을 통과한 뒤 다음 단계로 간다.
+
+**지킬 것:**
+- 새 옵션을 쓰지 않는 기존 호출은 동작·호출 순서·오류가 완전히 같아야 한다.
+- Rust/Wasm, 새 의존성 변경 금지. `examples/site`는 E1에서만 바꾼다. F3·F4·E1은 SDK 소스도 바꾸지 않는다(F5는 해당 절의 범위만 바꾼다).
+- 프레임 hot path에 새 JS↔Wasm 왕복을 넣지 않는다(화면 맞춤은 크기 변화·적용 때만).
+- 코드 주석은 영어, 문서는 한국어. 공개 타입에는 짧은 TSDoc.
+- 설계가 이 문서와 달라져야 하면 구현 전에 이유를 보고하고 문서를 먼저 고친다.
+
+**검증 (AGENTS "검증 명령 실행 원칙"):**
+- 개발 중: 바꾼 파일의 타입 검사(`pnpm --filter @ferrum2d/ferrum-web lint`)와 관련 테스트만.
+- 단계 끝: `pnpm --filter @ferrum2d/ferrum-web test`, `pnpm validate:public-api-surface`, `pnpm validate:docs-links`,
+  해당 브라우저 smoke(R1 `pnpm smoke:data-scene`·`pnpm smoke:asset-loading`, R2 `pnpm smoke:flat-pixel-perfect`, R3 추가한 smoke).
+  R2b는 `pnpm --filter @ferrum2d/studio build`와 Studio viewer smoke. F4·E1은 각 절의 검증.
+- 전체 끝(통합 담당이 한 번): `pnpm build`, `pnpm lint`(빌드된 타입을 읽으므로 빌드 뒤), `pnpm package:check:ferrum-web`, `pnpm smoke:example-site`(기존 예제 회귀).
+- Rust를 바꾸지 않으므로 `cargo` 검사는 생략하고 그 사유를 보고에 적는다.
+
+**보고:** AGENTS "Review Rule" 형식(변경 파일, 이유, 실행한 명령, 못 한 명령과 사유, 위험·후속). 이 문서의 "결정"과 다르게 구현해야 했던 것이 있으면 함께 적는다.
+
+## 완료 조건
+
+- R1: 렌더러를 런타임에 맡기고도 이름 텍스처를 쓰는 Data Scene이 시작되고, 시작을 취소할 수 있으며, 실제 렌더러 종류를 알 수 있다.
+- R2: 씬 문서 한 줄(`display.fit`)로 고정 월드가 크기가 바뀌는 캔버스에 맞고, `runtime.dataScene.view`가 다시 적용해도 그대로 쓰인다. Studio 미리보기도 같다.
+- R3: 옵션 하나로 런타임을 없앨 때 캔버스 컨텍스트가 풀린다.
+- 각 단계의 테스트·smoke·문서·CHANGELOG가 함께 들어가고, 기존 예제 사이트 smoke가 그대로 통과한다.

@@ -116,6 +116,35 @@ WebGPU는 `fade`·`bloom`·`crt`·`vignette`·`glitch`·`pixelArt` 후처리를 
 이때 인자로 전달한 새 후처리 설정은 다음 프레임에 사용한다.
 WebGL2에서 후처리/색 관리가 필요하면 별도 가상 출력 타깃을 사용한다. 해제/재설정은 기존 타깃을 재사용하거나 정리한다.
 
+## 월드 화면 맞춤
+
+```ts
+const runtime = await createFerrumRuntime({
+  canvas,
+  dataScene: document,
+  fit: { width: 640, height: 384 },
+});
+const view = runtime.dataScene!.view;
+const world = view.pointerToWorld({ x: event.clientX, y: event.clientY });
+```
+
+`SceneFitSpec`은 평면 Data Scene에서 화면에 맞출 월드 사각형이다. 씬의 `display.fit`으로 런타임 기본값을
+덮어쓸 수 있고, `false`로 해제할 수 있다. [문서 형식과 검증](../data-scene-authoring.md#월드-화면-맞춤).
+
+- 씬을 적용하거나 `reapply`·`transition`하면 사각형의 중심에 카메라를 둔다. 배율은 CSS 캔버스 폭과 높이에
+  사각형이 들어가는 가장 큰 균일 배율이며 0.0001~10,000 범위로 제한한다. 비어 있는 여백은 렌더러 배경색으로 보인다.
+  사각형 바깥쪽에 보이는 장면 내용도 그린다.
+- 캔버스 크기 변화에서는 배율만 갱신하고 카메라의 추적·경계 설정을 유지한다. 숨겨져 크기가 0인 동안에는
+  배율 갱신을 미루고, 다시 보이는 크기로 바뀔 때 맞춘다. 적용 실패 시 이전 표시와 카메라 설정을 복원한다.
+  WebGPU 장치가 손실되거나 복구 중이면 크기 변경을 보류하고 복구가 끝날 때 최신 캔버스 크기를 사용한다.
+  런타임이 일시 정지 중일 때도 적용된다.
+- 맞춤이 활성화된 상태에서 `view.setZoom`을 호출해도 다음 크기 변화나 씬 적용 때 맞춤 배율이 다시 적용된다.
+  맞춤을 해제하면 zoom을 1로 되돌린다. 처음부터 맞춤을 쓰지 않는 씬은 기존 카메라와 zoom 설정을 사용한다.
+- `runtime.dataScene.view`는 맞춤 여부와 관계없이 제공되며 씬을 다시 적용하거나 전환해도 같은 객체다.
+  좌표 변환은 현재 렌더러 배율과 카메라를 읽는다. 직접 `createDataSceneView`를 호출하는 경로는 기존 초기 설정 동작을 유지한다.
+- 맞춤을 사용하는 custom renderer의 `setViewportZoom`은 현재 캔버스 크기에 맞게 표시를 갱신해야 한다.
+  저수준 `applyDataSceneAuthoringDocument`는 씬 문서의 표시 설정을 검증하고 보존한다. 화면 맞춤은 브라우저 런타임이 적용한다.
+
 ## 도트 후처리
 
 `postProcess`의 `pixelArt` 패스는 WebGL2/WebGPU에서 RGB 채널별 포스터라이즈·4×4 Bayer 디더링·
@@ -196,7 +225,7 @@ Top-down Shooter의 기존 `postProcessing`도 같은 resolver를 사용하므�
 | --- | --- |
 | `createFerrumRuntime(...)` | canvas, assets, renderer, input, audio, engine loop를 묶은 browser runtime을 만든다. |
 | `createEngine(...)` | Wasm `Engine`과 platform provider를 직접 연결할 때 사용한다. |
-| `createRenderer(...)` | WebGL2 renderer를 생성하고 fallback 정보를 반환한다. |
+| `createRenderer(...)` | WebGL2 또는 WebGPU renderer를 만들고 callback으로 fallback 정보를 전달한다. |
 | `WebGL2Renderer` | 기본 renderer 구현체다. Rust render command buffer만 소비한다. |
 | `AudioManager` | browser audio channel, BGM/SFX/UI와 위치 음향 voice를 담당한다. |
 
@@ -209,6 +238,27 @@ handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 
 동일 이름·동일 타입의 global 값을 유지하고 scene 값을 다음 문서의 default로 초기화한다. 검증 실패 시
 현재 document/result/variable store와 인자 없는 다음 reapply의 기준 문서는 마지막 성공 상태를 유지한다.
 
+```ts
+const startup = new AbortController();
+const runtime = await createFerrumRuntime({
+  canvas,
+  dataScene: document,
+  assets: { textures: { hero: "/assets/hero.png" } },
+  assetLoadOptions: { concurrency: 4 },
+  onAssetProgress: progress => loadingOverlay.update(progress),
+  signal: startup.signal,
+  rendererPreference: "webgpu",
+  onRendererFallback: ({ reason }) => console.info(reason),
+});
+```
+
+- `assets`는 렌더러 준비 뒤 엔진 생성과 함께 읽는다. 둘 다 끝나면 Data Scene, 물리 프로필 순서로 적용한다.
+  `runtime.assets`로 로딩 결과를 읽을 수 있다. manifest를 생략하면 이 속성은 없다.
+- `signal`은 시작이 끝나기 전에 적용된다. 이미 취소됐거나 시작 중 취소하면 `AbortError`로 거절하고
+  런타임이 만든 자원을 정리한다. 생성이 끝난 뒤에는 호출자가 `runtime.destroy()`로 정리한다.
+- `runtime.rendererBackend`는 실제 백엔드인 `"webgl2"`, `"webgpu"`, 또는 주입한 구조적 렌더러의 `"custom"`을 반환한다.
+  `onRendererFallback`은 런타임이 렌더러를 만들 때 `createRenderer`의 callback으로 전달한다.
+
 `createRenderer(canvas, { preferred: "webgpu", spatial })`의 선택 공간 spec은 context 결정 전에
 지원 요구사항을 검사한다. `createFerrumRuntime({ dataScene })`는 초기 문서의 요구사항도 전달한다.
 미지원 요청·GPU 준비 오류는 WebGL2로 fallback하며, 이미 canvas가 연결된 뒤의 오류는 전파한다.
@@ -220,6 +270,10 @@ ID 기반 `loadTexture`를 제공한다. 디버그 라인·모델 준비·픽셀
 프레임 소비자는 그리기 method만 사용하며 asset 로딩·canvas resize·renderer 수명을 관리하지 않는다.
 요청한 디버그 라인 또는 공간 geometry를 지원하지 않으면 frame clear 전에 명시적 오류를 반환한다.
 외부에서 주입한 renderer의 수명은 호출자가 소유하며 `runtime.destroy()`로 해제하지 않는다.
+`releaseCanvasContext: true`는 런타임이 렌더러를 만드는 전용 캔버스에만 쓸 수 있다. 주입한 렌더러와 함께 지정하면 시작 전에 오류로 거절한다.
+종료 또는 시작 실패·취소 시 렌더러 자원을 정리한 뒤 WebGL2의 `WEBGL_lose_context` 확장이 있으면 컨텍스트를 잃게 하고, WebGPU는 캔버스 구성을 해제한다.
+기본값은 `false`이며 캔버스 컨텍스트가 유지된다. 컨텍스트를 해제한 캔버스는 다시 쓰지 않고 새 런타임에 새 캔버스를 제공한다.
+렌더러를 직접 소유한 호출자는 `destroy()` 뒤 선택 capability인 `releaseContext()`로 전용 캔버스를 해제할 수 있다.
 기본 생성 경로와 `createRenderer()`의 구체 반환형은 유지한다.
 직접 backend 기능을 쓰던 consumer는 [custom renderer 이전 방법](migration-guide.md#custom-renderer-계약-이전)을 따른다.
 
@@ -232,6 +286,10 @@ Rust update와 `onFrame`/overlay/profiler 흐름은 계속되고 renderer 통계
 
 `AssetLoadOptions`는 core/root에서 제공한다. `FerrumEngine.loadAssets`, `AssetLoader.loadAssets`,
 `BrowserPlatformHost.loadAssets`의 세 번째 인자로 전달한다.
+
+초기 Data Scene에서 이름으로 텍스처를 참조하면 `createFerrumRuntime({ assets, assetLoadOptions, onAssetProgress, signal, dataScene })`로
+씬 적용 전에 등록할 수 있다. 로딩은 런타임의 에셋 호스트를 사용하며, `assetLoadOptions`의 묶음 설정과 시작 `signal`을 함께 전달한다.
+프로파일러를 켜면 시작 로딩 진행률도 기록한다. 주입한 에셋 호스트와 그 안에 로딩된 자원은 호출자 소유다.
 
 ```ts
 const controller = new AbortController();
@@ -792,7 +850,7 @@ Core subpath는 Physics Spec resolver와 imperative Physics API를 함께 노출
 | `configureAutoRigidBodyStep(...)` | native의 boolean은 기존 solver 설정을 유지한 채 실행만 켜고 끈다. 객체 입력은 설정도 적용하고, native가 수용한 중력·연속 충돌을 `frame.physics` 표시에 반영한다. 호환 물리는 Physics Spec 중력 표시를 유지한다. |
 | `spawnRigidBody(...)` | 낮은 빈도 rigid body 생성용 imperative API다. |
 | `despawnPhysicsEntity(...)` | body와 그 body를 endpoint로 참조하는 모든 joint를 함께 제거하고 기존 joint handle을 무효화한다. |
-| `stepRigidBodies(...)` | manual stepping 또는 테스트 harness에서 사용한다. 옵션 없이 만든 엔진은 native 기본 정책으로 자동 실행이 켜져 있다. loop 실행 중 자동 실행이 활성이면 같은 frame에 solver가 두 번 돌므로 `configureAutoRigidBodyStep(false)`나 scene 일시 정지 뒤 사용한다. 이 조합을 처음 감지하면 콘솔 경고를 한 번 출력한다. |
+| `stepRigidBodies(...)` | 수동 스텝 또는 테스트에 사용한다. 기본 native 엔진은 자동 스텝이 켜져 있다. 한 프레임에 두 번 계산하지 않으려면 `configureAutoRigidBodyStep(false)`를 호출하거나 씬을 일시 정지한 뒤 사용한다. 자동 스텝 중 수동 호출을 처음 감지하면 콘솔에 한 번 경고한다. |
 | body/tile query | nearest, overlap, raycast, segment cast, shape cast query를 제공한다. |
 
 Physics authoring 세부 계약은 [Physics Spec](../physics-spec.md)을 기준으로 한다.

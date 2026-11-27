@@ -1158,6 +1158,163 @@ test("authored dynamic box owns its native obstacle identity and progress withou
 });
 
 
+function fragmentLightingDocument(profile: "unlit" | "lit") {
+  return {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    ...(profile === "lit" ? {
+      lighting: { profile: "lit", ambientIrradiance: [0.2, 0.2, 0.2] },
+    } : {}),
+    sceneComposition: {
+      initialFragment: "empty",
+      prefabs: {
+        door: { props: { components: {
+          visual: { kind: "sprite", texture: 1, width: 16, height: 24 },
+          collider: { type: "aabb", halfWidth: 8, halfHeight: 12, isTrigger: false },
+          layer: "wall",
+          body: { type: "static" },
+        } } },
+      },
+      fragments: {
+        empty: { instances: [] },
+        island: { instances: [{ id: "door", prefab: "door", x: 36, y: 12 }] },
+      },
+    },
+    behaviorRecipes: { entities: {} },
+    navigation: {
+      columns: 3, rows: 1, cellWidth: 24, cellHeight: 24, costs: [1, 1, 1],
+      obstacles: [{ instanceId: "door", cells: [{ column: 1, row: 0 }] }],
+    },
+  } satisfies SceneAuthoringDocumentSpec;
+}
+
+const missingFragmentObstacle = (error: unknown) => error instanceof Error &&
+  error.message === "Invalid scene composition: kind=scene-composition path='dataSceneAuthoring.navigation.obstacles' detail='must reference an instance in the applied fragment'.";
+
+for (const profile of ["unlit", "lit"] as const) {
+  test(`Data Scene ${profile} lighting preflight uses the selected authoring fragment`, async () => {
+    await withNodeWasmFileFetch(async () => {
+      const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
+      try {
+        const document = fragmentLightingDocument(profile);
+        let lightingPrepares = 0;
+        const options = { flatLightingPreparer: { prepareFlatLighting: () => { lightingPrepares++; } } };
+        throws(() => applyDataSceneAuthoringDocument(engine, document, options), missingFragmentObstacle);
+        equal(lightingPrepares, 0);
+        const applied = applyDataSceneAuthoringDocument(engine, document, { ...options, fragment: "island" });
+        equal(applied.plan.fragment, "island");
+        equal(engine.getPhysicsEntity(applied.entityHandles.door)?.x, 36);
+        const query = { fromX: 12, fromY: 12, toX: 60, toY: 12 };
+        equal(engine.queryTilemapNavigationPath(query), undefined);
+        ok(engine.setPhysicsColliderEnabled(applied.entityHandles.door, false));
+        ok(engine.queryTilemapNavigationPath(query)?.points.length);
+        equal(lightingPrepares, profile === "lit" ? 1 : 0);
+      } finally {
+        engine.destroy();
+      }
+    });
+  });
+
+  test(`Data Scene ${profile} snapshot lighting preflight uses the selected restore fragment`, async () => {
+    await withNodeWasmFileFetch(async () => {
+      const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
+      try {
+        engine.useDataScene();
+        const snapshot = captureGameStateSnapshot(engine, {
+          includeDataSceneState: true,
+          dataSceneAuthoringDocument: fragmentLightingDocument(profile),
+        });
+        equal(snapshot.dataScene?.progress, undefined);
+        let lightingPrepares = 0;
+        const restored = restoreGameStateSnapshot(engine, snapshot, {
+          dataSceneAuthoringApplyOptions: {
+            fragment: "island",
+            flatLightingPreparer: { prepareFlatLighting: () => { lightingPrepares++; } },
+          },
+        });
+        equal(restored.dataSceneAuthoringDocumentApplied, true);
+        equal(engine.entityCount(), 1);
+        equal(lightingPrepares, profile === "lit" ? 2 : 0);
+      } finally {
+        engine.destroy();
+      }
+    });
+  });
+}
+
+test("Data Scene progress snapshots still reject custom fragment restore options", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
+    try {
+      const document = fragmentLightingDocument("unlit");
+      document.sceneComposition.initialFragment = "island";
+      const { entityHandles } = applyDataSceneAuthoringDocument(engine, document);
+      const snapshot = captureGameStateSnapshot(engine, {
+        includeDataSceneState: true,
+        includeDataSceneProgress: true,
+        dataSceneAuthoringDocument: document,
+      });
+      ok(snapshot.dataScene?.progress);
+      throws(() => restoreGameStateSnapshot(engine, snapshot, {
+        dataSceneAuthoringApplyOptions: { fragment: "island" },
+      }), /Data Scene progress restore does not support apply options: fragment\./);
+      equal(engine.getPhysicsEntity(entityHandles.door)?.x, 36);
+    } finally {
+      engine.destroy();
+    }
+  });
+});
+
+test("Data Scene apply resolves lit authoring once before preparing assets", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
+    try {
+      let formatReads = 0;
+      let prepares = 0;
+      const { format, ...fields } = fragmentLightingDocument("lit");
+      const document = { ...fields, get format() { formatReads++; return format; } };
+      const applied = applyDataSceneAuthoringDocument(engine, document, {
+        fragment: "island",
+        flatLightingPreparer: { prepareFlatLighting() {
+          equal(formatReads, 1);
+          prepares++;
+        } },
+      });
+      equal(prepares, 1);
+      ok(engine.getPhysicsEntity(applied.entityHandles.door));
+    } finally {
+      engine.destroy();
+    }
+  });
+});
+
+test("Data Scene lit apply and restore retain lighting error precedence", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
+    try {
+      const document = fragmentLightingDocument("lit");
+      const flatLightingPreparer = { prepareFlatLighting() {} };
+      const { entityHandles } = applyDataSceneAuthoringDocument(engine, document, {
+        fragment: "island",
+        flatLightingPreparer,
+      });
+      const snapshot = captureGameStateSnapshot(engine, {
+        includeDataSceneState: true,
+        dataSceneAuthoringDocument: document,
+      });
+      throws(() => applyDataSceneAuthoringDocument(engine, document), missingFragmentObstacle);
+      throws(() => restoreGameStateSnapshot(engine, snapshot), error => error instanceof Error &&
+        error.message === "Invalid scene composition: kind=scene-composition path='dataSceneAuthoring.flatLightingPreparer' detail='lit requires a renderer asset preflight before activation'.");
+      throws(() => restoreGameStateSnapshot(engine, snapshot, {
+        dataSceneAuthoringApplyOptions: { flatLightingPreparer },
+      }), missingFragmentObstacle);
+      equal(engine.getPhysicsEntity(entityHandles.door)?.x, 36);
+    } finally {
+      engine.destroy();
+    }
+  });
+});
+
 test("Data Scene view clamps its initial bounded camera using the zoomed viewport", async () => {
   await withNodeWasmFileFetch(async () => {
     const engine = await createEngine();

@@ -1,0 +1,1592 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "display": {
+    "fit": { "width": 640, "height": 384 }
+  },
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "sceneComposition": {
+    "initialFragment": "main",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "main": {
+        "instances": [
+          {
+            "id": "field",
+            "prefab": "object",
+            "x": 320,
+            "y": 208,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "field",
+                  "width": 576,
+                  "height": 352,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "miss",
+            "prefab": "object",
+            "x": 320,
+            "y": 380,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "miss",
+                  "width": 576,
+                  "height": 8,
+                  "layer": -90
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 288,
+                  "halfHeight": 4,
+                  "isTrigger": true
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "wall_top",
+            "prefab": "object",
+            "x": 320,
+            "y": 24,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 608,
+                  "height": 16,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 304,
+                  "halfHeight": 8,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "wall_left",
+            "prefab": "object",
+            "x": 24,
+            "y": 200,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 16,
+                  "height": 368,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 8,
+                  "halfHeight": 184,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "wall_right",
+            "prefab": "object",
+            "x": 616,
+            "y": 200,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 16,
+                  "height": 368,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 8,
+                  "halfHeight": 184,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_0",
+            "prefab": "object",
+            "x": 68,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_1",
+            "prefab": "object",
+            "x": 124,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_2",
+            "prefab": "object",
+            "x": 180,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_3",
+            "prefab": "object",
+            "x": 236,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_4",
+            "prefab": "object",
+            "x": 292,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_5",
+            "prefab": "object",
+            "x": 348,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_6",
+            "prefab": "object",
+            "x": 404,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_7",
+            "prefab": "object",
+            "x": 460,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_8",
+            "prefab": "object",
+            "x": 516,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_0_9",
+            "prefab": "object",
+            "x": 572,
+            "y": 72,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ff8a80"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_0",
+            "prefab": "object",
+            "x": 68,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_1",
+            "prefab": "object",
+            "x": 124,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_2",
+            "prefab": "object",
+            "x": 180,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_3",
+            "prefab": "object",
+            "x": 236,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_4",
+            "prefab": "object",
+            "x": 292,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_5",
+            "prefab": "object",
+            "x": 348,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_6",
+            "prefab": "object",
+            "x": 404,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_7",
+            "prefab": "object",
+            "x": 460,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_8",
+            "prefab": "object",
+            "x": 516,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_1_9",
+            "prefab": "object",
+            "x": 572,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffb26b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_0",
+            "prefab": "object",
+            "x": 68,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_1",
+            "prefab": "object",
+            "x": 124,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_2",
+            "prefab": "object",
+            "x": 180,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_3",
+            "prefab": "object",
+            "x": 236,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_4",
+            "prefab": "object",
+            "x": 292,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_5",
+            "prefab": "object",
+            "x": 348,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_6",
+            "prefab": "object",
+            "x": 404,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_7",
+            "prefab": "object",
+            "x": 460,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_8",
+            "prefab": "object",
+            "x": 516,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_2_9",
+            "prefab": "object",
+            "x": 572,
+            "y": 120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#ffe082"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_0",
+            "prefab": "object",
+            "x": 68,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_1",
+            "prefab": "object",
+            "x": 124,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_2",
+            "prefab": "object",
+            "x": 180,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_3",
+            "prefab": "object",
+            "x": 236,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_4",
+            "prefab": "object",
+            "x": 292,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_5",
+            "prefab": "object",
+            "x": 348,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_6",
+            "prefab": "object",
+            "x": 404,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_7",
+            "prefab": "object",
+            "x": 460,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_8",
+            "prefab": "object",
+            "x": 516,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_3_9",
+            "prefab": "object",
+            "x": 572,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#a5e8a0"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_0",
+            "prefab": "object",
+            "x": 68,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_1",
+            "prefab": "object",
+            "x": 124,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_2",
+            "prefab": "object",
+            "x": 180,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_3",
+            "prefab": "object",
+            "x": 236,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_4",
+            "prefab": "object",
+            "x": 292,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_5",
+            "prefab": "object",
+            "x": 348,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_6",
+            "prefab": "object",
+            "x": 404,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_7",
+            "prefab": "object",
+            "x": 460,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_8",
+            "prefab": "object",
+            "x": 516,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "brick_4_9",
+            "prefab": "object",
+            "x": 572,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "brick",
+                  "width": 52,
+                  "height": 18,
+                  "tint": "#80d8ff"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 26,
+                  "halfHeight": 9,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "paddle",
+            "prefab": "object",
+            "x": 320,
+            "y": 344,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "paddle",
+                  "width": 80,
+                  "height": 12,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 12,
+                    "left": 6,
+                    "right": 6,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 40,
+                  "halfHeight": 6,
+                  "isTrigger": false
+                },
+                "layer": "player",
+                "body": {
+                  "type": "kinematic"
+                }
+              }
+            }
+          },
+          {
+            "id": "ball",
+            "prefab": "object",
+            "x": 320,
+            "y": 331,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "ball",
+                  "width": 12,
+                  "height": 12
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 6,
+                  "isTrigger": false
+                },
+                "layer": "bullet",
+                "body": {
+                  "type": "dynamic",
+                  "mass": 1,
+                  "canSleep": false,
+                  "gravityScale": 0,
+                  "linearDamping": 0,
+                  "angularDamping": 4,
+                  "material": {
+                    "friction": 0,
+                    "restitution": 1
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

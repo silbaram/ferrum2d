@@ -57,6 +57,13 @@ const SURFACES = [
     reason: "the direct renderer/platform bootstrap and debug panel are part of the showcase contract",
   },
   {
+    id: "example-site",
+    file: "examples/site/src/main.ts",
+    mode: "editor-shell",
+    style: "pixelforge-editor-theme",
+    reason: "the site keeps navigation, inspector panels, and an example viewport in one shell as examples change",
+  },
+  {
     id: "studio",
     file: "apps/studio/src/main.ts",
     mode: "shared-shell",
@@ -88,7 +95,7 @@ for (const file of exampleEntrypoints) {
   }
 }
 for (const surface of surfaces) {
-  if (!surface.usesSharedHarness) {
+  if (surface.mode !== "editor-shell" && !surface.usesSharedHarness) {
     errors.push(`${surface.file} must import ${SHARED_HARNESS_FILE}`);
   }
   if (surface.mode === "shared-shell" && !surface.usesSharedShell) {

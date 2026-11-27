@@ -20,7 +20,7 @@ const applied = applyDataSceneAuthoringDocument(engine, {
       actor: { props: { components: {
         visual: { kind: "sprite", texture: 2, width: 32, height: 64,
           originX: 0.5, originY: 1, depthSort: "hd2d", tint: "#ffffff" },
-        collider: { type: "aabb", halfWidth: 8, halfHeight: 8 },
+        collider: { type: "aabb", halfWidth: 8, halfHeight: 8, isTrigger: false },
         layer: "player",
         body: { type: "kinematic", heightSpan: { floorId: 0, elevation: 0, height: 1 } },
       } } },
@@ -40,6 +40,8 @@ collider-only 장식/trigger 계약을 유지한다. 지원하지 않는 body �
 거부한다. `collider: "none"`과 body를 함께 쓰는 것은 거부한다.
 `heightSpan`은 optional이며 HD-2D mover를 사용할 때 명시한다. 높이의 `height`는 이 authoring
 경로에서 양수다. 별도 body를 생성하거나 sprite transform을 JS에서 매 frame 복사하지 않는다.
+평면 native 물리에서 `moveHd2dKinematicBodyWithTilemap`으로 이동할 actor에는 단일 solid AABB가 필요하다.
+Data Scene에서 `isTrigger`를 생략하면 `true`이므로, 이동할 actor의 collider에는 `isTrigger: false`를 명시한다.
 
 현재 flat 경로의 `heightSpan.elevation`은 물리 높이 필터와 depth sort metadata에 반영되지만
 sprite의 화면 높이를 자동으로 올리지는 않는다. `groundYScale`은 지면 XY의 압축 투영이며
@@ -191,6 +193,6 @@ pnpm smoke:data-scene
 
 이 명령은 Wasm과 JS를 빌드하고 runtime을 실제 `pnpm pack`으로 포장·추출한 후 public import map으로 브라우저에서
 recipe를 실행한다. 1280×720 / 390×844, DPR 1/2에서 픽셀 색조·가림 순서·높이 span 변경 안정성,
-물리 이동/조개 위치, pan/zoom/resize, 실제 pointer 클릭, culling, label/light 좌표와 stale handle을
+solid AABB actor의 이동/조개 위치, pan/zoom/resize, 실제 pointer 클릭, culling, label/light 좌표와 stale handle을
 검사한다. 결과는 `artifacts/data-scene-consumer-*/report.json`에 남긴다.
 설치만 요청한 게임 프로젝트에서 이 명령이나 recipe를 자동 생성/실행하지 않는다.

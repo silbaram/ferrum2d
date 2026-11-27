@@ -50,8 +50,7 @@ node scripts/tools/capture-readme-screenshots.mjs
 node scripts/tools/capture-readme-screenshots.mjs --only=topdown-shooter
 # 충돌/발판/물리 실험실 세 장만 갱신할 때
 node scripts/tools/capture-readme-screenshots.mjs --only=guided-examples
-# 공통 UI와 기능 실험실·게임 예제 일곱 장 갱신
-pnpm build:pages
+# 이전 기능 실험실·작은 빛의 정원 이미지 갱신(각 앱 빌드에서 직접 캡처)
 node scripts/tools/capture-readme-screenshots.mjs --only=example-suite
 ```
 
@@ -76,7 +75,7 @@ pnpm smoke:pixel-showcase
 소프트웨어 WebGPU 검증은 offscreen readback을 사용하며 README 이미지는 WebGL2 canvas 캡처다.
 
 갱신 후 모든 이미지를 열어 비어 있거나 잘린 영역과 오류 안내가 없는지 확인한다.
-공통 UI 재편 뒤 기능 실험실·정원도 `--only=example-suite`로 직접 캡처한다.
+기능 실험실·정원은 `--only=example-suite`로 각 앱 빌드에서 직접 캡처한다. 이전 예제는 공개 사이트에서 빠졌으므로 `dist-pages`를 쓰지 않는다.
 WebGL2·1440×1000·DPR 1이며 기능 실험실은 9-slice 대화창 기본 설정을 보여준다.
 전체 예제 캡처의 출처·native 상태·SHA-256은 `artifacts/readme-refresh/capture-suite.json`에 남긴다.
 9-slice 설명 보강 후 `engine-feature-lab.png`는 별도 검증의 `nine-slice.png`로 갱신했다.
@@ -88,7 +87,7 @@ WebGL2·1440×1000·DPR 1이며 기능 실험실은 9-slice 대화창 기본 설
 node scripts/tools/capture-readme-screenshots.mjs --only=feature-lab
 ```
 
-`pnpm build:pages`를 먼저 실행한다. 이 옵션은 다른 게임 이미지를 변경하지 않는다.
+starter-runtime을 먼저 빌드한다. 이 옵션은 다른 게임 이미지를 변경하지 않는다.
 현재 홈·기능 실험실 이미지의 환경·출처는 `artifacts/readme-refresh/capture-feature-lab.json`,
 전수 검토의 소스 hash·결과는 `artifacts/feature-learning-clarity/verification.json`을 따른다.
 이 단독 검증 캡처는 정적 대화창을 실행 중인 상태이며 모바일 세로 비교도 함께 저장한다.

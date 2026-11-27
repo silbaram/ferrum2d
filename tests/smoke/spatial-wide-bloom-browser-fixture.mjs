@@ -24,7 +24,7 @@ async function probe(backend, projection, colorManagement, variant){
    const allocated=Object.fromEntries(Object.entries(allocations).map(([key,value])=>[key,value-before[key]]));
    const frameWork={spatialBloomDrawCalls:final.spatialBloomDrawCalls,spatialBloomTextureBytes:final.spatialBloomTextureBytes,spatialBloomTexelFetchBudget:final.spatialBloomTexelFetchBudget};
    pixels(renderer,canvas).then(data=>request.resolve({data,stats:{...stats.spatial},frameWork,allocated,resources:renderer.resourceStats()}),request.reject);
-  }catch(error){engine.stop();request.reject(error);}});
+  }catch(error){engine.stop();request.reject(error);}}, undefined, undefined, undefined, { physicsBackend: "legacy" });
   engine=await makeEngine();
   const blue=globalThis.document.createElement("canvas");blue.width=blue.height=1;blue.getContext("2d").fillStyle="blue";blue.getContext("2d").fillRect(0,0,1,1);await renderer.loadTexture(7,blue.toDataURL());
   const size=renderer.viewportSize();engine.setViewportSize(size.width,size.height);

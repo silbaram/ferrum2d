@@ -50,7 +50,7 @@ async function probe(backend, projection, colorManagement) {
         packet={...state.renderCommandBuffer,buffer:state.renderCommandBuffer.buffer.slice(),spatial:source&&ownedSpatial(source)};
         if(previous&&source&&nativeTerrain?.memory===source.terrain.buffer&&nativeTerrain.offset===source.terrain.byteOffset&&nativeTerrain.length===source.terrain.length&&nativeTerrain.revision===source.terrainRevision)packet.spatial.terrain=previous.terrain;
         nativeTerrain=source&&{memory:source.terrain.buffer,offset:source.terrain.byteOffset,length:source.terrain.length,revision:source.terrainRevision};
-      },undefined,undefined,()=>renderer.viewportSize());
+      },undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });
       for(const [id,asset]of Object.entries(assets))check(e.registerDataSceneSpatialModel(id,asset),"PCSS model registration");
       e.configureFixedTimestep(false);engines.push(e);return e;
     };

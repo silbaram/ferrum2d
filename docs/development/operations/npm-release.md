@@ -128,7 +128,9 @@ pnpm release:local-check
 
 `pnpm release:candidate-check`는 현재 root package와 네 release package의 base version, candidate beta semver, expected tag, `private: true`, `publishConfig.access: "public"`, `publishConfig.tag: "beta"`, `CHANGELOG.md`의 `Unreleased` staging section, release note template, `release:local-check`/`release:publish-check` gate 존재 여부를 확인한다. 이 명령은 네 package의 `private: true`를 유지해야 통과한다.
 
-현재 CI는 수동 `workflow_dispatch`로 실행하며 GitHub Release 배포를 기본으로 한다. tag ref에서도 `private: true`를 유지한 candidate metadata와 `pnpm package:check`를 검사한다. npm publish 후보는 아래 별도 npm 절차를 적용해야 한다.
+`CI`의 `validate`는 `main` 대상 PR과 수동 `workflow_dispatch`에서 실행한다.
+`ferrum-web-v*` 태그를 선택해 수동 실행하면 candidate metadata와 패키지 산출물, 소비자·확장 브라우저를 검증한다.
+GitHub Release 배포가 기본이며, npm publish 후보에는 아래 별도 절차를 적용한다.
 
 - publish package version은 `x.y.z-beta.N`으로 맞춘다.
 - Git tag는 `ferrum-web-vx.y.z-beta.N`이며 package version과 일치해야 한다.

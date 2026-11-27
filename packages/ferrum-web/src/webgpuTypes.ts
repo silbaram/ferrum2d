@@ -88,6 +88,7 @@ declare global {
 
   interface GPUCanvasContext {
     configure(configuration: GPUCanvasConfiguration): void;
+    unconfigure(): void;
     getCurrentTexture(): GPUTexture;
   }
 

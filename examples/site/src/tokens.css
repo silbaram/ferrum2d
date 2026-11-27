@@ -1,0 +1,151 @@
+/* Pixelforge design tokens (dark), copied from .agents/skills/pixelforge-design-system/assets/colors_and_type.css.
+   The external font import is left out: the site uses the bundled Noto Sans KR subset and system fonts,
+   and every stack falls back to it so Hangul never drops to an empty glyph. */
+:root {
+  color-scheme: dark;
+
+  /* ---------- NEUTRAL SPINE ------------------------------------------- */
+  /* Engine graphite: darker and less generic than a code-editor slate. */
+  --bg-0:        #080B0F;   /* app background, edges */
+  --bg-1:        #0B1016;   /* primary panel bg */
+  --bg-2:        #111821;   /* raised panel / card */
+  --bg-3:        #172130;   /* hover row, selected-secondary */
+  --bg-4:        #202B3A;   /* pressed, focused well */
+
+  --fg-0:        #F4F7FA;   /* pure foreground, rarely used */
+  --fg-1:        #DCE5EE;   /* primary text */
+  --fg-2:        #AEB9C6;   /* secondary text, labels */
+  --fg-3:        #788596;   /* tertiary, captions */
+  --fg-4:        #525D6C;   /* disabled, placeholder */
+
+  --border:        #1B2430;
+  --border-strong: #2A3645;
+  --divider:       #121922;
+
+  /* ---------- SIGNATURE ACCENT (FORGE AMBER) -------------------------- */
+  --accent:        #F5A742;
+  --accent-hover:  #FFC46B;
+  --accent-press:  #D58A28;
+  --accent-fg:     #171006;   /* text on top of accent fills */
+  --accent-soft:   rgba(245, 167, 66, .18);
+  --accent-rail:   #F5A742;
+
+  /* ---------- SEMANTIC COLORS ----------------------------------------- */
+  --red:        #FF6B6B;
+  --red-soft:   rgba(255, 107, 107, .15);
+  --green:      #6EE7B7;
+  --green-soft: rgba(110, 231, 183, .15);
+  --yellow:     #FBBF24;
+  --yellow-soft: rgba(251, 191, 36, .15);
+  --blue:       #7AA2FF;
+  --blue-soft:  rgba(122, 162, 255, .15);
+  --purple:     #C084FC;   /* used for shaders / scripts */
+  --purple-soft: rgba(192, 132, 252, .15);
+  --cyan:       #38D5E8;
+  --cyan-soft:  rgba(56, 213, 232, .15);
+
+  /* ---------- ENGINE DOMAIN COLORS ------------------------------------ */
+  --engine-runtime:   var(--green);
+  --engine-physics:   var(--cyan);
+  --engine-render:    var(--blue);
+  --engine-behavior:  var(--purple);
+  --engine-collision: #FF8A65;
+  --engine-audio:     #F97316;
+  --engine-grid:      #223042;
+  --viewport-bg:      #070A0F;
+  --viewport-grid:    #111926;
+  --viewport-grid-strong: #1D2A3A;
+
+  /* ---------- CODE-EDITOR PALETTE (a calm, low-contrast set) --------- */
+  --code-bg:        #0B1016;
+  --code-fg:        #DDE7F2;
+  --code-comment:   #667286;
+  --code-keyword:   #C084FC;
+  --code-string:    #9BE28F;
+  --code-number:    #FF9F6E;
+  --code-function:  #7AA2FF;
+  --code-type:      #FFD166;
+  --code-operator:  #38D5E8;
+  --code-line:      #121922;       /* current-line highlight */
+  --code-selection: rgba(245, 167, 66, .22);
+  --code-gutter:    #4F5C6D;
+
+  /* ---------- SPACING (4px grid) ------------------------------------- */
+  --sp-0:  0px;
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-7:  32px;
+  --sp-8:  40px;
+  --sp-9:  48px;
+  --sp-10: 64px;
+
+  /* density tokens — swap between Compact (IDE) and Comfortable (docs) */
+  --row-pad-y:    6px;
+  --row-pad-x:    8px;
+  --row-height:   24px;
+
+  /* ---------- RADII --------------------------------------------------- */
+  --radius-0:    0px;
+  --radius-1:    2px;
+  --radius-2:    4px;
+  --radius-3:    8px;
+  --radius-pill: 999px;
+
+  /* ---------- BORDERS ------------------------------------------------- */
+  --border-w:    1px;
+
+  /* ---------- SHADOWS ------------------------------------------------- */
+  --shadow-0: none;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 6px 16px rgba(0, 0, 0, .5);
+  --shadow-3: 0 16px 40px rgba(0, 0, 0, .6);
+  --inset-hilite: inset 0 1px 0 rgba(255, 255, 255, .04);
+
+  /* ---------- MOTION -------------------------------------------------- */
+  --dur-fast:    80ms;
+  --dur-base:    120ms;
+  --dur-modal:   160ms;
+  --ease-out:    cubic-bezier(.2, .8, .2, 1);
+  --ease-in-out: cubic-bezier(.4, 0, .2, 1);
+
+  /* ---------- FIXED CHROME ------------------------------------------- */
+  --h-topbar:    40px;
+  --h-statusbar: 24px;
+  --w-activity:  44px;
+  --w-dock-min:  220px;
+
+  /* ---------- TYPE FAMILIES ------------------------------------------ */
+  --ff-ui:    "Ferrum Example UI", ui-sans-serif, system-ui, sans-serif;
+  /* Named fixed-width fonts on each platform come before the bundled Korean font, so Latin stays
+     fixed-width and Hangul, which they lack, falls through to it. */
+  --ff-mono:  ui-monospace, "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", "Ferrum Example UI", monospace;
+  --ff-brand: ui-monospace, "SFMono-Regular", Menlo, "Ferrum Example UI", monospace;
+
+  /* ---------- TYPE SCALE (sizes in px) ------------------------------- */
+  --fs-10: 10px;  /* tiny labels: status bar, badges */
+  --fs-11: 11px;  /* dense rows: scene tree, inspector keys */
+  --fs-12: 12px;  /* panel rows, tabs */
+  --fs-13: 13px;  /* default UI, editor body */
+  --fs-14: 14px;  /* dialog body, menus */
+  --fs-16: 16px;  /* h4, large body */
+  --fs-20: 20px;  /* h3 */
+  --fs-24: 24px;  /* h2 */
+  --fs-32: 32px;  /* h1 */
+  --fs-48: 48px;  /* display */
+
+  /* line-heights */
+  --lh-tight:    1.2;
+  --lh-snug:     1.3;   /* panels, dense rows */
+  --lh-normal:   1.45;
+  --lh-relaxed:  1.55;  /* body copy */
+
+  /* weights */
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+}

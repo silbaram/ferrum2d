@@ -87,6 +87,33 @@ export interface WebGL2RendererOptions extends TextureManagerOptions {
   postProcess?: PostProcessStackInput;
 }
 
+/** Internal creation path that can clean up the context before a renderer is returned. */
+export async function createPreparedWebGL2Renderer(
+  canvas: HTMLCanvasElement,
+  options: WebGL2RendererOptions,
+  preparation?: ShaderPreparationOptions,
+  releaseOnFailure = false,
+): Promise<WebGL2Renderer> {
+  resolvePixelPerfectOptions(options.pixelPerfect);
+  resolveColorManagementMode(options.colorManagement);
+  if (preparation?.signal?.aborted) throw new DOMException("Shader preparation was cancelled.", "AbortError");
+  const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: options.preserveDrawingBuffer ?? false });
+  if (!gl) throw new Error("WebGL2 context를 생성할 수 없습니다.");
+  const create = () => new WebGL2Renderer(canvas, options);
+  try {
+    return preparation ? await prepareWebGL2Renderer(gl, preparation, create) : create();
+  } catch (error) {
+    if (releaseOnFailure) {
+      try { loseWebGL2Context(gl); } catch { /* Preserve the creation error. */ }
+    }
+    throw error;
+  }
+}
+
+function loseWebGL2Context(gl: WebGL2RenderingContext): void {
+  if (!gl.isContextLost()) gl.getExtension("WEBGL_lose_context")?.loseContext();
+}
+
 export class WebGL2Renderer implements Renderer {
   readonly supportsSpatialScene = true;
   readonly supportsGroundShadowVolumes = true;
@@ -202,17 +229,12 @@ export class WebGL2Renderer implements Renderer {
   }
 
   /** Optional preparation path; the normal constructor remains synchronous. */
-  static async create(
+  static create(
     canvas: HTMLCanvasElement,
     options: WebGL2RendererOptions = {},
     preparation: ShaderPreparationOptions = {},
   ): Promise<WebGL2Renderer> {
-    resolvePixelPerfectOptions(options.pixelPerfect);
-    resolveColorManagementMode(options.colorManagement);
-    if (preparation.signal?.aborted) throw new DOMException("Shader preparation was cancelled.", "AbortError");
-    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: options.preserveDrawingBuffer ?? false });
-    if (!gl) throw new Error("WebGL2 context를 생성할 수 없습니다.");
-    return prepareWebGL2Renderer(gl, preparation, () => new WebGL2Renderer(canvas, options));
+    return createPreparedWebGL2Renderer(canvas, options, preparation);
   }
 
   /** Cold model GPU preparation for protected Data Scene authoring activation. */
@@ -864,6 +886,12 @@ export class WebGL2Renderer implements Renderer {
     // deleted binding so a new renderer cannot later restore this stale object.
     const current = this.gl.getParameter(this.gl.CURRENT_PROGRAM) as WebGLProgram | null;
     if (current && this.gl.getProgramParameter(current, this.gl.DELETE_STATUS)) this.gl.useProgram(null);
+  }
+
+  /** Lose the dedicated WebGL2 context after renderer resources have been freed. */
+  releaseContext(): void {
+    if (!this.destroyed) throw new Error("Destroy the renderer before releasing its canvas context.");
+    loseWebGL2Context(this.gl);
   }
 
   private bindFrameStartTarget(): void {

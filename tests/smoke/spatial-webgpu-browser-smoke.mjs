@@ -53,7 +53,8 @@ const selectionOnly = selectionPresentationOnly || process.argv.includes("--ligh
 const gameAssetShadowsOnly = process.argv.includes("--game-asset-shadows-only");
 const receiverShadowsOnly = process.argv.includes("--receiver-shadows-only");
 const flatShadowsOnly = process.argv.includes("--flat-shadows-only");
-const recoveryOnly = process.argv.includes("--recovery-only");
+const fitRecoveryOnly = process.argv.includes("--fit-recovery-only");
+const recoveryOnly = fitRecoveryOnly || process.argv.includes("--recovery-only");
 const shadowsOnly = process.argv.includes("--shadows-only");
 const proxiesOnly = process.argv.includes("--proxies-only");
 const pointContactOnly = process.argv.includes("--point-contact-only");
@@ -153,11 +154,13 @@ const report = {
   flatShadowCases: [],
   proxyCases: [],
   recoveryCases: [],
+  fitRecoveryCases: [],
   fallbackCases: [],
   wasmSha256: createHash("sha256")
     .update(await readFile(resolve(output, "package/pkg/ferrum_core_bg.wasm")))
     .digest("hex"),
 };
+if (fitRecoveryOnly) report.mode = "fit-recovery-only";
 let browser;
 try {
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
@@ -445,12 +448,23 @@ try {
           assert.deepEqual(errors, []); continue;
         }
         if(recoveryOnly){
-          const recovered=await page.evaluate(()=>window.probeSpatialRecovery());
-          assert.equal(recovered.recovery.status,"ready");assert.equal(recovered.recovery.differentPixels,0);assert.deepEqual(errors,[]);
-          const image=`recovery-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
-          await writeFile(resolve(output,image),Buffer.from(recovered.image.split(',')[1],'base64'));recovered.image=image;
-          const models=await page.evaluate(()=>window.probeModelRecovery());assert.equal(models.recovery.differentPixels,0);assert.equal(models.recovery.generation,2);assert.equal(models.recovery.preparedModels,16);assert.equal(models.recovery.preparedContentIds,15);assert.equal(models.recovery.sameHashHandlesRetained,true);assert.equal(models.recovery.currentAndPreparedRetained,true);assert.deepEqual(errors,[]);
-          report.recoveryCases.push({viewport,deviceScaleFactor,...recovered,models});
+          if (!fitRecoveryOnly) {
+            const recovered=await page.evaluate(()=>window.probeSpatialRecovery());
+            assert.equal(recovered.recovery.status,"ready");assert.equal(recovered.recovery.differentPixels,0);assert.deepEqual(errors,[]);
+            const image=`recovery-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+            await writeFile(resolve(output,image),Buffer.from(recovered.image.split(',')[1],'base64'));recovered.image=image;
+            const models=await page.evaluate(()=>window.probeModelRecovery());assert.equal(models.recovery.differentPixels,0);assert.equal(models.recovery.generation,2);assert.equal(models.recovery.preparedModels,16);assert.equal(models.recovery.preparedContentIds,15);assert.equal(models.recovery.sameHashHandlesRetained,true);assert.equal(models.recovery.currentAndPreparedRetained,true);assert.deepEqual(errors,[]);
+            report.recoveryCases.push({viewport,deviceScaleFactor,...recovered,models});
+          }
+          const fit = await page.evaluate(async () => (await import("/fixture.mjs")).probeFlatFitRecovery());
+          assert.equal(fit.generation, 2);
+          assert.equal(fit.frames, 0, "Recovery must synchronize the viewport without resuming the runtime");
+          assert.deepEqual(fit.camera, { x: 37, y: 52 });
+          assert.deepEqual(fit.point, { x: 175, y: 230 });
+          assert.equal(fit.zoom, 350 / 320);
+          assert.deepEqual(fit.logicalViewport, { width: 320, height: 460 / fit.zoom });
+          assert.deepEqual(errors, []);
+          report.fitRecoveryCases.push({ viewport, deviceScaleFactor, ...fit });
           continue;
         }
         const result =

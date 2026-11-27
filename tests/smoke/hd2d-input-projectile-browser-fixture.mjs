@@ -158,7 +158,7 @@ export async function startInputProjectileProbe(canvas) {
       },
       undefined,
       () => renderer.viewportSize(),
-      { fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
+      { physicsBackend: "legacy", fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
     );
     view = createDataSceneSpatialView(engine, canvas);
     check(

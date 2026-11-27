@@ -18,13 +18,10 @@ const onlySuite = process.argv.includes("--only=example-suite");
 const onlyLab = process.argv.includes("--only=feature-lab");
 const suiteBuild = onlySuite || onlyLab;
 const guidedExamples = ["breakout", "platformer", "physics-sandbox"];
-const routes = new Map([
-  ...loadExampleCatalog(root).filter(item => item.kind !== "reference").map(item => [item.id,
-    resolve(root, suiteBuild ? `dist-pages/${item.id}` : item.source)]),
-  ...(suiteBuild ? [["examples", resolve(root, "dist-pages")]] : []),
-]);
+// Each app's own build. The previous examples are no longer published on Pages; they are kept as fixtures.
+const routes = new Map(loadExampleCatalog(root).filter(item => item.kind !== "reference").map(item => [item.id, resolve(root, item.source)]));
 for (const [name, dir] of routes) {
-  if (onlyLab ? ["starter-runtime", "examples"].includes(name) : onlyShooter ? name === "topdown-shooter" : onlyGuided ? guidedExamples.includes(name) : true) await readFile(resolve(dir, "index.html"));
+  if (onlyLab ? name === "starter-runtime" : onlySuite ? ["starter-runtime", "pixel-art"].includes(name) : onlyShooter ? name === "topdown-shooter" : onlyGuided ? guidedExamples.includes(name) : true) await readFile(resolve(dir, "index.html"));
 }
 await mkdir(output, { recursive: true });
 await mkdir(artifacts, { recursive: true });
@@ -60,7 +57,7 @@ try {
   report.browser = browser.version();
   const context = await browser.newContext({ viewport: report.viewport, deviceScaleFactor: 1, locale: "ko-KR" });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const exampleOrigin = suiteBuild ? `${origin}/examples` : origin;
+  const exampleOrigin = origin;
   const errors = [];
   const page = await context.newPage();
   page.on("pageerror", error => errors.push(error.message));
@@ -78,12 +75,12 @@ try {
     console.log(`Captured ${name} (${bytes.length} bytes)`);
   };
   if (suiteBuild) {
-    await page.goto(`${origin}/examples/starter-runtime/?feature=nine-slice`);
+    await page.goto(`${origin}/starter-runtime/?feature=nine-slice`);
     await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().commands > 0);
     await page.locator('[data-control=pause]').click();
     await capture("engine-feature-lab.png", page.locator("body"), await page.evaluate(() => window.ferrumFeatureLab.snapshot()));
     if (onlySuite) {
-      await page.goto(`${origin}/examples/pixel-art/`);
+      await page.goto(`${origin}/pixel-art/`);
       await page.waitForFunction(() => window.ferrumPixelShowcase?.snapshot().commands >= 240);
       await page.locator('#pixel-pause').click();
       await capture("pixel-art-demo.png", page.locator("body"), await page.evaluate(() => window.ferrumPixelShowcase.snapshot()));

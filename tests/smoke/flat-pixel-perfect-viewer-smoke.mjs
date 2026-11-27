@@ -23,6 +23,95 @@ let browser;
 const results = [];
 const evidence = page => page.evaluate(() => JSON.stringify({ document: window.ferrumPlacementSpatialExportDocument(), patch: window.ferrumPlacementViewerExportPatch(), history: window.ferrumPlacementViewerHistory }));
 const camera = page => page.evaluate(() => ({ x: window.ferrumEngine.cameraX(), y: window.ferrumEngine.cameraY(), viewport: window.ferrumRuntime.renderer.viewportSize() }));
+
+async function fitViewport(page) {
+    return page.evaluate(() => {
+        const canvas = document.querySelector('canvas.demo-canvas');
+        const { width, height } = window.ferrumRuntime.renderer.viewportSize();
+        return {
+            cssWidth: canvas.clientWidth,
+            cssHeight: canvas.clientHeight,
+            width,
+            height,
+            x: window.ferrumEngine.cameraX(),
+            y: window.ferrumEngine.cameraY(),
+            zoom: canvas.clientWidth / width,
+            selection: window.ferrumPlacementViewerState.viewport,
+        };
+    });
+}
+
+function assertClose(actual, expected, message) {
+    assert(Math.abs(actual - expected) < .001, `${message}: expected ${expected}, got ${actual}`);
+}
+
+function assertFitViewport(view, fit, center) {
+    const zoom = Math.min(view.cssWidth / fit.width, view.cssHeight / fit.height);
+    assertClose(view.width, view.cssWidth / zoom, 'fitted world width');
+    assertClose(view.height, view.cssHeight / zoom, 'fitted world height');
+    assertClose(view.x, center.x, 'game camera x');
+    assertClose(view.y, center.y, 'game camera y');
+}
+
+async function verifyFit(page) {
+    const fit = { width: 640, height: 384, x: -80, y: 20 };
+    const center = { x: fit.x + fit.width / 2, y: fit.y + fit.height / 2 };
+    await page.locator('[data-placement-language]').selectOption('en');
+    await showPlacementMenu(page, 'file');
+    await page.locator('[data-placement-document-file]').setInputFiles({
+        name: 'fit.scene-authoring.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(JSON.stringify({ ...scene, display: { fit } })),
+    });
+    await page.waitForFunction(expected => (
+        window.ferrumPlacementWorkspaceMode === '2d' &&
+        window.ferrumPlacementSpatialExportDocument()?.display?.fit?.x === expected
+    ), fit.x);
+    const initial = await fitViewport(page);
+    assertClose(initial.zoom, 1, 'opening a fit document keeps the normal editor zoom');
+    const canvas = page.locator('canvas.demo-canvas');
+    const box = await canvas.boundingBox();
+    await page.mouse.move(box.x + box.width * .65, box.y + box.height * .65);
+    await page.mouse.wheel(0, -120);
+    await page.waitForFunction(() => window.ferrumPlacementEditCamera?.zoom > 1);
+    const edited = await fitViewport(page);
+    const before = await evidence(page);
+
+    await page.getByRole('button', { name: 'Game Preview', exact: true }).click();
+    await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === 'game' && window.ferrumEngine.dataSceneState() === 'playing');
+    const preview = await fitViewport(page);
+    assertFitViewport(preview, fit, center);
+    const moved = { x: center.x + 29, y: center.y - 17 };
+    assert(await page.evaluate(next => window.ferrumEngine.setDataSceneCamera({ ...next, smoothTimeSeconds: 0 }), moved));
+    await page.setViewportSize({ width: 1131, height: 745 });
+    await page.waitForFunction(({ cssWidth, cssHeight, zoom }) => {
+        const canvas = document.querySelector('canvas.demo-canvas');
+        if (canvas.clientWidth === cssWidth && canvas.clientHeight === cssHeight) return false;
+        return Math.abs(canvas.clientWidth / window.ferrumRuntime.renderer.viewportSize().width - zoom) > .001;
+    }, preview);
+    assertFitViewport(await fitViewport(page), fit, moved);
+    await page.getByRole('button', { name: '2D', exact: true }).click();
+    await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === '2d');
+    await assertEditorRestored();
+
+    await page.locator('[data-placement-playback=play]').click();
+    await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === 'game' && window.ferrumEngine.dataSceneState() === 'playing');
+    assertFitViewport(await fitViewport(page), fit, center);
+    await page.locator('[data-placement-playback=stop]').click();
+    await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === '2d');
+    await assertEditorRestored();
+
+    async function assertEditorRestored() {
+        const restored = await fitViewport(page);
+        assertClose(restored.x, edited.x, 'restored editor x');
+        assertClose(restored.y, edited.y, 'restored editor y');
+        assertClose(restored.zoom, edited.zoom, 'restored editor zoom');
+        assertClose(restored.selection.worldWidth, restored.width, 'restored selection viewport width');
+        assertClose(restored.selection.cameraX, edited.x, 'restored selection camera x');
+        assert.equal(await evidence(page), before, 'preview and play must preserve source, patch and history');
+    }
+}
+
 try {
     await new Promise(done => server.listen(0, '127.0.0.1', done));
     browser = await chromium.launch({ headless: true, executablePath: process.env.FERRUM_BROWSER_EXECUTABLE, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -116,8 +205,24 @@ try {
             await page.close();
         }
     }
-    await writeFile(resolve(out, 'verification.json'), JSON.stringify({ ok: true, results }, null, 2) + '\n');
-    console.log(JSON.stringify({ ok: true, results }, null, 2));
+    const fitPage = await browser.newPage({ viewport: { width: 1373, height: 943 }, deviceScaleFactor: 2 });
+    const fitErrors = [];
+    fitPage.on('pageerror', error => fitErrors.push(error.message));
+    try {
+        await fitPage.goto('http://127.0.0.1:' + server.address().port, { waitUntil: 'networkidle' });
+        await fitPage.waitForFunction(() => window.ferrumPlacementViewerRuntimeFrame?.entityCount === 6);
+        await verifyFit(fitPage);
+        assert.deepEqual(fitErrors, []);
+    } catch (error) {
+        await fitPage.screenshot({ path: resolve(out, 'failure-fit.png') });
+        throw error;
+    } finally {
+        await fitPage.close();
+    }
+    const fit = { dpr: 2, preview: true, playback: true, resize: true, editCameraRestored: true, sourceHistoryUnchanged: true };
+    const report = { ok: true, results, fit };
+    await writeFile(resolve(out, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
+    console.log(JSON.stringify(report, null, 2));
 }
 finally {
     await browser?.close();

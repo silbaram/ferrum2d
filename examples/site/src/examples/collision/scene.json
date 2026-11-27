@@ -1,0 +1,571 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "display": {
+    "fit": { "width": 640, "height": 384 }
+  },
+  "gameplay": {
+    "primaryActor": "robot"
+  },
+  "ids": {
+    "items": {
+      "energy": 1
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "robot": {
+        "recipes": [
+          {
+            "kind": "collisionPickup",
+            "target": "other"
+          }
+        ]
+      },
+      "energy": {
+        "recipes": [
+          {
+            "kind": "pickup",
+            "item": "energy",
+            "count": 1,
+            "despawn": true
+          }
+        ]
+      }
+    }
+  },
+  "sceneComposition": {
+    "initialFragment": "main",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "main": {
+        "instances": [
+          {
+            "id": "floor",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 608,
+                  "height": 352,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "zone",
+            "prefab": "object",
+            "x": 520,
+            "y": 104,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "zone",
+                  "width": 112,
+                  "height": 96,
+                  "layer": -90
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 56,
+                  "halfHeight": 48,
+                  "isTrigger": true
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "wall_north",
+            "prefab": "object",
+            "x": 320,
+            "y": 24,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 608,
+                  "height": 16,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 304,
+                  "halfHeight": 8,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "wall_south",
+            "prefab": "object",
+            "x": 320,
+            "y": 360,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 608,
+                  "height": 16,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 304,
+                  "halfHeight": 8,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "wall_west",
+            "prefab": "object",
+            "x": 24,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 16,
+                  "height": 320,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 8,
+                  "halfHeight": 160,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "wall_east",
+            "prefab": "object",
+            "x": 616,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 16,
+                  "height": 320,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 8,
+                  "halfHeight": 160,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "inner_a",
+            "prefab": "object",
+            "x": 224,
+            "y": 144,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 192,
+                  "height": 16,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 96,
+                  "halfHeight": 8,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "inner_b",
+            "prefab": "object",
+            "x": 400,
+            "y": 256,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 16,
+                  "height": 160,
+                  "nineSlice": {
+                    "sourceWidth": 16,
+                    "sourceHeight": 16,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 8,
+                  "halfHeight": 80,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "energy_1",
+            "prefab": "object",
+            "x": 112,
+            "y": 88,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "energy",
+                  "width": 24,
+                  "height": 24,
+                  "animationSet": {
+                    "initialClip": 0,
+                    "clips": [
+                      {
+                        "id": 0,
+                        "frames": [
+                          {
+                            "u0": 0,
+                            "v0": 0,
+                            "u1": 0.25,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0,
+                            "u1": 0.5,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0,
+                            "u1": 0.75,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0,
+                            "u1": 1,
+                            "v1": 1
+                          }
+                        ],
+                        "fps": 6,
+                        "loop": true
+                      }
+                    ]
+                  }
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 10,
+                  "isTrigger": true
+                },
+                "layer": "pickup"
+              },
+              "behaviorRecipes": [
+                "energy"
+              ]
+            }
+          },
+          {
+            "id": "energy_2",
+            "prefab": "object",
+            "x": 304,
+            "y": 280,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "energy",
+                  "width": 24,
+                  "height": 24,
+                  "animationSet": {
+                    "initialClip": 0,
+                    "clips": [
+                      {
+                        "id": 0,
+                        "frames": [
+                          {
+                            "u0": 0,
+                            "v0": 0,
+                            "u1": 0.25,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0,
+                            "u1": 0.5,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0,
+                            "u1": 0.75,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0,
+                            "u1": 1,
+                            "v1": 1
+                          }
+                        ],
+                        "fps": 6,
+                        "loop": true
+                      }
+                    ]
+                  }
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 10,
+                  "isTrigger": true
+                },
+                "layer": "pickup"
+              },
+              "behaviorRecipes": [
+                "energy"
+              ]
+            }
+          },
+          {
+            "id": "energy_3",
+            "prefab": "object",
+            "x": 536,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "energy",
+                  "width": 24,
+                  "height": 24,
+                  "animationSet": {
+                    "initialClip": 0,
+                    "clips": [
+                      {
+                        "id": 0,
+                        "frames": [
+                          {
+                            "u0": 0,
+                            "v0": 0,
+                            "u1": 0.25,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0,
+                            "u1": 0.5,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0,
+                            "u1": 0.75,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0,
+                            "u1": 1,
+                            "v1": 1
+                          }
+                        ],
+                        "fps": 6,
+                        "loop": true
+                      }
+                    ]
+                  }
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 10,
+                  "isTrigger": true
+                },
+                "layer": "pickup"
+              },
+              "behaviorRecipes": [
+                "energy"
+              ]
+            }
+          },
+          {
+            "id": "robot",
+            "prefab": "object",
+            "x": 96,
+            "y": 248,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 40,
+                  "height": 50,
+                  "animationSet": {
+                    "initialClip": 0,
+                    "clips": [
+                      {
+                        "id": 0,
+                        "frames": [
+                          {
+                            "u0": 0,
+                            "v0": 0,
+                            "u1": 0.25,
+                            "v1": 1
+                          }
+                        ],
+                        "fps": 1,
+                        "loop": true
+                      },
+                      {
+                        "id": 1,
+                        "frames": [
+                          {
+                            "u0": 0,
+                            "v0": 0,
+                            "u1": 0.25,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0,
+                            "u1": 0.5,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0,
+                            "u1": 0.75,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0,
+                            "u1": 1,
+                            "v1": 1
+                          }
+                        ],
+                        "frameDurationsMs": [
+                          140,
+                          100,
+                          140,
+                          100
+                        ],
+                        "loop": true
+                      }
+                    ]
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 14,
+                  "halfHeight": 20,
+                  "isTrigger": false
+                },
+                "layer": "player",
+                "body": {
+                  "type": "kinematic"
+                }
+              },
+              "behaviorRecipes": [
+                "robot"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

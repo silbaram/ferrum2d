@@ -2,6 +2,9 @@
 
 한국어 · [English](../en/engine/showcase-hub.md)
 
+> 예제 사이트를 새로 만드는 중입니다([계획](../planning/example-site-rebuild-plan.md)). 아래 공개 링크는 지금 새 사이트 첫 화면으로 이동합니다.
+> 같은 실험은 저장소에서 `pnpm dev:starter-runtime`을 실행한 뒤 `?feature=<id>`로 열 수 있습니다.
+
 설치 없이 엔진 기능을 체험하는 안내입니다. 링크를 열고 화면의 **직접 해보기**와 **관찰할 결과**를 따라 해보세요.
 [기능 실험실](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 주제를 선택하거나 아래에서 바로 열 수 있습니다.
 소리가 필요한 실험은 화면을 클릭하거나 재생 버튼을 먼저 누르세요.

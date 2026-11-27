@@ -106,7 +106,7 @@ Codex는 공식 subagent 파일인 `.codex/agents/*.toml`과 repo skill 위치�
 pnpm package:check
 ```
 
-현재 CI는 `workflow_dispatch`로 수동 실행하며 validate job은 `pnpm validate:public-api-surface`, release candidate guard, `pnpm package:check`를 실행한다. 이 조합은 public API tier/allowlist, 공식 examples/create-game templates의 목적별 subpath import 사용, beta candidate metadata, 네 package tarball allowlist, Wasm artifact, create-game template matrix, agents installer package contract를 함께 검증한다. 실제 consumer 프로젝트 설치/빌드 matrix인 `pnpm package:consumer-smoke`는 `ferrum-web-v*` tag ref에서 수동 실행하거나 `consumer_smoke` input을 켰을 때 실행한다. GitHub Release 준비 workflow는 별도로 이 전체 matrix를 항상 실행한다.
+`CI`의 `validate`는 `main` 대상 PR과 수동 실행에서 `pnpm validate:public-api-surface`, release candidate guard, 패키지 산출물 검사를 실행한다. 이 조합은 public API tier/allowlist, 공식 examples/create-game templates의 목적별 subpath import 사용, beta candidate metadata, 네 package tarball allowlist, Wasm artifact, create-game template matrix, agents installer package contract를 함께 검증한다. 실제 consumer 프로젝트 설치/빌드 matrix인 `pnpm package:consumer-smoke`는 `ferrum-web-v*` tag ref에서 수동 실행하거나 `consumer_smoke` input을 켰을 때 실행한다. GitHub Release 준비 workflow는 별도로 이 전체 matrix를 항상 실행한다.
 
 패키지 소비자 프로젝트 smoke 검증:
 

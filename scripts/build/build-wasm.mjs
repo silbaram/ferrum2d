@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { delimiter, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { maybeCleanRustTargets } from "../tools/clean-rust-targets.mjs";
+
+maybeCleanRustTargets();
 
 const wasmPackArgs = [
   "build",

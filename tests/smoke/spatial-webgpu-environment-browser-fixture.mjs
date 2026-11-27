@@ -616,7 +616,6 @@ async function probe(canvas, backend, projection, colorManagement, specularOnly 
         JSON.stringify(
           captureGameStateSnapshot(engine, {
             includeDataSceneState: true,
-            includeDataSceneProgress: true,
             dataSceneAuthoringDocument: combined.doc,
           }),
         ),

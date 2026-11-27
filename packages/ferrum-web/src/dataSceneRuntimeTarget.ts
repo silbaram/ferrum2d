@@ -282,12 +282,52 @@ function preflightSpatialLightingSupport(engine: FerrumEngine, spec: DataSceneSp
     throw sceneCompositionDiagnosticError(path, "receiver masks require native v1 support");
 }
 
+function dataSceneAuthoringResolutionOptions(options: ApplyDataSceneAuthoringDocumentOptions) {
+  const {
+    path,
+    validateBindings = true,
+    validateComponents = true,
+    allowComponentTemplates,
+    componentTemplates,
+    activateDataScene: _activateDataScene,
+    colorManagement: _colorManagement,
+    textureId: _textureId,
+    spatialModelPreparer: _spatialModelPreparer,
+    flatLightingPreparer: _flatLightingPreparer,
+    preserveAnimationAndLod: _preserveAnimationAndLod,
+    ids: _ids,
+    instanceHandleRegistry: _instanceHandleRegistry,
+    ...bindingOptions
+  } = options;
+  return {
+    bindingOptions,
+    resolveOptions: {
+      ...bindingOptions,
+      path: path ?? "dataSceneAuthoring",
+      validateBindings,
+      validateComponents,
+      allowComponentTemplates,
+      componentTemplates,
+    },
+  };
+}
+
 export function preflightDataSceneLighting(engine: FerrumEngine, document: unknown, options: ApplyDataSceneAuthoringDocumentOptions = {}): void {
+  preflightDataSceneLightingWithResolution(engine, document, options);
+}
+
+function preflightDataSceneLightingWithResolution(
+  engine: FerrumEngine,
+  document: unknown,
+  options: ApplyDataSceneAuthoringDocumentOptions,
+  resolvedDocument?: ResolvedSceneAuthoringDocument,
+): void {
   if(!document || typeof document!=="object")return;
+  const { resolveOptions } = dataSceneAuthoringResolutionOptions(options);
+  const { path } = resolveOptions;
   if((document as {lighting?:{profile?:string}}).lighting?.profile!=="lit"){
     // Validate a restored surface declaration before any saved native state is changed.
-    const path=options.path??"dataSceneAuthoring";
-    const resolved=resolveSceneAuthoringDocument(document,{path,componentTemplates:options.componentTemplates,allowComponentTemplates:options.allowComponentTemplates});
+    const resolved = resolvedDocument ?? resolveSceneAuthoringDocument(document, resolveOptions);
     preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
     const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
     for(const instance of plan.instances){
@@ -306,11 +346,11 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
     }
     return;
   }
-  const path=options.path??"dataSceneAuthoring",adapter=dataSceneRuntimeEngineAdapter(engine,`${path}.runtimeTarget.engine`);
+  const adapter=dataSceneRuntimeEngineAdapter(engine,`${path}.runtimeTarget.engine`);
   if(!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.lighting.profile`,"lit requires native sprite lighting v1 support");
   const preparer=options.flatLightingPreparer;
   if(!preparer||typeof preparer.prepareFlatLighting!=="function")throw sceneCompositionDiagnosticError(`${path}.flatLightingPreparer`,"lit requires a renderer asset preflight before activation");
-  const resolved=resolveSceneAuthoringDocument(document,{path,componentTemplates:options.componentTemplates,allowComponentTemplates:options.allowComponentTemplates});
+  const resolved = resolvedDocument ?? resolveSceneAuthoringDocument(document, resolveOptions);
     preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
   if (resolved.lighting?.pointLights?.some(light => light.cookie !== undefined) && preparer.flatLightingCookieVersion?.() !== 1)
     throw sceneCompositionDiagnosticError(`${path}.lighting`, "cookies require renderer cookie v1 support");
@@ -341,37 +381,32 @@ export function applyDataSceneAuthoringDocument(
   document: unknown,
   options: ApplyDataSceneAuthoringDocumentOptions = {},
 ): ApplyDataSceneAuthoringDocumentResult {
+  return applyDataSceneAuthoringDocumentWithCommit(engine, document, options);
+}
+
+/** Run a runtime display commit before publishing the scene and releasing its native checkpoint. */
+export function applyDataSceneAuthoringDocumentWithCommit(
+  engine: FerrumEngine,
+  document: unknown,
+  options: ApplyDataSceneAuthoringDocumentOptions,
+  commitDisplay?: () => void,
+): ApplyDataSceneAuthoringDocumentResult {
   const {
-    path: optionPath,
     activateDataScene,
     colorManagement,
-    componentTemplates: suppliedComponentTemplates,
     textureId,
     spatialModelPreparer,
     flatLightingPreparer,
     preserveAnimationAndLod=false,
-    validateBindings = true,
-    validateComponents = true,
-    allowComponentTemplates: suppliedAllowComponentTemplates,
-    ...applyOptions
-  } = options;
-  const {
     ids,
     instanceHandleRegistry,
-    ...bindingOptions
-  } = applyOptions;
-  const path = optionPath ?? "dataSceneAuthoring";
+  } = options;
+  const { bindingOptions, resolveOptions } = dataSceneAuthoringResolutionOptions(options);
+  const { path, allowComponentTemplates: suppliedAllowComponentTemplates } = resolveOptions;
   if(typeof preserveAnimationAndLod!=="boolean"||preserveAnimationAndLod&&activateDataScene===false)
     throw sceneCompositionDiagnosticError(`${path}.preserveAnimationAndLod`,"requires a boolean and full scene activation");
   resolveColorManagementMode(colorManagement);
-  const resolved = resolveSceneAuthoringDocument(document, {
-    ...bindingOptions,
-    path,
-    validateBindings,
-    validateComponents,
-    allowComponentTemplates: suppliedAllowComponentTemplates,
-    componentTemplates: suppliedComponentTemplates,
-  });
+  const resolved = resolveSceneAuthoringDocument(document, resolveOptions);
   const componentTemplates = resolvedSceneAuthoringComponentTemplates(resolved);
   const allowComponentTemplates = suppliedAllowComponentTemplates ?? componentTemplates !== undefined;
   const runtimeOptions = { ...options, componentTemplates };
@@ -460,7 +495,7 @@ export function applyDataSceneAuthoringDocument(
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, `supports at most ${MAX_SPRITE_LIGHTING_UPDATES} sprite lighting materials`);
   if (lightingMaterials.length && (!runtimeAdapter.supportsSpriteLightingMaterials?.() || typeof engine.configureSpriteLightingMaterials !== "function"))
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "sprite lighting requires native v1 support");
-  preflightDataSceneLighting(engine, document, runtimeOptions);
+  preflightDataSceneLightingWithResolution(engine, document, runtimeOptions, resolved);
   const normalMaterials = spriteBindings.filter((b): b is typeof b & {normalTextureId:number} => b.normalTextureId !== undefined);
   const nineSlices = spriteBindings.filter((b): b is typeof b & {nineSlice:SpriteNineSliceSpec} => b.nineSlice !== undefined);
   if(normalMaterials.length>MAX_SPRITE_NORMAL_UPDATES)
@@ -662,6 +697,7 @@ export function applyDataSceneAuthoringDocument(
     if (resolved.physics || (typeof engine.physicsBackend === "function" && engine.physicsBackend() === "unified-3d"))
       finalizeNativePhysicsAuthoring(engine);
     continuity?.restore(result.entityHandles);
+    commitDisplay?.();
     preparation?.commit();
     rememberDataSceneProgressContext(engine, document, result.entityHandles, options, continuityMetadata);
     if (options.activateDataScene !== false) rememberNativeFileApplySource(engine, document, fileMaterializedComponentTemplates(resolved), options.textureId);
@@ -676,7 +712,7 @@ export function applyDataSceneAuthoringDocument(
     finally { preparation?.dispose(); }
   } };
   try {
-    return nativePhysics ? withNativePhysicsAuthoring(engine, apply) : apply();
+    return nativePhysics || commitDisplay ? withNativePhysicsAuthoring(engine, apply) : apply();
   } catch (error) {
     try {
       restoreDataSceneVariableRuntimeSnapshot(engine, previousVariables, `${path}.variables`);

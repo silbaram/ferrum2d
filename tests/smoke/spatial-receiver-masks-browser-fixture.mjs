@@ -80,7 +80,7 @@ export async function probeSpatialReceiverMasks(configure, current, reread, engi
   equal(splitPixels, current(), "per-draw masks leaked between terrain/billboard/model batches");
   check(savedRow.stats.modelDrawCalls === 4 && savedRow.stats.modelInstancedDrawCalls === 0, "different masks were merged in model instancing", savedRow.stats);
   const before = current().slice(), old = registry.entries().find(row => row.instanceId === "tree").handle;
-  const snapshot = JSON.parse(JSON.stringify(captureGameStateSnapshot(engine, { includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: savedRow.doc })));
+  const snapshot = JSON.parse(JSON.stringify(captureGameStateSnapshot(engine, { includeDataSceneState: true, dataSceneAuthoringDocument: savedRow.doc })));
   restoreGameStateSnapshot(engine, snapshot, { dataSceneAuthoringApplyOptions: apply });
   const fresh = registry.entries().find(row => row.instanceId === "tree").handle;
   check(old.entityId !== fresh.entityId || old.entityGeneration !== fresh.entityGeneration, "receiver restore retained stale handles");

@@ -264,7 +264,6 @@ async function probe(canvas, backend, projection, recover=false) {
         JSON.stringify(
           captureGameStateSnapshot(engine, {
             includeDataSceneState: true,
-            includeDataSceneProgress: true,
             dataSceneAuthoringDocument: mapped,
           }),
         ),

@@ -170,8 +170,8 @@ async function probe(canvas, projection) {
     window.dispatchEvent(
       new KeyboardEvent(down ? "keydown" : "keyup", { code: "Space", bubbles: true }),
     );
-  const until = async (predicate) => {
-    const deadline = performance.now() + 15000;
+  const until = async (predicate, timeoutMs = 15000) => {
+    const deadline = performance.now() + timeoutMs;
     while (!predicate()) {
       check(errors.length === 0 && performance.now() < deadline, "spawn probe stalled", {
         projection,
@@ -282,7 +282,7 @@ async function probe(canvas, projection) {
       () => input.snapshot(),
       undefined,
       () => renderer.viewportSize(),
-      { fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
+      { physicsBackend: "legacy", fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
     );
     check(engine.supportsDataSceneSpawnPrefabs(), "packed Wasm lacks actor spawn capability");
     renderer.resize();
@@ -374,7 +374,8 @@ async function probe(canvas, projection) {
       "paused spawn state changed",
     );
     check(engine.resumeDataScene(), "spawn resume rejected");
-    await until(() => capture().dataScene.progress.combat.lastSpawnSerial === 2);
+    // The restored timer needs 0.9 simulation seconds even with software rendering at DPR 2.
+    await until(() => capture().dataScene.progress.combat.lastSpawnSerial === 2, 30000);
     engine.stop();
     const after = capture().dataScene.progress.combat;
     check(

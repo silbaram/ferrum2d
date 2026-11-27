@@ -506,7 +506,7 @@ export type { SpatialAudioScene, SpatialAudioSceneSpec, SpatialAudioSourceSpec, 
 export { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, pixelPerfectPointToViewport } from "./pixelPerfect.js";
 export type { PixelPerfectOptions, PixelPerfectPresentation } from "./pixelPerfect.js";
 export { resolveSceneDisplay } from "./sceneDisplay.js";
-export type { SceneDisplaySpec } from "./sceneDisplay.js";
+export type { SceneDisplaySpec, SceneFitSpec } from "./sceneDisplay.js";
 
 export type { PhysicsSolverStateBuffer } from "./engineTypes/physicsBodies.js";
 export type { PhysicsWorldSolverState } from "./physicsSnapshotTypes.js";

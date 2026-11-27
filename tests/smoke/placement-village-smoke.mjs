@@ -256,7 +256,9 @@ try {
   }
 }
 catch (error) {
-  await page.screenshot({ path: `${artifact}/failure.png`, fullPage: true });
+  // A slow software-rendered capture must not replace the original failure.
+  await page.screenshot({ path: `${artifact}/failure.png`, fullPage: true })
+    .catch(screenshotError => console.error(`Failure screenshot was not captured: ${screenshotError.message}`));
   throw error;
 }
 finally {

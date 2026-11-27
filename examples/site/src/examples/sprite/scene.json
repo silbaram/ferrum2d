@@ -1,0 +1,103 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "sceneComposition": {
+    "initialFragment": "main",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "main": {
+        "instances": [
+          {
+            "id": "backdrop",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "layer": -100,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "panel",
+                  "width": 576,
+                  "height": 320,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 24,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 2
+                  }
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "origin",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 96,
+                  "height": 120,
+                  "frame": {
+                    "u0": 0,
+                    "v0": 0,
+                    "u1": 0.25,
+                    "v1": 1
+                  },
+                  "tint": "#ffffff30"
+                },
+                "collider": "none",
+                "layer": "player"
+              }
+            }
+          },
+          {
+            "id": "robot",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "rotationRadians": 0,
+            "scale": 1,
+            "layer": 1,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 96,
+                  "height": 120,
+                  "frame": {
+                    "u0": 0,
+                    "v0": 0,
+                    "u1": 0.25,
+                    "v1": 1
+                  },
+                  "originX": 0.5,
+                  "originY": 0.5,
+                  "tint": "#ffffffff"
+                },
+                "collider": "none",
+                "layer": "player"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

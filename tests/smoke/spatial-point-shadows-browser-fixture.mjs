@@ -56,7 +56,7 @@ async function probe(backend, projection, colorManagement) {
           nativeTerrain.revision === source.terrainRevision) packet.spatial.terrain = previous.terrain;
       nativeTerrain = source && { memory: source.terrain.buffer, offset: source.terrain.byteOffset,
         length: source.terrain.length, revision: source.terrainRevision };
-    }, undefined, undefined, () => renderer.viewportSize());
+    }, undefined, undefined, () => renderer.viewportSize(), { physicsBackend: "legacy" });
     check(e.registerDataSceneSpatialModel("rock", asset), "point shadow model registration");
     e.configureFixedTimestep(false); engines.push(e); registry = createSceneInstanceHandleRegistry(); return e;
   };

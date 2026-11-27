@@ -255,7 +255,7 @@ export async function probeCombatNavigation(canvas, crowd = false) {
       undefined,
       undefined,
       () => renderer.viewportSize(),
-      { fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
+      { physicsBackend: "legacy", fixedTimestep: { stepSeconds: 1 / 120, maxStepsPerUpdate: 8 } },
     );
     check(engine.supportsDataSceneCombatNavigation(), "packed Wasm lacks native combat navigation");
     renderer.resize();

@@ -181,12 +181,24 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - package 변경 시 `pnpm package:check:<package>` 또는 `pnpm package:check`
 - create-game/agents template 변경 시 필요한 범위의 `pnpm package:consumer-smoke`와 `pnpm validate:consumer-smoke-report`
 
-CI 정합 검증(GitHub Actions `ci.yml`, 현재 `workflow_dispatch` 수동 실행이며 push/PR 자동 실행이 아니다):
+GitHub Actions `ci.yml`의 `validate`는 `main` 대상 PR과 수동 실행에서 검증한다. 같은 PR의 새 실행은 이전 실행을 취소한다.
+`browser-smoke`, `consumer-smoke`, `extended-browser-smoke`는 각각의 수동 입력 또는 `ferrum-web-v*` 태그 ref 수동 실행에서 검증한다.
+
+CI 정합 검증 순서
 
 - `pnpm install`
 - `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
 - `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
-- `pnpm build`
+- `pnpm test:web`으로 SDK 빌드 및 테스트
+- 나머지 TypeScript 패키지와 예제 빌드
+- `pnpm lint`
+
+로컬에서 `pnpm build:wasm`과 `pnpm test:rust-wasi`는 하루에 한 번 Cargo의 네 빌드 폴더를 정리한다.
+Linux의 `flock`으로 잠금을 잡은 폴더만 대상으로 하며, 기본값은 14일과 합계 20GiB다.
+`FERRUM_RUST_TARGET_MAX_AGE_DAYS`와 `FERRUM_RUST_TARGET_MAX_GIB`로 기준을 바꾸고,
+`FERRUM_RUST_TARGET_GC=0`으로 자동·오래된 결과물 정리를 끈다. CI에서는 정리를 건너뛴다.
+`pnpm clean:rust:stale`은 하루 제한 없이 실행하고, `pnpm clean:rust:stale --dry-run`은 삭제 후보를 보여 준다.
+직접 `cargo test`를 실행할 때는 필요하면 이 명령을 실행한다. `pnpm clean:rust`는 네 매니페스트에 `cargo clean`을 실행한다.
 
 Wasm 브리지 변경 후 추가:
 
@@ -206,6 +218,7 @@ Authoring/create-game/agents 변경 후 추가:
 검증 명령 실행 원칙:
 
 - 개발 중에는 수정한 코드와 직접 영향받는 동작의 검사만 실행한다. 원래 실패의 복구는 해당 원본 사례로 확인하고, 매 수정 단위마다 전체 테스트 묶음을 반복하지 않는다.
+- 개발 중에는 바꾼 기능의 단위 테스트와 관련 smoke를 선별한다. 무거운 브라우저 검사는 PR 병합 전 `browser_smoke`를 켜서 수동 실행하거나 릴리스 태그 ref로 실행한다.
 - 구현 중에는 필요한 컴파일·수정 파일 포맷 확인과 선별 테스트를 우선한다. 전체 lint/test/build/package/browser matrix는 요청된 전체 개발과 통합이 완료된 뒤 한 번 모아 실행한다.
 - 선별 검증 전에는 실행할 테스트 이름과 변경과의 관련성을 정한다. 전체 검증을 아직 실행하지 않았다는 사실과 최종 검증에 남은 범위를 구분해 기록한다.
 - 서브에이전트는 각자 전체 검증을 반복하지 않는다. 작업별 소스와 필요한 회귀를 준비하고, 통합 담당자가 공통 검증을 모아 실행한다.

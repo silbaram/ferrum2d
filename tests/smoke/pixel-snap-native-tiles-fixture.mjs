@@ -10,7 +10,12 @@ export async function probeNativeTileSnap(preferred) {
   const ctx = image.getContext('2d'); ctx.fillStyle = 'rgb(180,140,100)'; ctx.fillRect(0, 0, 1, 1);
   await renderer.loadTexture(3, image.toDataURL());
   let frame;
-  const runtime = await createFerrumRuntime({ canvas, renderer, autostart: false, onFrame: value => { frame = value.frame; } });
+  const runtime = await createFerrumRuntime({
+    canvas, renderer, autostart: false,
+    // The fixture positions the built-in camera through the legacy Shooter snapshot.
+    engine: { physicsBackend: 'legacy' },
+    onFrame: value => { frame = value.frame; },
+  });
   const raf = requestAnimationFrame, cancel = cancelAnimationFrame, pending = new Map(); let serial = 0, time = 0;
   globalThis.requestAnimationFrame = callback => { pending.set(++serial, callback); return serial; }; globalThis.cancelAnimationFrame = id => pending.delete(id);
   const pump = () => { time += 16; const callbacks = [...pending.values()]; pending.clear(); check(callbacks.length > 0, 'missing native frame'); for (const callback of callbacks) callback(time); };
@@ -18,8 +23,10 @@ export async function probeNativeTileSnap(preferred) {
   try {
     runtime.engine.setGameSpec({ atlas: { frames: { ground: { texture: 3, uv: { u0: 0, v0: 0, u1: 1, v1: 1 }, size: { width: 1, height: 1 } } } }, tilemap: { tileWidth: 8, tileHeight: 8,
       tiles: { '1': { frame: 'ground' } }, layers: [{ columns: 200, rows: 120, data: Array(24000).fill(1) }] } });
+    const physicsBackend = runtime.engine.physicsBackend();
+    check(physicsBackend === 'legacy', 'camera setup requires legacy Shooter snapshots');
     runtime.start(); pump(); pump();
-    const baseline = runtime.engine.captureShooterStateSnapshot(); check(baseline, 'missing native snapshot');
+    const baseline = runtime.engine.captureShooterStateSnapshot(); check(baseline, 'missing legacy Shooter snapshot');
     const accessor = runtime.engine.createBuiltInShooterStateAccessor(), commands = runtime.engine.createRenderCommandAccessor();
     for (const zoom of [1, 1.25, 1.37, 2]) for (const phase of [.1, .2, .5, .9]) {
       renderer.setViewportZoom(zoom);
@@ -51,7 +58,7 @@ export async function probeNativeTileSnap(preferred) {
       check(renderer.stats().drawCalls === 2, 'native tiles lost batching');
       phases.push({ zoom, phase, nativeCameraX: runtime.engine.cameraX(), visibleTiles: count, seamPixels: 0 });
     }
-    return { preferred, nativeTiles: true, phases, snapshotUnchanged: true };
+    return { preferred, physicsBackend, nativeTiles: true, phases, snapshotUnchanged: true };
   } finally {
     runtime.destroy(); renderer.destroy(); globalThis.requestAnimationFrame = raf; globalThis.cancelAnimationFrame = cancel;
     window.disposeSpatialGpuTarget?.(canvas); canvas.remove();

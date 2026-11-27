@@ -19,6 +19,9 @@ This is a real browser capture of Studio with example village content.
 
 ## Try individual engine features
 
+> The example site is being rebuilt ([plan](docs/planning/example-site-rebuild-plan.md)). The public links below currently lead to the new site's first page.
+> The same experiments run from the repository: `pnpm dev:starter-runtime`, then open `?feature=<id>`.
+
 The [**Engine Feature Lab**](https://silbaram.github.io/ferrum2d/starter-runtime/) provides **31 independent experiments**.
 Each experiment connects controls and visible results with implementation APIs.
 
@@ -104,9 +107,9 @@ See [pixel editing and saving conditions (Korean)](apps/studio/README.md#내장-
 
 ## Example gallery
 
-Start with **topic-based experiments → game applications** in the [Feature Lab](https://silbaram.github.io/ferrum2d/).
-Use the example switcher to open games, advanced physics, or authoring tools. Game and lab screens share instructions, observations, and related experiments.
-Minimal and legacy integrated demos remain reference/test fixtures outside the main catalog. See [example roles and local execution](examples/README.md).
+The [example site](https://silbaram.github.io/ferrum2d/) is being rebuilt as an editor-style page centered on the running stage. It currently holds the new shell
+with links to Studio and the docs; examples are added back one at a time. The screens below are the previous examples, which still run from the repository
+and also serve as engine test fixtures. See [example roles and local execution](examples/README.md).
 
 | 2D Lantern Garden | HD-2D Village |
 | --- | --- |

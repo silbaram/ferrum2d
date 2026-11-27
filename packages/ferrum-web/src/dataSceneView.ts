@@ -5,6 +5,7 @@ import type { DirectionalLight2D } from "./lightingTypes.js";
 import type { FerrumEngine, FrameState } from "./engineTypes.js";
 import type { DataSceneCameraOptions } from "./dataSceneCamera.js";
 import type { LightingScene2D } from "./lightingTypes.js";
+import type { SceneFitSpec } from "./sceneDisplay.js";
 import { pixelPerfectPointToViewport, resolvePixelPerfectOptions, type PixelPerfectOptions, type PixelPerfectPresentation } from "./pixelPerfect.js";
 import {
   createScenePlacementViewport, screenToSceneWorld, worldToSceneScreen,
@@ -44,10 +45,26 @@ export function createDataSceneView(
   options: DataSceneViewOptions = {},
 ): DataSceneView {
   if (renderer.setViewportZoom === undefined) throw new Error("Data Scene view requires renderer.setViewportZoom().");
-  let zoom = validateZoom(options.zoom ?? 1);
+  const zoom = validateZoom(options.zoom ?? 1);
   const pixelPerfect = options.pixelPerfect === undefined ? undefined : resolvePixelPerfectOptions(options.pixelPerfect) ?? false;
   if (pixelPerfect !== undefined && (!renderer.setPixelPerfect || !renderer.pixelPerfectPresentation))
     throw Error("Renderer does not support pixelPerfect presentation");
+  const { view } = bindDataSceneView(engine, renderer, canvas);
+  // Bounds must clamp against the zoomed viewport, not the previous logical size.
+  view.setGroundYScale(options.groundYScale ?? 1);
+  if (pixelPerfect !== undefined) view.setPixelPerfect(pixelPerfect);
+  view.setZoom(zoom);
+  view.setCamera(options);
+  if (options.sun !== undefined) view.setSun(options.sun);
+  return view;
+}
+
+/** Connect the view without configuring the engine or requiring renderer capabilities at startup. */
+export function bindDataSceneView(
+  engine: FerrumEngine, renderer: DataSceneViewRenderer, canvas: HTMLCanvasElement,
+  useRendererZoom = false,
+) {
+  let zoom = 1;
   let sun: DirectionalLight2D | undefined;
   const setSun = (light: DirectionalLight2D | false): void => {
     const next = light === false ? undefined : (light.lightMask!==undefined||light.shadowMask!==undefined?resolveLitDirectionalLight2D:resolveDirectionalLight2D)(light);
@@ -63,10 +80,14 @@ export function createDataSceneView(
   const setCamera = (camera: DataSceneCameraOptions): void => {
     if (!engine.setDataSceneCamera(camera)) throw new Error("Data Scene camera requires an active Data Scene and a current follow handle.");
   };
-  const setZoom = (value: number): void => {
+  const setRendererZoom = (value: number): void => {
     const next = validateZoom(value);
-    renderer.setViewportZoom!(next);
+    if (!renderer.setViewportZoom) throw new Error("Data Scene view requires renderer.setViewportZoom().");
+    renderer.setViewportZoom(next);
     zoom = next;
+  };
+  const setZoom = (value: number): void => {
+    setRendererZoom(value);
     const viewport = renderer.viewportSize();
     engine.setViewportSize(viewport.width, viewport.height);
   };
@@ -76,12 +97,14 @@ export function createDataSceneView(
     renderer.setPixelPerfect(next ?? false);
     const viewport=renderer.viewportSize();engine.setViewportSize(viewport.width,viewport.height);
   };
-  // Bounds must clamp against the zoomed viewport, not the previous logical size.
-  setGroundYScale(options.groundYScale ?? 1);
-  if(pixelPerfect!==undefined)setPixelPerfect(pixelPerfect);
-  setZoom(zoom);
-  setCamera(options);
-  if (options.sun !== undefined) setSun(options.sun);
+  const currentZoom = (presentation?: PixelPerfectPresentation) => {
+    if (!useRendererZoom) return zoom;
+    const viewport = renderer.viewportSize();
+    const horizontal = (presentation?.sourceWidth ?? canvas.clientWidth) / viewport.width;
+    if (Number.isFinite(horizontal) && horizontal > 0) return clampZoom(horizontal);
+    const vertical = (presentation?.sourceHeight ?? canvas.clientHeight) / viewport.height;
+    return Number.isFinite(vertical) && vertical > 0 ? clampZoom(vertical) : zoom;
+  };
   const snapshot = (frame?: Pick<FrameState, "cameraX" | "cameraY" | "cameraGroundYScale">): DataSceneViewSnapshot => {
     const groundYScale = frame?.cameraGroundYScale ?? engine.cameraGroundYScale();
     const presentation=renderer.pixelPerfectPresentation?.();
@@ -90,7 +113,7 @@ export function createDataSceneView(
     const base = createScenePlacementViewport({
     cssWidth: presentation?.sourceWidth??cssWidth, cssHeight: presentation?.sourceHeight??cssHeight,
     backbufferWidth: canvas.width, backbufferHeight: canvas.height,
-    dpr: canvas.width / canvas.clientWidth, zoom,
+    dpr: canvas.width / canvas.clientWidth, zoom: currentZoom(presentation),
     cameraX: frame?.cameraX ?? engine.cameraX(), cameraY: frame?.cameraY ?? engine.cameraY(),
     });
     const worldHeight = base.worldHeight / groundYScale;
@@ -109,7 +132,7 @@ export function createDataSceneView(
       y:(p.y+screen.y*view.groundYScale*p.height/p.sourceHeight)*view.cssHeight/p.canvasHeight};
     return { x: screen.x, y: screen.y * view.groundYScale };
   };
-  return {
+  const view: DataSceneView = {
     setCamera, setZoom, setPixelPerfect, setGroundYScale, setSun, snapshot,
     screenToWorld: (point, view = snapshot()) => fromScreen(point, view),
     worldToScreen: (point, view = snapshot()) => toScreen(point, view),
@@ -130,9 +153,23 @@ export function createDataSceneView(
       polygonOccluders: scene.polygonOccluders?.map(polygon => ({ vertices: polygon.vertices.map(point => ({ x: point.x - view.worldMinX, y: (point.y - view.worldMinY) * view.groundYScale })) })),
     }),
   };
+  return { view, currentZoom, setRendererZoom };
+}
+
+const MIN_ZOOM = 0.0001;
+const MAX_ZOOM = 10000;
+
+function clampZoom(zoom: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 }
 
 function validateZoom(zoom: number): number {
-  if (!Number.isFinite(zoom) || zoom < 0.0001 || zoom > 10000) throw new Error("Data Scene zoom must be in [0.0001, 10000].");
+  if (!Number.isFinite(zoom) || zoom < MIN_ZOOM || zoom > MAX_ZOOM) throw new Error("Data Scene zoom must be in [0.0001, 10000].");
   return zoom;
+}
+
+export function fitDataSceneZoom(canvas: HTMLCanvasElement, fit: SceneFitSpec): number | undefined {
+  const { clientWidth, clientHeight } = canvas;
+  if (clientWidth <= 0 || clientHeight <= 0) return undefined;
+  return clampZoom(Math.min(clientWidth / fit.width, clientHeight / fit.height));
 }
