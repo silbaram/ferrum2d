@@ -41,7 +41,12 @@ use rapier3d::prelude::*;
 // The preceding Ferrum wire was (513_230, 0x6ac6_34d1_d5d4_2c9a).
 // The added empty vectors and bool add 17 bincode bytes; verify the digest
 // with native and real WASI execution before accepting this new format.
-const GOLDEN: (usize, u64) = (513_247, 0xe7e849ba178f3a1a);
+// That (513_247, 0xe7e8_49ba_178f_3a1a) golden predates the committed vendor
+// source: every commit from the initial vendoring onward produces the value
+// below, identically on x86_64 and wasm32-wasip1. Ferrum CI runs this test
+// natively (`pnpm test:physics3d-portability`); re-run it under WASI whenever
+// the persisted layout changes.
+const GOLDEN: (usize, u64) = (523_167, 0x130c_a323_0969_5f65);
 
 const STEPS: usize = 60;
 

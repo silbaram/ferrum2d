@@ -1510,6 +1510,8 @@ Vendor `stored_` 회귀는 graph inverse·actual solver bucket 중복·inactive 
 정상 TYPE·overflow/generic·pending MAX-generation·수면/epoch 이력의 수용을 별도로 검사한다.
 Core는 기본 `cargo test`와 Rust-only WASI 전체 gate에 포함된다. Vendor 집중 회귀는
 `pnpm test:physics3d-storage`로 별도 manifest에서 실행하며 `CI`의 `validate-rust` job에도 연결한다.
+Rapier 저장 바이트의 target 간 기준값은 `pnpm test:physics3d-portability`가 같은 job에서 native로 검사한다.
+저장 layout을 바꾸면 같은 시험을 `wasm32-wasip1`에서도 실행해 기준값이 같은지 확인한다.
 Core 전체 통과만으로 vendor unit suite 실행을 주장하지 않는다. 이 검증은 전체 numerical/island 구조,
 실제 allocator/RSS·외부 파일·SDK 바인딩 수용의 완료가 아니다.
 Storage 명령은 libtest의 `stored_`와 `shape_edits_` OR 필터를 함께 전달한다. 후자의7종 static/5종 dynamic,
