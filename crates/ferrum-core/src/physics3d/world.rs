@@ -334,9 +334,8 @@ impl PhysicsWorld3d {
     /// Internal Engine execution must consume the checked outcome; a failed
     /// actual-motion suffix is never an instruction to run a second solver.
     pub(crate) fn step_checked(&mut self) -> Result<(), PhysicsError> {
-        #[cfg(test)]
-        if self.experimental_character_kcc_enabled() {
-            return self.step_experimental_character_kcc(&[]);
+        if !self.characters.is_empty() && !self.backend_motion_enabled() {
+            return self.step_character_kcc(&[]);
         }
         if self.has_moving_character_obstacles() || self.backend_motion_enabled() {
             self.step_kinematic_tick(&[]);

@@ -176,6 +176,7 @@ fn late_promotion_returns_zero_time_command_credit_before_a_fresh_plan() {
         ..Default::default()
     })
     .unwrap();
+    world.force_character_motion_proof();
     let actor = world
         .create_body(
             BodyDesc {

@@ -657,3 +657,53 @@ SDK 테스트 292건, 문서 링크 검사가 통과했다. 64명 군중의 기�
 확인했다. 마을 전투 8개 조합, Platformer, Top-down HD-2D, 물리 실험실 단일 장면과 전체 7개
 장면도 각 Node 스모크를 로컬에서 실행해 통과했다. HD-2D 전투의 최소 프레임 실패는 재실행하지
 않았다.
+
+#### 2026-11-28 움직이는 키네마틱 물체 결정
+
+위치·속도 키네마틱과 지정 경로의 이동을 주변 캐릭터에 cast한다. 회전에는 Parry 비선형 cast를
+사용한다. 닿으면 남은 이동을 KCC로 밀고, 밀림이 막히면 바디와 이동 묶음을 틱 시작 자세에
+남겨 `kinematicPathStops`에 센다. 빠른 벽의 캡슐 위치는 X=-3.51에서 0.005 이내여야 한다.
+위로 오는 승강기는 캐릭터를 받아 다음 틱에도 접지와 운반을 유지해야 한다. 끼임에서는 본래
+물체와 캐릭터 사이 겹침을 Rapier 허용 오차 안에 둔다.
+
+#### 임시 제품 연결에서 실패한 캐릭터 시험 27건
+
+이전 `cargo test --lib physics3d::character`의 실패를 단언의 목적에 따라 분류했다. 기하 결과는
+Rapier 허용 겹침, 관통 방지, 접지와 운반으로 검사한다. 기존 정밀 접촉 시각과 증명 카운터가 필요했던
+단언은 보수적인 틱 전체 정지 결과 또는 테스트 전용 증명 대조군으로 남기는 것이 기준이다.
+
+| 시험 | 분류 | 전환 기준 |
+| --- | --- | --- |
+| `incoming_wall_push_propagates_to_another_capsule_with_free_space` | 동작 | 열린 공간에서 선두 캡슐과 뒤의 캡슐이 벽 앞에 있고 순서와 간격을 유지한다. |
+| `capsule_chain_transmits_fixed_wall_obstruction_back_to_the_prescribed_pusher` | 동작·정지 시각 | 끝이 막히면 키네마틱과 밀린 캡슐의 변위를 폐기하고 겹침 없이 정지한다. |
+| `free_capsule_chain_is_pushed_without_a_false_squeeze_stop` | 동작 | 열린 8·16·32명 줄에서 벽의 통과나 불필요한 정지가 없어야 한다. |
+| `coupled_push_preserves_tangential_input_and_planar_locks` | 동작 | 밀리는 동안 접선 입력과 planar Z 잠금을 보존한다. |
+| `oblique_wall_normals_push_a_capsule_pair_in_the_actual_world_direction` | 동작 | 기울어진 벽은 실제 월드 표면 법선 쪽으로 밀고 캡슐 순서를 보존한다. |
+| `a_distant_fast_obstacle_does_not_loosen_local_capsule_contact_tolerance` | 동작 | 먼 장애물과 무관하게 가까운 캡슐 쌍의 겹침을 제한한다. |
+| `pair_contacts_reduce_reported_carry_to_the_accepted_motion` | 동작·정지 시각 | 막힌 운반 묶음은 정지한다. 보고 운반량, 접지, 체크포인트, 역방향 운반을 확인한다. |
+| `excluded_capsule_pairs_do_not_transmit_pushes_or_consume_pair_query_work` | 동작 | 마스크로 제외한 쌍은 충돌·밀림을 교환하지 않고 각각 벽에 반응한다. |
+| `a_disabled_controller_does_not_push_an_enabled_character` | 동작 | 비활성 캐릭터는 고정 상태를 유지하며 활성 캐릭터만 벽에 반응한다. |
+| `forty_independent_moving_entries_keep_all_twenty_real_stops_and_checked_full_tick_replay` | 동작·증명 분할 | 독립적인 20개 정지, 겹침, 같은 틱의 리플레이를 보존한다. 증명 분할 수는 내부 비교에 속한다. |
+| `angular_suffix_retains_static_ceiling_and_old_stop_prefix_for_single_and_aggregate` | 증명 | 회전 suffix·prefix 대조군이다. 제품에서는 회전 cast와 천장 겹침을 검사한다. |
+| `selected_pusher_handoff_preserves_checked_squeeze_endpoints_and_native_call_count` | 증명 | 개별 pusher handoff 및 Native 승인 횟수 대조군이다. 제품은 틱 시작 정지와 겹침을 검사한다. |
+| `late_promotion_returns_zero_time_command_credit_before_a_fresh_plan` | 증명 | 승인 시각 0에서의 승격·credit 대조군이다. 제품 롤백은 공개 계약으로 따로 검증한다. |
+| `fast_incoming_wall_pushes_an_idle_capsule_without_passing_through` | 동작 | 0.1초 X=3→−3 벽에서 캐릭터 X=-3.51±0.005를 검사한다. |
+| `incoming_elevator_catches_a_previously_unsupported_capsule` | 동작 | 아래에서 받은 캐릭터가 올라가고 다음 틱에도 접지·운반한다. |
+| `incoming_wall_preserves_the_capsules_tangent_locomotion` | 동작 | 벽에 밀리면서 접선 입력을 유지한다. |
+| `locomotion_does_not_hit_the_old_pose_of_a_receding_wall` | 동작 | 캐릭터가 멀어지는 벽의 시작 자세에 막히지 않는다. |
+| `moving_obstacle_filters_preserve_sensors_masks_and_planar_floors` | 동작 | 센서, 충돌 마스크, planar 층 필터를 존중한다. |
+| `moving_one_way_surface_catches_from_above_and_passes_from_below` | 동작 | 단방향 표면의 허용 면에서만 받쳐 준다. |
+| `velocity_based_wall_uses_the_same_relative_response_and_reports_query_work` | 동작·통계 | 속도와 위치 명령의 물리 결과를 비교한다. 실제 cast를 세며 증명 카운터는 요구하지 않는다. |
+| `a_stopped_command_is_consumed_and_a_new_command_resumes_after_obstacle_removal` | 동작·정지 시각 | 정지 명령은 소비되며 장애물을 치우고 새 명령을 주면 재개한다. |
+| `commanded_wall_stops_when_its_capsule_reaches_a_fixed_wall` | 동작·정지 시각 | 네 가지 공간·바디 종류에서 틱 시작 자세, 정지 1건과 겹침 한도를 검사한다. |
+| `commanded_elevator_stops_below_a_ceiling_and_keeps_its_rider_grounded` | 동작·정지 시각 | 천장에 닿을 운반 묶음은 틱 시작에 남으며 접지를 유지한다. |
+| `two_incoming_commanded_walls_stop_together_around_a_capsule` | 동작·정지 시각 | 양쪽 벽과 캡슐이 통과하지 않고 양쪽 명령이 정지한다. |
+| `squeeze_events_preserve_unrelated_jump_input_and_full_tick_translation` | 동작·정지 시각 | 끼임에 관여하지 않은 이동·점프는 전체 틱에 한 번만 적용된다. |
+| `more_than_sixteen_independent_external_commands_can_stop_in_one_tick` | 동작·정지 시각 | 직접 입력한 16개 이상의 명령을 각각 정지시키고 겹침을 제한한다. |
+| `rotating_rider_with_locomotion_meets_wall_in_one_tick` | 동작·정지 시각 | 회전과 입력을 합성할 때 벽을 통과하지 않으며, 막힌 운반 묶음은 접지를 잃지 않는다. |
+
+위 캐릭터 시험군은 KCC 제품 연결에서 321건 통과, 실패 0건, 수동 비교 3건 제외였다.
+정지 관련 시험은 틱 중간의 좌표 대신 틱 시작 자세와 `kinematicPathStops`를 확인한다.
+캡슐 간격은 허용 겹침 0.005로 확인한다. 증명 내부의 suffix, handoff, zero-time credit
+세 시험은 테스트 전용 강제 경로에 두며 P3 때 제거한다. 빠른 벽, 두 틱 승강기와
+회전 중간에만 닿는 문 사례를 포함한 캐릭터 운동 시험 10건도 통과했다.

@@ -71,7 +71,7 @@ fn commanded_wall_stops_when_its_capsule_reaches_a_fixed_wall() {
         let x = w.body_state(a).unwrap().pose.position[0];
         let wall_x = w.body_state(moving).unwrap().pose.position[0];
         assert!(
-            (x + 0.49).abs() < 0.02 && (wall_x - 0.02).abs() < 0.02,
+            x == 0. && wall_x == 3.,
             "{space:?} {kind:?}: {x} {wall_x} {:?} {:?}",
             w.body_state(a).unwrap(),
             w.character_state(a).unwrap()
@@ -80,8 +80,12 @@ fn commanded_wall_stops_when_its_capsule_reaches_a_fixed_wall() {
         assert_eq!(w.body_state(moving).unwrap().linear_velocity, [0.0; 3]);
         let stats = w.step_statistics();
         assert_eq!(stats.kinematic_character_stops, 1);
-        assert!(stats.character_preview_obstacle_contacts > 0);
-        assert_eq!(stats.character_preview_obstacle_failures, 0);
+        assert_eq!(stats.kinematic_path_stops, 1);
+        assert!(w.character_state(a).unwrap().moving_obstacle_contact_checks > 0);
+        assert_eq!(
+            w.character_state(a).unwrap().failed_moving_obstacle_casts,
+            0
+        );
         if space == Space::PlanarXy {
             assert_eq!(w.body_state(a).unwrap().pose.position[2], 0.0);
             assert_eq!(w.character_state(a).unwrap().translation[2], 0.0);
@@ -104,10 +108,9 @@ fn two_incoming_commanded_walls_stop_together_around_a_capsule() {
     let x = w.body_state(a).unwrap().pose.position[0];
     let l = w.body_state(left).unwrap().pose.position[0];
     let r = w.body_state(right).unwrap().pose.position[0];
-    assert!(
-        x.abs() < 0.02 && (l + 0.51).abs() < 0.02 && (r - 0.51).abs() < 0.02,
-        "{x} {l} {r}"
-    );
+    // Each blocked command keeps its start pose, including simultaneous walls.
+    assert_eq!([x, l, r], [0., -3., 3.]);
+    assert_eq!(w.step_statistics().kinematic_path_stops, 2);
 }
 #[test]
 fn commanded_elevator_stops_below_a_ceiling_and_keeps_its_rider_grounded() {
@@ -142,10 +145,10 @@ fn commanded_elevator_stops_below_a_ceiling_and_keeps_its_rider_grounded() {
     w.step();
     let top = w.body_state(p).unwrap().pose.position[1] + 0.1;
     let y = w.body_state(a).unwrap().pose.position[1];
-    assert!(
-        (top - 0.98).abs() < 0.03 && y + 0.5 <= 2.001 && (y - top - 0.51).abs() < 0.02,
-        "{top} {y}"
-    );
+    // The whole carrier and rider stop at their pre-tick poses under the ceiling.
+    assert_eq!(top, 0.);
+    assert!((y - top - 0.51).abs() < 0.005, "{top} {y}");
+    assert_eq!(w.step_statistics().kinematic_path_stops, 1);
     assert!(w.character_state(a).unwrap().grounded);
 }
 
@@ -297,14 +300,14 @@ fn more_than_sixteen_independent_external_commands_can_stop_in_one_tick() {
     }
     w.step();
     assert_eq!(w.step_statistics().kinematic_character_stops, 20);
-    for (a, m) in movers {
+    for (i, (a, m)) in movers.into_iter().enumerate() {
         assert!(
-            (w.body_state(m).unwrap().pose.position[0] - 0.02).abs() < 0.02,
+            (w.body_state(m).unwrap().pose.position[0] - (3. + i as f32 * 0.1)).abs() < 0.005,
             "{a:?} {:?} {:?}",
             w.body_state(m).unwrap(),
             w.character_state(a).unwrap()
         );
-        assert!((w.body_state(a).unwrap().pose.position[0] + 0.49).abs() < 0.02);
+        assert_eq!(w.body_state(a).unwrap().pose.position[0], 0.);
         assert!(
             !w.character_state(a)
                 .unwrap()
@@ -411,7 +414,7 @@ fn squeeze_events_preserve_unrelated_jump_input_and_full_tick_translation() {
     .unwrap();
     w.set_kinematic_target(moving, pose(-3.0, 0.0)).unwrap();
     w.step();
-    assert_eq!(w.step_statistics().backend_steps, 2);
+    assert_eq!(w.step_statistics().kinematic_path_stops, 1);
     let p = w.body_state(jumper).unwrap().pose.position;
     let s = w.character_state(jumper).unwrap();
     assert!(

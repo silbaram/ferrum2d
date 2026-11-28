@@ -171,7 +171,7 @@ impl PhysicsWorld3d {
         }
         #[cfg(test)]
         if self.experimental_character_kcc_enabled() {
-            return self.step_experimental_character_kcc(paths);
+            return self.step_character_kcc(paths);
         }
         self.step_kinematic_tick(paths);
         self.actual_motion_result()

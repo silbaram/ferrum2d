@@ -508,6 +508,7 @@ fn angular_suffix_fixed_wall_stops_the_bar_on_its_original_solver_curve() {
 fn angular_suffix_retains_static_ceiling_and_old_stop_prefix_for_single_and_aggregate() {
     for extra in [false, true] {
         let (mut w, bar, actor, left, top) = fixture(extra, true, 0., LeftWall::Original);
+        w.force_character_motion_proof();
         w.step();
         assert!(separation(&w, bar, actor) >= 0.);
         assert!(separation(&w, left, actor) >= 0.);

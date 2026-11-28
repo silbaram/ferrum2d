@@ -20,6 +20,8 @@ impl Mode {
     pub(crate) fn configure(self, world: &mut PhysicsWorld3d) {
         if matches!(self, Self::Kcc) {
             world.enable_experimental_character_kcc();
+        } else {
+            world.force_character_motion_proof();
         }
         assert_eq!(
             world.backend_motion_enabled(),

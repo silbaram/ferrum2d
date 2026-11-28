@@ -1192,8 +1192,11 @@ capsule 장축은 `up`과 나란해야 한다. 재설정은 이전 입력/상태
 `UnifiedPhysicsCharacterOptions` 기본값은 up `[0,1,0]`, skinWidth 0.01, maxSlopeAngle π/4,
 slideAngle은 maxSlopeAngle, stepHeight 0.3, stepMinWidth 0.2, snapDistance 0.2, maxVerticalSpeed 50, pushMass 0이다.
 stepHeight/snapDistance 0은 해당 기능을 끈다. pushMass는 0 또는 0.0001..10,000이다.
-0은 prescribed controller, 양수는 동적 물체와 힘을 주고받는 가상 질량이다.
-질량0의 충돌·carry 이동은 상태에 반영되며, 기하 보정이 다음 tick의 외부 운동량으로 누적되지는 않는다.
+0은 prescribed controller다. 양수는 캐릭터가 동적 물체를 밀 때의 가상 질량이다. 동적 물체에
+준 충격의 반작용을 캐릭터의 외부 속도에 반영하며, 외부 힘과 충격도 이 질량으로 적분한다.
+들어오는 동적 물체에는 캐릭터가 키네마틱 바디로 작동한다. 캐릭터끼리는 이동만 가로막는다.
+벽이 가로막은 외부 속도 성분은 소거된다. 지지체나 키네마틱 장애물에 의해 이동한 거리는
+캐릭터 상태에 반영된다.
 
 ```ts
 const actor = engine.spawnUnifiedPhysicsBody({
@@ -1219,6 +1222,15 @@ Force는 `clearUnifiedPhysicsCharacterForces(handles)`까지 유지한다. Impul
 한 번 소비한다. Clear는 누적 외부 속도와 대기 impulse를 없애지 않는다. Preview·cold admission은 예약 입력을 소비하지 않는다.
 별도 character-force capability v1을 사용하며 기존 4-f32 입력과 28-word 상태 layout은 유지한다.
 양수 `pushMass` 구성도 이 capability를 요구해 구형 코어의 다른 밀기 동작으로 조용히 실행하지 않는다.
+
+피격 넉백은 게임에서 적용한다. `setUnifiedPhysicsCollisionEventsEnabled(true)`로 이벤트를 켜고,
+`drainUnifiedPhysicsCollisionEvents()`의 고체 접촉 진입에서 대상 캐릭터를 찾는다. 게임이 정한
+XYZ 충격을 그 캐릭터의 entity 핸들과 함께 `applyUnifiedPhysicsCharacterImpulses`에 전달한다.
+충돌 버퍼는 다음 읽기 전에 사용한다.
+
+움직이는 위치·속도 키네마틱은 이번 틱 경로로 주변 캡슐을 검사하고 남은 이동으로 밀어낸다.
+밀림이 다른 물체에 막히면 해당 키네마틱을 틱 시작 자세에서 정지시키고 `kinematicPathStops`에
+기록한다. 탑승자 운반은 지지체의 실제 이동과 회전을 따른다.
 
 `queryUnifiedPhysicsCharacterStates`는 마지막 fixed tick의 28-word/112-byte 상태를 반환한다.
 `UNIFIED_PHYSICS_CHARACTER_LAYOUT`에 id/generation, flags, ground collider/body, carriedBy,

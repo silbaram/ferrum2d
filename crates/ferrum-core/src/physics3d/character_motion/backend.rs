@@ -5808,11 +5808,10 @@ impl PhysicsWorld3d {
             return false;
         }
         #[cfg(test)]
-        if self.rigid_motion_proof_is_forced() {
+        if self.rigid_motion_proof_is_forced() || self.character_motion_proof_is_forced() {
             return true;
         }
         self.step_motion.enabled
-            || !self.characters.is_empty()
             || !self
                 .character_motion
                 .backend_motion
