@@ -110,7 +110,7 @@ Pixelforge 디자인 체계의 기본 레이아웃(상단 막대·왼쪽 목록�
 
 ## 진행 상황 (2026-11-24)
 
-각 예제의 장면·조작은 코드와 [예제 안내](../../examples/README.md), 검사 항목은 [Smoke Check](../development/quality/smoke-check.md)가 기준이다.
+각 예제의 장면·조작은 코드와 [예제 안내](https://github.com/silbaram/ferrum2d/blob/main/examples/README.md), 검사 항목은 [Smoke Check](../development/quality/smoke-check.md)가 기준이다.
 아래에는 다음 작업에 영향을 주는 결정만 남긴다.
 
 | 항목 | 상태 | 남겨 둘 결정 |
