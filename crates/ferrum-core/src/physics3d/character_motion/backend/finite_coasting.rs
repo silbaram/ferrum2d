@@ -245,7 +245,7 @@ pub(super) fn align(
         };
         let end = curve.com_pose(own.domain.end);
         if !end.is_finite()
-            || !solver_trajectory::same_pose_bits(curve.com_pose(own.domain.start), start)
+            || !same_pose_bits(curve.com_pose(own.domain.start), start)
             || (f64::from(end.translation[axis])
                 - f64::from(own.native.motion.end.translation[axis]))
             .abs()

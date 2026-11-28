@@ -1,48 +1,6 @@
-//! Private logical time within one controller/nominal tick. Native observer
-//! labels and physical integration_seconds retain their original f32 values.
-use super::TrajectoryError;
+//! Solver integration and evaluation on the shared tick clock.
+use super::{Domain, Time, TrajectoryError};
 use rapier3d::{pipeline::SolverBodyIntegration, prelude as rp};
-
-pub(in crate::physics3d) type Time = f64;
-
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub(in crate::physics3d) struct Domain {
-    pub start: Time,
-    pub end: Time,
-}
-impl Domain {
-    pub fn new(start: Time, end: Time) -> Result<Self, TrajectoryError> {
-        if !start.is_finite() || !end.is_finite() || end < start || !(end - start).is_finite() {
-            return Err(TrajectoryError::InvalidTime);
-        }
-        Ok(Self { start, end })
-    }
-    /// An exact shared boundary; the first/last boundary keeps its original bits.
-    pub fn boundary(self, index: usize, count: usize) -> Result<Time, TrajectoryError> {
-        if count == 0 || index > count {
-            return Err(TrajectoryError::InvalidTime);
-        }
-        Ok(if index == 0 {
-            self.start
-        } else if index == count {
-            self.end
-        } else {
-            self.start + self.duration() * (index as Time / count as Time)
-        })
-    }
-    pub fn partition(self, index: usize, count: usize) -> Result<Self, TrajectoryError> {
-        if index >= count {
-            return Err(TrajectoryError::InvalidTime);
-        }
-        Self::new(
-            self.boundary(index, count)?,
-            self.boundary(index + 1, count)?,
-        )
-    }
-    pub fn duration(self) -> Time {
-        self.end - self.start
-    }
-}
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(in crate::physics3d) struct Kernel {
@@ -208,15 +166,7 @@ impl Kernel {
 mod tests {
     use super::*;
     #[test]
-    fn private_domain_rejects_overflow_and_invalid_native_labels_without_retiming() {
-        assert!(matches!(
-            Domain::new(-f64::MAX, f64::MAX),
-            Err(TrajectoryError::InvalidTime)
-        ));
-        assert!(matches!(
-            Domain::new(0., f64::NAN),
-            Err(TrajectoryError::InvalidTime)
-        ));
+    fn kernel_rejects_invalid_native_labels_and_unrepresentable_scale_without_retiming() {
         let domain = Domain::new(0., f64::from(0.025_f32)).unwrap();
         let native = SolverBodyIntegration::from_velocity(
             rp::RigidBodyHandle::invalid(),

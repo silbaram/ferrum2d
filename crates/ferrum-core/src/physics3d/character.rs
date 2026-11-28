@@ -127,7 +127,7 @@ pub(super) struct CharacterRuntime {
     #[serde(skip)]
     collisions: Vec<CharacterCollision>,
     pub tick_velocity: [f32; 3],
-    pub carry_fraction: super::solver_trajectory::Time,
+    pub carry_fraction: super::motion_time::Time,
     pub carry_blocker: Option<BodyId>,
     pub motion_stop: Option<super::character_motion::MotionStop>,
     pub external_velocity: [f32; 3],
@@ -898,7 +898,7 @@ impl PhysicsWorld3d {
                         &self.kinematic_prediction_schedule(),
                     )
                 } else {
-                    super::character_dynamics::predicted_pose(platform, self.backend.gravity, dt)
+                    super::dynamics::predicted_pose(platform, self.backend.gravity, dt)
                 };
                 let moved_pose = rp::Pose::from_translation(translation) * shape_pose;
                 let material_point = runtime

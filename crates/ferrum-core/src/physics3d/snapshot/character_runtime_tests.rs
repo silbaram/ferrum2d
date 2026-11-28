@@ -343,6 +343,14 @@ fn character_runtime_admission_cold_move_state_velocity_is_not_reconstructed() {
 }
 
 fn path_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
+    let (world, actor, platform) = support_fixture(PhysicsWorld3d::force_character_motion_proof);
+    assert_eq!(world.path_scratch.saved_character_payload_counts(), (2, 2));
+    (world, actor, platform)
+}
+
+fn support_fixture(
+    configure: impl FnOnce(&mut PhysicsWorld3d),
+) -> (PhysicsWorld3d, BodyId, BodyId) {
     let (mut world, actor, _) = fixture();
     world
         .enable_character(
@@ -393,7 +401,7 @@ fn path_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
             }),
         )
         .unwrap();
-    world.force_character_motion_proof();
+    configure(&mut world);
     world.step();
     assert!(world.character_state(actor).unwrap().grounded);
     world
@@ -417,7 +425,6 @@ fn path_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
         )
         .unwrap();
     world.step();
-    assert_eq!(world.path_scratch.saved_character_payload_counts(), (2, 2));
     assert!(world.character_state(actor).unwrap().carry_translation[0] > 0.24);
     (world, actor, platform)
 }
@@ -462,12 +469,11 @@ fn character_runtime_admission_persistent_preview_and_total_valid_crc_damage_is_
 }
 
 #[test]
-fn character_runtime_admission_preview_stale_support_clear_reenable_and_new_axis_are_history() {
-    let (mut world, actor, platform) = path_fixture();
-    let (_, old_jump, old_ground) = world.path_scratch.character_payload_history_for_test();
-    assert_eq!(old_jump, 0.);
-    assert_eq!(old_ground.unwrap().body, platform);
-    // Preserve one actual stale carry result before making a new jump preview.
+fn character_runtime_admission_support_removal_clear_and_reenable_replay() {
+    let (mut world, actor, platform) = support_fixture(|_| {});
+    let state = world.character_state(actor).unwrap();
+    assert_eq!(state.ground.unwrap().body, platform);
+    assert_eq!(state.carried_by, Some(platform));
     let carry_packet = world.capture_snapshot().unwrap();
     let mut carry_only = PhysicsWorld3d::from_snapshot(&carry_packet).unwrap();
     carry_only.remove_body(platform).unwrap();
@@ -495,9 +501,8 @@ fn character_runtime_admission_preview_stale_support_clear_reenable_and_new_axis
         )
         .unwrap();
     world.step();
-    let (_, old_jump, old_ground) = world.path_scratch.character_payload_history_for_test();
-    assert_eq!(old_jump, 3.);
-    assert_eq!(old_ground.unwrap().body, platform);
+    let state = world.character_state(actor).unwrap();
+    assert!(!state.grounded && state.vertical_speed > 0., "{state:?}");
     world.remove_body(platform).unwrap();
     assert!(world.character_state(actor).unwrap().ground.is_none());
     world.disable_character(actor).unwrap();
@@ -517,10 +522,9 @@ fn character_runtime_admission_preview_stale_support_clear_reenable_and_new_axis
         .unwrap();
     let before = world.capture_snapshot().unwrap();
     let mut restored = PhysicsWorld3d::from_snapshot(&before).unwrap();
-    restored.force_character_motion_proof();
     for _ in 0..6 {
-        world.step();
-        restored.step();
+        world.step_checked().unwrap();
+        restored.step_checked().unwrap();
         assert_eq!(
             world.capture_snapshot().unwrap().encoded_bytes(),
             restored.capture_snapshot().unwrap().encoded_bytes()
@@ -528,7 +532,7 @@ fn character_runtime_admission_preview_stale_support_clear_reenable_and_new_axis
     }
     world.clear();
     let snapshot = world.capture_snapshot().unwrap();
-    assert_eq!(world.path_scratch.saved_character_payload_counts(), (2, 2));
+    assert!(world.character_state(actor).is_err());
     let restored = PhysicsWorld3d::from_snapshot(&snapshot).unwrap();
     assert_eq!(
         restored.capture_snapshot().unwrap().encoded_bytes(),
@@ -906,7 +910,7 @@ fn rapier_path_checkpoint_replays_support_preview_and_pending_jump() {
 
 #[test]
 fn character_runtime_admission_grounded_jump_is_retained_then_consumed_once() {
-    let (mut world, actor, _) = path_fixture();
+    let (mut world, actor, _) = support_fixture(|_| {});
     assert!(world.character_state(actor).unwrap().grounded);
     world
         .set_character_input(
@@ -927,12 +931,11 @@ fn character_runtime_admission_grounded_jump_is_retained_then_consumed_once() {
         before.encoded_bytes()
     );
     let mut restored = PhysicsWorld3d::from_snapshot(&before).unwrap();
-    restored.force_character_motion_proof();
     let dt = world.config().step_seconds;
     for _ in 0..6 {
         let start = world.body_state(actor).unwrap().pose.position[1];
-        world.step();
-        restored.step();
+        world.step_checked().unwrap();
+        restored.step_checked().unwrap();
         let state = world.character_state(actor).unwrap();
         assert!(!state.grounded);
         assert_eq!(state.vertical_speed, 7.);

@@ -1,6 +1,6 @@
 //! Separation for an upright capsule translating past a planar rotating box.
 use super::*;
-use crate::physics3d::solver_trajectory::same_pose_bits;
+use crate::physics3d::geometry::same_pose_bits;
 use rapier3d::pipeline::SolverBodyIntegration;
 
 // A moving upright capsule and a planar cuboid use the same logical Time

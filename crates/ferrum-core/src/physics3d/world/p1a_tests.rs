@@ -6,7 +6,7 @@ use crate::physics3d::{
 use rapier3d::parry::{bounding_volume::BoundingVolume, query::contact};
 use rapier3d::prelude as rp;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub(crate) struct OverlapBody {
     pub id: BodyId,
     pub collider: ColliderId,
@@ -19,13 +19,27 @@ pub(crate) struct OverlapBody {
     pub ccd_thickness: f32,
 }
 
+impl std::fmt::Debug for OverlapBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OverlapBody")
+            .field("id", &self.id)
+            .field("collider", &self.collider)
+            .field("kind", &self.kind)
+            .field("shape", &self.shape)
+            .field("position", &self.position)
+            .field("velocity", &self.velocity)
+            .field("angular", &self.angular)
+            .field("ccd_active", &self.ccd_active)
+            .field("ccd_thickness", &self.ccd_thickness)
+            .finish()
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct OverlapSample {
     pub bodies: [OverlapBody; 2],
     pub depth: f32,
-    pub normal: [f32; 3],
     pub solver_allowed: bool,
-    pub solver_depth: Option<f32>,
 }
 
 impl PhysicsWorld3d {
@@ -50,22 +64,6 @@ impl PhysicsWorld3d {
                 .unwrap_or(0.);
             body.set_soft_ccd_prediction(fraction * thickness);
         }
-    }
-
-    pub(crate) fn p1a_uses_motion_proof(&self) -> bool {
-        self.backend_motion_enabled()
-    }
-
-    pub(crate) fn p1a_integration_settings(&self) -> (f32, f32, f32, f32, usize, f32) {
-        let p = &self.backend.integration_parameters;
-        (
-            p.length_unit,
-            p.allowed_linear_error(),
-            p.prediction_distance(),
-            p.min_ccd_dt,
-            p.max_ccd_substeps,
-            p.static_contact_softness.natural_frequency,
-        )
     }
 
     pub(crate) fn p1a_max_overlap(&self) -> f32 {
@@ -126,20 +124,6 @@ impl PhysicsWorld3d {
                                 collider2: b_handle,
                             })
                             .is_some_and(|f| f.contains(rp::SolverFlags::COMPUTE_RIGID_IMPULSES)));
-                let solver_depth = self
-                    .backend
-                    .narrow_phase
-                    .contact_pair(a_handle, b_handle)
-                    .into_iter()
-                    .flat_map(|pair| pair.manifolds())
-                    .filter(|m| {
-                        m.data
-                            .solver_flags
-                            .contains(rp::SolverFlags::COMPUTE_RIGID_IMPULSES)
-                    })
-                    .flat_map(|m| &m.data.solver_contacts)
-                    .map(|p| -p.dist)
-                    .reduce(f32::max);
                 let describe =
                     |body: &rp::RigidBody, id: rp::RigidBodyHandle, h, c: &rp::Collider| {
                         let (slot, generation) = id.into_raw_parts();
@@ -161,9 +145,7 @@ impl PhysicsWorld3d {
                         describe(b_native, b_body, b_handle, b),
                     ],
                     depth: -contact.dist,
-                    normal: contact.normal1.to_array(),
                     solver_allowed,
-                    solver_depth,
                 });
             }
         }

@@ -6,6 +6,11 @@ use rapier3d::{
     prelude as rp,
 };
 
+pub(in crate::physics3d) fn same_pose_bits(a: rp::Pose, b: rp::Pose) -> bool {
+    a.translation.to_array().map(f32::to_bits) == b.translation.to_array().map(f32::to_bits)
+        && a.rotation.to_array().map(f32::to_bits) == b.rotation.to_array().map(f32::to_bits)
+}
+
 pub(super) fn positive(v: f32) -> bool {
     v.is_finite() && (0.0001..=10000.0).contains(&v)
 }

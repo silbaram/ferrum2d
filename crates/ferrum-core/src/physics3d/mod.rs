@@ -47,6 +47,8 @@ mod tick_motion;
 pub(crate) use tick_motion::{TickMotion, TickMotionBackup};
 mod kinematic_paths;
 pub(crate) use kinematic_paths::KinematicPath;
+mod motion_error;
+mod motion_time;
 mod motion_trace;
 mod one_way;
 mod solver_trajectory;
@@ -81,8 +83,6 @@ pub use types::{
     BodyDesc, BodyId, BodyKind, BodyState, ColliderDesc, ColliderId, ColliderRef, PhysicsError,
     Pose, Shape, ShapePart, Space, WorldConfig,
 };
-#[cfg(test)]
-pub(crate) use world::p1a_tests::OverlapSample;
 pub use world::PhysicsWorld3d;
 #[cfg(test)]
 pub(crate) mod p1b_tests;

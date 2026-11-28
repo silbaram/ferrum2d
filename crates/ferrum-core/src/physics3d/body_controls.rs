@@ -65,6 +65,14 @@ pub struct AdditionalMassProperties {
 }
 
 impl PhysicsWorld3d {
+    pub(super) fn stop_prescribed_body(&mut self, id: BodyId) {
+        if let Some(body) = self.backend.bodies.get_mut(native_id(id)) {
+            body.set_next_kinematic_position(*body.position());
+            body.set_linvel(rp::Vector::ZERO, true);
+            body.set_angvel(rp::Vector::ZERO, true);
+        }
+    }
+
     /// Changes integration properties atomically and wakes the body.
     ///
     /// A controller must be disabled first. Terrain cannot become dynamic.

@@ -391,7 +391,7 @@ fn straight_primitives_match_complete_frame_bounds_bitwise() {
                         .unwrap();
                 assert_eq!(bits(actual), bits(expected));
                 for t in [start, start.midpoint(end), end] {
-                    assert!(crate::physics3d::solver_trajectory::same_pose_bits(
+                    assert!(crate::physics3d::geometry::same_pose_bits(
                         moving.pose(t),
                         moving.metered_pose(t, &mut work()).unwrap()
                     ));

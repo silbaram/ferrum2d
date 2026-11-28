@@ -41,16 +41,6 @@ impl PathScratch {
             _ => unreachable!(),
         }
     }
-
-    pub(in crate::physics3d) fn character_payload_history_for_test(
-        &self,
-    ) -> (usize, f32, Option<crate::physics3d::ColliderRef>) {
-        (
-            self.preview.len(),
-            self.preview[0].input.jump_speed,
-            self.preview[0].state.ground,
-        )
-    }
 }
 
 #[test]

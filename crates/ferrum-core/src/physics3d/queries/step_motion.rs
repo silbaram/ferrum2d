@@ -2,7 +2,7 @@
 //! modification lists remain untouched. All projectiles see the same sampled motion,
 //! even after earlier projectiles have been clamped to their first hit.
 use super::*;
-use crate::physics3d::solver_trajectory::Time;
+use crate::physics3d::motion_time::Time;
 mod exact;
 mod file_admission;
 mod finish;

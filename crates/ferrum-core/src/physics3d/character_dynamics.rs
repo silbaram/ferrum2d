@@ -2,6 +2,7 @@
 //! Future impacts split the existing tick; impulses are applied only at actual
 //! contacts, after accepted static/crowd movement, and never by a preview.
 use super::colliders::native_collider;
+use super::dynamics::predicted_velocity;
 use super::events::collider_id;
 use super::world::native_id;
 use super::{BodyId, PhysicsWorld3d};
@@ -11,7 +12,6 @@ use rapier3d::parry::query::{
 };
 use rapier3d::parry::query::{ContactManifold, DefaultQueryDispatcher, PersistentQueryDispatcher};
 use rapier3d::prelude as rp;
-use rapier3d::utils::PoseOps;
 mod accelerated;
 pub(super) mod actual_impulse;
 mod native_contacts;
@@ -206,31 +206,6 @@ fn root(parents: &mut [usize], mut node: usize) -> usize {
     node
 }
 
-/// Non-consuming prediction. Native integration retains ownership of user force,
-/// gravity, damping and angular momentum; this only reads their next-step effect.
-fn predicted_velocity(
-    body: &rp::RigidBody,
-    gravity: rp::Vector,
-    dt: f32,
-) -> (rp::Vector, rp::Vector) {
-    let mass = body.mass_properties();
-    let linear = (body.linvel()
-        + (body.user_force() + gravity * body.mass() * body.gravity_scale())
-            * mass.effective_inv_mass
-            * dt)
-        / (1. + dt * body.linear_damping());
-    let angular = (body.angvel() + mass.effective_world_inv_inertia * body.user_torque() * dt)
-        / (1. + dt * body.angular_damping());
-    (linear, angular)
-}
-pub(super) fn predicted_pose(body: &rp::RigidBody, gravity: rp::Vector, dt: f32) -> rp::Pose {
-    let (linear, angular) = predicted_velocity(body, gravity, dt);
-    let center = body.center_of_mass();
-    body.position()
-        .append_translation(-center)
-        .append_rotation(angular * dt)
-        .append_translation(center + linear * dt)
-}
 pub(super) fn collider_motion(
     body: &rp::RigidBody,
     collider: &rp::Collider,
