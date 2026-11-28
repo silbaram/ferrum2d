@@ -7,10 +7,22 @@ import { createRequire } from "node:module";
 import { scanPlacementScenes } from "../../apps/studio/server/sceneCatalog.mjs";
 const require = createRequire(new URL("../../apps/studio/package.json", import.meta.url));
 const ts = require("typescript");
-const code = ts.transpileModule(await readFile(new URL("../../apps/studio/src/placementSceneCatalog.ts", import.meta.url), "utf8"), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-}).outputText;
-const { folderSceneCatalog, safeSceneRelativePath, hostedSceneCatalog } = await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
+async function loadStudioModule(name) {
+  const source = await readFile(new URL(`../../apps/studio/src/${name}.ts`, import.meta.url), "utf8");
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  });
+  return import("data:text/javascript;base64," + Buffer.from(outputText).toString("base64"));
+}
+const { folderSceneCatalog, safeSceneRelativePath, hostedSceneCatalog } = await loadStudioModule("placementSceneCatalog");
+const { assertPlacementWorkspaceFileSize, assertPlacementWorkspaceCanOpen } = await loadStudioModule("placementWorkspaceDocumentLimits");
+
+test("workspace document admission keeps the file and tab boundaries", () => {
+  assert.doesNotThrow(() => assertPlacementWorkspaceFileSize(2 * 1024 * 1024));
+  assert.throws(() => assertPlacementWorkspaceFileSize(2 * 1024 * 1024 + 1), /2 MiB/);
+  assert.doesNotThrow(() => assertPlacementWorkspaceCanOpen(7));
+  assert.throws(() => assertPlacementWorkspaceCanOpen(8), /8 maximum/);
+});
 const doc = JSON.stringify({ format: "ferrum2d.consumer.scene-authoring", version: 1 });
 
 test("fixed-root index finds nested generic JSON scenes, rejects symlinks, reports invalid known files and bounded reads", async () => {

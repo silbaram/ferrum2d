@@ -16,7 +16,7 @@
 | 문서 | 상태 | 다음 작업 또는 판단 |
 | --- | --- | --- |
 | [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) | 사용자 승인·R1~R3, F1~F5·F5b, E1, C1(C1b·C1c·C1d 포함) 로컬 검증 완료(엔진 개선 1순위) | 남은 일은 PR CI 정리이며 [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md)로 넘겼다. |
-| [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md) | S1·S1b·S1c 완료(PR #113 머지)·결정 5(2026-11-28): CI는 단위 테스트로만·S2a 로컬 검증 완료 | S2b: 분류표의 보강 6·새 테스트 12와 `extended-browser-smoke` 20개 분류. 브라우저 검사는 `pnpm smoke:browser-local`로 로컬 실행. 그 뒤 S3 |
+| [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md) | S1·S1b·S1c 완료(PR #113 머지)·결정 5(2026-11-28): 긴 브라우저 검사는 로컬로 이동·S2a 로컬 검증·S2b-1 완료(보강 6, 확장 20단계 분류) | S2b-2: 새 테스트 12개 중 남은 범위. 브라우저 검사는 `pnpm smoke:browser-local`로 로컬 실행. 그 뒤 S3 |
 | [통합 3D 물리](unified-3d-physics-plan.md) | 사용자 승인·개발 진행 중 | Rust/Wasm 3D 백엔드, 2D 평면·HD-2D 통합 및 수용 검증. 회전 상자 접촉에서의 물리 정지는 허용 오차 방식 전환(B 결정, PR #114~#120과 P3-5)으로 해결했다. 비율 관절의 BVH 후보 조회는 [물리·탐색 후속 후보](feature-candidates.md#물리탐색-후속-후보)에서 관리한다. |
 | [게임 개발 편의성](game-development-convenience-review.md) | 설계 후보·미착수 / 제품 결정 대기 | 외부 맵·실행 진단·reload의 실제 필요와 저장 경계 확정 |
 | [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 연동 미착수 | VX-00 최소 출력·실게임 검증 후 공용 리소스화. 외부 VFX 제작 도구와 Ferrum2D Studio를 구분 |

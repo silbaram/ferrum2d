@@ -1310,3 +1310,40 @@ test('animation options plus source identity must fit the saved metadata budget 
   options.animations['terrain.1'].frames=Array(150).fill(step);
   assert.doesNotThrow(()=>mergeScenePlacementPatch(document,mapPatch(document,state,asset,options)));
 });
+
+test('autotile rejects a spatial document without changing the source or draft', async () => {
+  const asset = await check('tiled', false, tileMapFixture('tiled'));
+  const document = doc(asset.id, asset.frames[0].uv);
+  document.spatial = {};
+  const before = structuredClone(document);
+  const source = asset.json.slice(0);
+  assert.throws(
+    () => mapPatch(document, state, asset, { autotile: edgeRules }),
+    /whole map placement requires a flat 2D document/,
+  );
+  assert.deepEqual(document, before);
+  assert.deepEqual(asset.json, source);
+});
+
+test('autotile authors the full collision grid at the three smoke scales', async () => {
+  for (const count of [64, 512, 2048]) {
+    const fixture = tileFixture('tiled');
+    const columns = count === 64 ? 8 : 64;
+    const rows = count / columns;
+    Object.assign(fixture.json, { width: columns, height: rows });
+    Object.assign(fixture.json.layers[0], { width: columns, height: rows, data: Array(count).fill(1) });
+    const asset = await check('tiled', false, fixture);
+    const document = doc(asset.id, asset.frames[0].uv);
+    const baked = mergeScenePlacementPatch(document, mapPatch(document, state, asset, {
+      originX: -columns * 8,
+      originY: -rows * 8,
+      collisionLayers: ['ground'],
+      autotile: edgeRules,
+    })).document;
+    const cells = mapCells(baked);
+    assert.equal(cells.length, count);
+    const firstRow = cells.filter(cell => cell.props.tileMapImport.cell.row === 0);
+    assert.equal(firstRow.length, columns);
+    assert(firstRow.every(cell => cell.props.components.collider.type === 'aabb'));
+  }
+});

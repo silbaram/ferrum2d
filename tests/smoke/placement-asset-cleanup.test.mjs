@@ -3,8 +3,16 @@ import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const ts=createRequire(new URL('../../apps/studio/package.json',import.meta.url))('typescript');
-const code=ts.transpileModule(await readFile(new URL('../../apps/studio/src/placementAssetCleanup.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-const {readCleanupReport:read,readCleanupBackups:readBackups,readCleanupResult:result,protectCleanupDocuments:protect,cleanupSelection:selection}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+async function studioModuleUrl(name, imports = []) {
+  const source = await readFile(new URL(`../../apps/studio/src/${name}.ts`, import.meta.url), 'utf8');
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  });
+  const code = imports.reduce((text, [name, url]) => text.replaceAll(JSON.stringify(name), JSON.stringify(url)), outputText);
+  return 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
+}
+const {readCleanupReport:read,readCleanupBackups:readBackups,readCleanupResult:result,protectCleanupDocuments:protect,cleanupSelection:selection}=
+  await import(await studioModuleUrl('placementAssetCleanup'));
 const hash='a'.repeat(64),id='pixel.'+'a'.repeat(24),key='.ferrum-pixels:'+id;
 function fixture(){return {format:'ferrum2d.asset-cleanup',version:1,snapshot:hash,deletionAllowed:false,jsonFiles:1,jsonBytes:100,revisions:[{key,kind:'pixel',id,assets:[id],files:[{name:id+'.json',bytes:10,sha256:hash},{name:id+'.png',bytes:20,sha256:hash}],references:[]}],catalogs:[{kind:'pixel',revisions:1,backupBytes:100}],backups:[]};}
 test('native plans stay bounded, read-only and detached from the original reply',()=>{
@@ -58,4 +66,58 @@ test('backup-only recovery replies are detached and reject duplicate operation I
  const copy=readBackups(values);copy[0].selected.push('other');assert.deepEqual(values[0].selected,[id]);
  assert.throws(()=>readBackups([...values,...values]),/Duplicate/);
  assert.throws(()=>readBackups({backups:values}));
+});
+
+test('session cleanup removes only unreferenced revisions and preserves the viewer draft and history', async () => {
+  const { createScenePlacementViewer } = await import('../../packages/ferrum-web/dist/authoring.js');
+  const scope = await studioModuleUrl('placementAssetScope');
+  const { createPlacementSpriteRevisions } = await import(
+    await studioModuleUrl('placementSpriteRevisions', [['./placementAssetScope', scope]])
+  );
+  const released = [];
+  const store = createPlacementSpriteRevisions({
+    loadAssets: async () => {},
+    releaseAssets: ({ textures }) => released.push(...textures.map(texture => texture.name)),
+  }, () => false, { entries: 4, bytes: 32 });
+
+  const components = (asset) => ({
+    visual: { kind: 'sprite', asset, width: 16, height: 16 },
+    collider: 'none', layer: 'wall',
+  });
+  const viewer = createScenePlacementViewer({
+    sceneComposition: {
+      initialFragment: 'main',
+      prefabs: { hero: { props: { components: components('original') } } },
+      fragments: { main: { instances: [{ id: 'hero', prefab: 'hero' }] } },
+    },
+    viewport: { cssWidth: 320, cssHeight: 240 },
+  });
+  try {
+    const signal = new AbortController().signal;
+    for (const id of ['revision.first', 'revision.second', 'revision.unused']) {
+      const revision = store.adopt({
+        id, name: id, document: 'scene', bytes: 8, uploaded: false, png: new ArrayBuffer(8),
+      });
+      await store.upload(revision, signal);
+    }
+    viewer.updateInstanceComponents('hero', components('revision.first'));
+    viewer.updateInstanceComponents('hero', components('revision.second'));
+    const second = viewer.exportPatch();
+    viewer.undo();
+    const first = viewer.exportPatch();
+    const history = viewer.historyState();
+
+    const retained = new Set(store.entries().filter(asset => viewer.retainsAssetReference(asset.id)).map(asset => asset.id));
+    assert.deepEqual(await store.collectUnused(retained), { removed: 1, bytes: 8 });
+    assert.deepEqual(released, ['revision.unused']);
+    assert.deepEqual(store.entries().map(asset => asset.id), ['revision.first', 'revision.second']);
+    assert.deepEqual(viewer.exportPatch(), first);
+    assert.deepEqual(viewer.historyState(), history);
+    viewer.redo();
+    assert.deepEqual(viewer.exportPatch(), second);
+    viewer.undo();
+    assert.deepEqual(viewer.exportPatch(), first);
+  } finally {
+    store.destroy();
+  }
 });

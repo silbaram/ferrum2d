@@ -38,6 +38,7 @@ import { createPlacementTileTool } from "./placementTileTool";
 import type { tileEvidence } from "./placementTileAssets";
 import { createPlacementViewportToolbar } from "./placementViewportToolbar";
 import { createPlacementDocumentTabs } from "./placementDocumentTabs";
+import { assertPlacementWorkspaceFileSize, assertPlacementWorkspaceCanOpen } from "./placementWorkspaceDocumentLimits";
 import { installPlacementWorkspaceLayout } from "./placementWorkspaceLayout";
 import { createPlacementInspectorContext } from "./placementInspectorContext";
 import { createPlacementInspectorProperties, inspectorPropertyKey, type InspectorPropertyControl } from "./placementInspectorProperties";
@@ -2394,8 +2395,7 @@ async function bootstrap(): Promise<void> {
       },
       open: async (file) => {
         if (switching || documentSession?.isSaving()) return;
-        if (file.size > 2 * 1024 * 1024)
-          throw new Error("Document exceeds 2 MiB");
+        assertPlacementWorkspaceFileSize(file.size);
         switching = true;
         root.inert = true;
         try {
@@ -2931,8 +2931,7 @@ async function bootstrap(): Promise<void> {
           );
         return;
       }
-      if (documents.size >= 8)
-        throw new Error("Close a document before opening another (8 maximum)");
+      assertPlacementWorkspaceCanOpen(documents.size);
       normalTool?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,
