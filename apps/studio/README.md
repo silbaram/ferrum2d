@@ -8,8 +8,24 @@ Ferrum2D Studio는 2D 게임 씬·에셋을 편집하는 공식 authoring 앱이
 제품명은 **Ferrum2D Studio**, 설명은 **2D 게임 씬·에셋 편집 도구**다. `studio` 경로·명령·패키지,
 `ScenePlacementViewer` API와 저장 형식은 호환성을 위해 유지한다. create-game의 경량 placement viewer는 별도 helper다.
 
-기본 화면(`/`, `?scene=default`, `?scene=2d`)은 `public/placement.garden.scene-authoring.json`의 2D 정원이다.
-파일 → 예제와 프로젝트 씬에는 **2D Lantern Garden**과 **HD-2D Village**를 제공한다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했다.
+## 빌드 종류와 예제
+
+예제 장면과 에셋은 `public/` 밖의 `examples/`에 있다. 어떤 빌드에 넣을지는 빌드 모드가 정하며 기본값은 "예제 없음"이다.
+
+| 빌드 | 명령 | 쓰는 곳 | 예제 | 첫 화면 |
+| --- | --- | --- | --- | --- |
+| 제품 | `pnpm --filter @ferrum2d/studio build` → `dist/` | 데스크톱 설치판, GitHub Release | 없음, 파일 → 예제 메뉴 없음 | 저장되지 않은 새 2D 장면 |
+| 웹 데모 | `pnpm --filter @ferrum2d/studio build:demo` → `dist-demo/` | GitHub Pages 웹 Studio | 2D Lantern Garden, HD-2D Village | 2D 정원 |
+| 테스트 | `vite build --mode test` | smoke 검사 | 예제와 테스트 fixture | 테스트 fixture |
+| 개발 서버 | `pnpm --filter @ferrum2d/studio dev` | 로컬 개발, 데스크톱 `tauri dev` | 예제 | 2D 정원 |
+
+- 예제가 있는 빌드의 기본 화면(`/`, `?scene=default`, `?scene=2d`)은 `examples/placement.garden.scene-authoring.json`의 2D 정원이다.
+  파일 → 예제와 프로젝트 씬에는 **2D Lantern Garden**과 **HD-2D Village**를 제공한다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했다.
+- 제품 빌드는 프로젝트나 파일을 지정하지 않으면 빈 새 2D 장면으로 시작한다. 이 장면은 파일이 없으므로 내보내기만 할 수 있고,
+  저장하려면 프로젝트 폴더를 연다. 예제 주소(`?scene=garden`, `2d`, `village`, `hd2d`)로 열어도 같은 새 장면으로 시작하며
+  상태 표시줄에 "이 빌드에는 예제가 없습니다"를 표시한다. 장면 목록(`placement-scenes.json`)은 비어 있다.
+- `scripts/validate/check-studio-build-variants.mjs`가 제품 빌드에 예제 파일이 없는지, 웹 데모 빌드에 모든 예제 파일이 그대로 있는지 확인한다.
+  Studio 릴리스 준비(`scripts/package/prepare-studio-release.mjs`)와 데스크톱 패키지 smoke도 제품 빌드의 예제 제외를 확인한다.
 
 Flat `lighting.profile:"lit"` 문서는 수신 mask와 선택형 표면 재질을 preview/Playing에 적용한다.
 preview 이미지는 straight alpha로 로드해 반투명 색상이 alpha를 두 번 곱하지 않게 한다.
@@ -70,9 +86,9 @@ HD-2D 기본 보기와 **전체 씬 맞춤**은 패널/창 크기에 맞춰 geom
   처음 연 씬을 닫아도 프로젝트 에셋은 현재 작업공간이 끝날 때까지 유지하며, 미저장 에셋은 문서별로 유지·해제한다.
   추가 씬의 배치 저장은 지원하지만, 새 원본 에셋의 **Save Project**는 기존 기본 문서 권한을 유지한다.
   임의 JSON이나 다른 프로젝트가 같은 에셋 ID만으로 접근 권한을 얻지는 않는다.
-- 공식 웹/개발 서버: 앱 `public/`에서 생성한 `placement-scenes.json` 목록을 사용한다.
-  개발 서버의 새로고침은 다시 탐색하고, 정적 배포 목록은 빌드 시 확정한다. 공개할 씬·에셋만 `public/`에 둔다.
-  개발 중 `public/**/*.json` 변경은 HMR reload를 일으키지 않는다. 목록은 새로고침하고, 이미 열린 문서는 초안을 유지한다.
+- 공식 웹/개발 서버: 예제가 있는 빌드는 `examples/`에서, 제품 빌드는 `public/`(글꼴만 있음)에서 생성한 `placement-scenes.json` 목록을 사용한다.
+  개발 서버의 새로고침은 다시 탐색하고, 정적 배포 목록은 빌드 시 확정한다. 모든 빌드에 넣을 파일만 `public/`에 둔다.
+  개발 중 `public/**/*.json`·`examples/**/*.json` 변경은 HMR reload를 일으키지 않는다. 목록은 새로고침하고, 이미 열린 문서는 초안을 유지한다.
 - 브라우저 **폴더 선택**: 사용자가 선택한 파일 사본에서 문서를 찾고 Export Only로 연다.
   새로고침은 폴더를 다시 선택한다. 에셋 폴더 전체를 자동 업로드하거나 게임 코드를 실행하지 않으므로,
   문서가 참조하는 에셋은 이미 Studio에서 사용할 수 있어야 한다. 같은 폴더를 다시 선택하면 새 사본으로 취급한다.
@@ -88,6 +104,8 @@ native/개발 서버는 깊이 8, 디렉터리 항목 4,096개, JSON 후보 512�
 이 기능은 Scene Authoring runtime 미리보기다. 프로젝트의 임의 TypeScript 게임 진입점·HUD 실행이나 게임 중 씬 전환은 게임 프로젝트에서 구현한다.
 
 ## 예제 실행
+
+예제는 웹 데모·개발 서버·테스트 빌드에만 있다. 설치판 Studio에는 없다.
 
 **파일 → 예제 → 2D 등불 정원**은 타일·레이어·픽셀 캐릭터·물 애니메이션·충돌·길 찾기·수집·조명과 그림자를 보여준다.
 `http://localhost:5173/?scene=garden` 또는 `?scene=2d`로 바로 열 수도 있다.
@@ -268,7 +286,7 @@ Stop은 직전 2D/HD-2D 편집 모드와 작성 초안·이력을 복원한다.
 
 | 기술 | 설명 |
 | --- | --- |
-| Data Scene preview | 기본 `public/placement.garden.scene-authoring.json`을 로드해 `createDataSceneRuntimeTarget(...)`로 Rust `World`에 배치 instance를 spawn한다. |
+| Data Scene preview | 예제가 있는 빌드는 `examples/placement.garden.scene-authoring.json`, 제품 빌드는 빈 새 장면을 로드해 `createDataSceneRuntimeTarget(...)`로 Rust `World`에 배치 instance를 spawn한다. |
 | Engine-style authoring shell | `@ferrum2d/studio-kit` app chrome helper로 top toolbar, left object list, center viewport, right inspector, bottom runtime/status bar 구조를 만든다. |
 | Workspace docks | Scene/Inspector/Panels 접기, Focus, pointer·keyboard 크기 조절과 프로젝트별 localStorage 설정을 제공한다. 문서 patch는 바꾸지 않는다. |
 | Scene document tabs | 최대 8개 문서의 초안·선택·Undo 이력을 분리하며 단일 canvas/runtime을 재사용한다. |

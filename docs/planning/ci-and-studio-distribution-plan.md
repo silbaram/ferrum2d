@@ -1,6 +1,6 @@
 # PR CI 정리와 Studio 배포 분리
 
-상태: S1·S1b·S1c 완료(PR #113, 2026-11-27 main 머지). 결정 5(2026-11-28)로 S2 범위를 `browser-smoke` job 전체로 넓혔다. S2 분류표 완료, S2a 로컬 검증 완료. S2b-1 보강 6개와 확장 20단계 분류를 기록했다. S2b-2에서 새 테스트 12개와 확장 "보강" 4단계를 옮겼다. 확장 5단계(탑다운 3·물리 실험실 2)는 예제 앱 분리가 필요해 남겼다. 다음은 S3.
+상태: S1·S1b·S1c 완료(PR #113, 2026-11-27 main 머지). 결정 5(2026-11-28)로 S2 범위를 `browser-smoke` job 전체로 넓혔다. S2 분류표 완료, S2a 로컬 검증 완료. S2b-1 보강 6개와 확장 20단계 분류를 기록했다. S2b-2에서 새 테스트 12개와 확장 "보강" 4단계를 옮겼다. 확장 5단계(탑다운 3·물리 실험실 2)는 예제 앱 분리가 필요해 남겼다. S3(설치판에서 예제 제외) 로컬 검증 완료.
 
 ## 배경
 
@@ -523,6 +523,58 @@ Pages는 `scripts/build/build-pages.mjs`가 `apps/studio/dist`를 복사한다. 
 
 검증: 세 빌드의 출력 파일 목록 비교, 바꾼 production default smoke, 데모 예제 검사, `pnpm build:pages`, `pnpm validate:pages-artifact`, 릴리스 준비 검사의 예제 제외 확인.
 Pages 배포와 릴리스는 이 작업에서 실행하지 않는다.
+
+### S3 결과 (2026-11-29)
+
+**사용자 결정(2026-11-29).** 제품 빌드에서 예제 주소(`?scene=garden`, `2d`, `village`, `hd2d`)로 열면
+빈 새 2D 장면으로 시작하고, 상태 표시줄에 "이 빌드에는 예제가 없습니다. 새 2D 장면으로 시작했습니다."를 표시한다.
+오류 화면으로 막지 않는다.
+
+| 빌드 | 명령·출력 | 예제 | 첫 화면 | 장면 목록 |
+| --- | --- | --- | --- | --- |
+| 제품 | `build` → `apps/studio/dist` | 없음, 파일 → 예제 메뉴 없음 | 저장되지 않은 새 2D 장면 | 비어 있음 |
+| 웹 데모 | `build:demo`(`--mode demo`) → `apps/studio/dist-demo` | 정원·마을 32개 파일 | 2D 정원(465개 객체) | 정원·마을 |
+| 테스트 | `--mode test` | 예제 + 회귀 fixture | 회귀 fixture | 예제 + fixture |
+| 개발 서버 | `vite`(데스크톱 `tauri dev` 포함) | 정원·마을 | 2D 정원 | 정원·마을 |
+
+**구현.**
+- 예제 장면 2개와 에셋 폴더 2개를 `apps/studio/public/`에서 `apps/studio/examples/`로 옮겼다. 내부 구조를 그대로 둬서
+  예제가 있는 빌드의 주소는 바뀌지 않는다. `public/`에는 모든 빌드에 넣는 글꼴만 남았다.
+- `apps/studio/server/exampleContent.mjs`가 빌드 모드로 예제 포함 여부를 정한다(`demo`·`test`·개발 서버만 포함).
+  개발 서버는 `examples/`를 제공하고, 포함 빌드는 파일을 그대로 출력에 넣는다. 장면 목록은 포함 빌드에서 `examples/`를,
+  제품 빌드에서 `public/`(글꼴만 있음)을 훑어 비어 있다.
+- 제품 빌드의 시작: 데스크톱 프로젝트나 파일을 지정하지 않으면 빈 문서를 메모리에서 만들고 예제를 요청하지 않는다.
+  이 장면은 파일이 없어 내보내기만 할 수 있다. 저장은 프로젝트 폴더를 연 뒤 한다. 이전에는 데스크톱 설치판이 경로 없이 시작하면
+  Rust가 빌드한 PC의 저장소 경로를 열려고 했다. 이 경로는 설치한 PC에 없다.
+- 빈 장면은 오브젝트를 만들지 않아 Data Scene이 켜지지 않았고, 시작 중 지면 투영 설정이 실패했다. 시작 적용에서도
+  다시 적용 경로처럼 빈 문서이면 Data Scene을 명시적으로 켠다.
+- 데스크톱 Rust의 개발용 기본 경로(`sample_scene_document_path`)를 `apps/studio/examples/`로 옮겼다.
+- 예제 생성기(`build-lantern-garden.py`, `build-rpg-village.py`)와 예제 경로를 읽는 테스트·스크립트의 경로를 바꿨다.
+  `build-lantern-garden.py --check`와 기능 예제 재생성 검사가 새 경로에서 같은 결과를 낸다.
+- Pages는 `apps/studio/dist-demo`를 복사한다. `pages.yml`에 웹 데모 빌드 단계를 추가했다. 데스크톱이 쓰는 `apps/studio/dist`와 섞이지 않는다.
+
+**검사.**
+- PR CI `Studio product and web demo build contents`: `pnpm test:studio-build-variants`(검사기 자체가 잘못된 빌드를 거절하는지)와
+  `check-studio-build-variants.mjs apps/studio/dist <데모>`(제품에 예제 없음, 데모에 모든 예제 파일이 그대로 있음).
+- `placement-production-default-smoke.mjs`: 제품 빌드에서 예제 파일 404, 빈 장면 목록, 예제 주소 6개의 새 장면 시작과 안내,
+  예제 요청 없음, 파일 → 예제 메뉴 없음. 기존 단언(정원 465개, 마을 모델 42개, 예제 메뉴, 실행·정지)은
+  `smokePlacementDemoDefault`로 옮겨 웹 데모 빌드에서 실행한다.
+- 릴리스 준비(`prepare-studio-release.mjs`)와 `studio-desktop-package-smoke.mjs`가 설치 파일 frontend에 예제가 없는지 확인한다.
+- garden 주소에 fixture를 넣는 smoke 3개(`scene-physics`, `native-authoring-studio`, `native-template-studio`)는 웹 데모 빌드를 쓴다.
+  CI는 저장을 켠 웹 데모 빌드 하나(`studio-demo-save`)를 추가로 만들어 이 smoke와 데모 기본 검사에 함께 쓴다.
+
+**검증(로컬).** 제품·데모 빌드의 파일 비교, `node tests/smoke/studio-build-variants-smoke.mjs`(실제 브라우저, 약 25초),
+CI와 같은 빌드 4개로 `browser-render-smoke.mjs --mode=studio-save`(제품·데모 검사 모두 실행)와 `native-template-studio-smoke.mjs`,
+`pnpm smoke:scene-physics`(데모 빌드를 직접 만드는 경로 포함), 개발 서버의 예제 제공, `pnpm test:web`(2,099건),
+`pnpm lint`, 데스크톱 Rust `placement_document` 테스트 108개와 `cargo fmt`, `test:browser-smoke-node-checks`, `test:pages-build`,
+`test:github-release`, `pnpm build:pages`, `pnpm validate:pages-artifact`, 문서 링크 검사가 통과했다.
+
+**함께 고친 것.** `pnpm validate:pages-artifact`가 `example-site-rebuild-plan.md`의 `../../examples/README.md` 링크에서
+실패하고 있었다(2026-11-24부터). `docs/` 밖의 파일이라 Pages에 없다. 다른 문서처럼 GitHub 주소로 바꿨다.
+이 검사는 수동 Pages 배포에서만 돌아서, 다음 배포가 이 단계에서 멈췄을 것이다.
+
+**남은 것.** 제품 빌드에는 새 장면을 파일로 저장하는 "다른 이름으로 저장"이 없다. 지금은 프로젝트 폴더를 열어 저장한다.
+설치판의 새 장면 저장 흐름은 별도 제품 결정으로 남긴다.
 
 ## Codex 작업 지시
 

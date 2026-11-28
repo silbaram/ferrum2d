@@ -158,8 +158,8 @@ WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따
 
 | 예제 | 실행 명령 / 열기 | 소스 위치 |
 | --- | --- | --- |
-| 2D 등불 정원 | `pnpm dev:studio` → `?scene=garden` | [앱](apps/studio/) · [씬 JSON](apps/studio/public/placement.garden.scene-authoring.json) |
-| HD-2D 마을 | 같은 Studio → `?scene=village` | [씬 JSON](apps/studio/public/placement.village.scene-authoring.json) · [에셋](apps/studio/public/assets/rpg-village/) |
+| 2D 등불 정원 | `pnpm dev:studio` → `?scene=garden` | [앱](apps/studio/) · [씬 JSON](apps/studio/examples/placement.garden.scene-authoring.json) |
+| HD-2D 마을 | 같은 Studio → `?scene=village` | [씬 JSON](apps/studio/examples/placement.village.scene-authoring.json) · [에셋](apps/studio/examples/assets/rpg-village/) |
 | Top-down Shooter | `pnpm dev:topdown` | [examples/topdown-shooter](examples/topdown-shooter/) |
 | 기능별 실험실 · 독립 실험 31종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
 | 작은 빛의 정원 · 도트 쇼케이스 | `pnpm dev:pixel-art` | [examples/pixel-art](examples/pixel-art/) |

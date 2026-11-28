@@ -4,14 +4,18 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 
 ## 배포 대상
 
-`pnpm build:pages`는 `pnpm build`가 만든 예제 사이트와 Studio를 `dist-pages/`로 복사하고, `docs/**/*.md`를 `dist-pages/docs/` HTML 문서 사이트로 렌더링한다.
+`pnpm build:pages`는 `pnpm build`가 만든 예제 사이트와 `pnpm --filter @ferrum2d/studio build:demo`가 만든 웹 데모 Studio를 `dist-pages/`로 복사하고, `docs/**/*.md`를 `dist-pages/docs/` HTML 문서 사이트로 렌더링한다.
 
 | 경로 | 원본 |
 | --- | --- |
 | `/` | `examples/site/dist` · 예제 사이트([다시 만들기 계획](../../planning/example-site-rebuild-plan.md)) |
 | `/docs/` | `docs/**/*.md` 기반 HTML 문서 사이트 |
-| `/studio/` | `apps/studio/dist` |
+| `/studio/` | `apps/studio/dist-demo` · 웹 데모 Studio(예제 2D 정원·HD-2D 마을 포함) |
 | `/starter-runtime/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/topdown-shooter/`, `/pixel-art/` | 옛 예제 주소. 새 첫 화면(`../`)으로 보내는 안내 페이지 |
+
+**데모와 제품의 구분.** Pages의 웹 Studio는 예제가 있는 데모 빌드(`--mode demo`)다. 데스크톱 설치판과 GitHub Release는
+예제가 없는 제품 빌드(`apps/studio/dist`)를 쓰며 빈 새 2D 장면으로 시작한다. 두 빌드는 출력 폴더가 달라 섞이지 않는다.
+PR CI의 `Studio product and web demo build contents` 단계가 제품 빌드에 예제가 없고 데모 빌드에 모든 예제가 있는지 확인한다.
 
 이전 예제 앱(기능 실험실·물리 심화 실험실·게임 데모 4개)은 공개하지 않고 엔진 검사 데이터로 남긴다. 사이트와 Studio의 production build는
 `vite build --base=./`를 사용한다. GitHub Pages의 project subpath에서도 JS/CSS/Wasm asset을 상대 경로로 찾게 하기 위한 것이다.
@@ -98,9 +102,10 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 1. Rust stable과 `wasm32-unknown-unknown` target을 설정한다.
 2. `wasm-pack`과 pnpm dependencies를 설치한다.
 3. `pnpm build`로 Wasm package와 모든 예제를 빌드한다.
-4. `pnpm build:pages`로 demo dist와 docs HTML을 포함한 `dist-pages/` artifact를 만든다.
-5. `actions/upload-pages-artifact`와 `actions/deploy-pages`로 GitHub Pages에 배포한다.
-6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/studio/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/pixel-art/` route를 `curl --fail`로 확인한다.
+4. `pnpm --filter @ferrum2d/studio build:demo`로 웹 데모 Studio를 빌드한다.
+5. `pnpm build:pages`로 demo dist와 docs HTML을 포함한 `dist-pages/` artifact를 만든다.
+6. `actions/upload-pages-artifact`와 `actions/deploy-pages`로 GitHub Pages에 배포한다.
+7. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/studio/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/pixel-art/` route를 `curl --fail`로 확인한다.
 
 이 workflow는 build·artifact 검증·배포·공개 route 확인을 담당한다.
 PR 자동 검증은 `CI`의 기본 gate(`validate`, `validate-rust`, `validate-wasi`, `validate-studio-desktop`)와 `Language boundaries`가 담당한다.
