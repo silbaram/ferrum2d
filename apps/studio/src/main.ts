@@ -39,6 +39,7 @@ import type { tileEvidence } from "./placementTileAssets";
 import { createPlacementViewportToolbar } from "./placementViewportToolbar";
 import { createPlacementDocumentTabs } from "./placementDocumentTabs";
 import { assertPlacementWorkspaceFileSize, assertPlacementWorkspaceCanOpen } from "./placementWorkspaceDocumentLimits";
+import { assertPlacementAssetCleanupAllowed } from "./placementAssetCleanupGuard";
 import { installPlacementWorkspaceLayout } from "./placementWorkspaceLayout";
 import { createPlacementInspectorContext } from "./placementInspectorContext";
 import { createPlacementInspectorProperties, inspectorPropertyKey, type InspectorPropertyControl } from "./placementInspectorProperties";
@@ -2548,20 +2549,16 @@ async function bootstrap(): Promise<void> {
         }
       },
       guard(write) {
-        if (!canChangeWorkspace() || lightingControls?.ownsGesture() || spatialWorkspace?.mode() === "game")
-          throw Error("Finish the current edit, load or running scene before cleanup");
-        if (write) {
-          if ([...documents.values()].some(entry => entry.viewer.exportPatch()))
-            throw Error("Save all scene changes before catalog cleanup");
-          if ([...documents.values()].some(entry => {
-            const history = entry.viewer.historyState();
-            return history.undoCount || history.redoCount || history.transactionLabel;
-          })) throw Error("Reopen saved scenes to clear Undo and Redo before catalog cleanup");
-          if ([...documents.values()].some(entry => entry.inspector.hasPendingEdits()))
-            throw Error("Apply or revert pending component inputs before catalog cleanup");
-          if (pixelTool?.isOpen() || pixelTool?.blocksReload() || normalTool?.blocksReload() || asepriteTool?.blocksReload() || tileTool?.blocksReload())
-            throw Error("Save prepared assets or reopen the project before catalog cleanup");
-        }
+        assertPlacementAssetCleanupAllowed({
+          workspaceBusy: () => !canChangeWorkspace() || !!lightingControls?.ownsGesture() || spatialWorkspace?.mode() === "game",
+          documents: () => [...documents.values()].map(entry => ({
+            hasDraft: () => !!entry.viewer.exportPatch(),
+            history: () => entry.viewer.historyState(),
+            hasPendingEdits: () => entry.inspector.hasPendingEdits(),
+          })),
+          assetToolsBusy: () => !!(pixelTool?.isOpen() || pixelTool?.blocksReload() || normalTool?.blocksReload()
+            || asepriteTool?.blocksReload() || tileTool?.blocksReload()),
+        }, write);
       },
       reopen(project) {
         if (project !== sceneProjectPath) throw Error("Project changed. Reopen the original project manually.");

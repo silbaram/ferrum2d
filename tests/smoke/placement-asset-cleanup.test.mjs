@@ -121,3 +121,59 @@ test('session cleanup removes only unreferenced revisions and preserves the view
     store.destroy();
   }
 });
+
+test('catalog cleanup reports the first blocking reason in priority order and reads state lazily', async () => {
+  const { assertPlacementAssetCleanupAllowed: guard } = await import(await studioModuleUrl('placementAssetCleanupGuard'));
+  const reads = [];
+  const state = (problems) => ({
+    workspaceBusy: () => { reads.push('workspace'); return problems.has('busy'); },
+    documents: () => {
+      reads.push('documents');
+      return [{ draft: false, history: {}, pending: false }, {
+        draft: problems.has('draft'),
+        history: {
+          undoCount: problems.has('undo') ? 1 : 0,
+          redoCount: problems.has('redo') ? 1 : 0,
+          transactionLabel: problems.has('transaction') ? 'Move' : undefined,
+        },
+        pending: problems.has('pending'),
+      }].map(entry => ({
+        hasDraft: () => { reads.push('draft'); return entry.draft; },
+        history: () => { reads.push('history'); return { undoCount: 0, redoCount: 0, ...entry.history }; },
+        hasPendingEdits: () => { reads.push('pending'); return entry.pending; },
+      }));
+    },
+    assetToolsBusy: () => { reads.push('tools'); return problems.has('tools'); },
+  });
+  const reasons = [
+    ['busy', /Finish the current edit/],
+    ['draft', /Save all scene changes/],
+    ['undo', /Undo and Redo/],
+    ['pending', /pending component inputs/],
+    ['tools', /Save prepared assets/],
+  ];
+  // Removing the highest-priority problem reveals the next one.
+  const problems = new Set(['busy', 'draft', 'undo', 'redo', 'transaction', 'pending', 'tools']);
+  for (const [problem, pattern] of reasons) {
+    assert.throws(() => guard(state(problems), true), pattern);
+    problems.delete(problem);
+    if (problem === 'undo') {
+      for (const history of ['redo', 'transaction']) {
+        assert.throws(() => guard(state(problems), true), /Undo and Redo/, `${history} alone keeps the reload guard`);
+        problems.delete(history);
+      }
+    }
+  }
+  assert.doesNotThrow(() => guard(state(problems), true));
+
+  // Read-only analysis needs only an idle workspace and never inspects documents or tools.
+  reads.length = 0;
+  assert.doesNotThrow(() => guard(state(new Set(['draft', 'undo', 'pending', 'tools'])), false));
+  assert.deepEqual(reads, ['workspace']);
+  assert.throws(() => guard(state(new Set(['busy'])), false), /Finish the current edit/);
+
+  // A blocked write stops before reading later, more expensive state.
+  reads.length = 0;
+  assert.throws(() => guard(state(new Set(['draft', 'tools'])), true), /Save all/);
+  assert.deepEqual(reads, ['workspace', 'documents', 'draft', 'draft']);
+});
