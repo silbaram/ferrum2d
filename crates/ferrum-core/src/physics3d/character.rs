@@ -74,7 +74,9 @@ pub struct CharacterState {
     pub grounded: bool,
     /// Supporting collider, if any, with its current generation.
     pub ground: Option<ColliderRef>,
-    /// Platform that actually transported the character during this tick, if any.
+    /// Support that supplied accepted transport during the tick. A round
+    /// trip can report the support with zero net carry if still grounded on it.
+    /// Rewound platform motion does not count as transport.
     pub carried_by: Option<BodyId>,
     /// Sum of accepted platform carry translations during this tick.
     pub carry_translation: [f32; 3],

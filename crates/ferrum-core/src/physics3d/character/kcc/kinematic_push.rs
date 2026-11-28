@@ -41,7 +41,8 @@ impl PhysicsWorld3d {
             .collect();
         let mut hits = Vec::new();
         let mut accepted = Vec::new();
-        for mover in movers {
+        let mut applied = Vec::new();
+        for &mover in &movers {
             hits.clear();
             accepted.clear();
             let stopped = self
@@ -49,20 +50,94 @@ impl PhysicsWorld3d {
                 .is_err()
                 || !self.try_kinematic_pushes(mover, plans, characters, &hits, &mut accepted);
             if stopped {
-                let body = body_id(mover);
-                self.stop_prescribed_body(body);
-                self.record_character_stop();
-                self.record_path_stop();
-                blocked.push(body);
+                self.stop_character_pusher(mover, blocked);
             } else {
                 for (actor, translation) in accepted.drain(..) {
-                    if let Some(steps) = pushes.as_deref_mut() {
-                        *steps.entry((body_id(mover), plans[actor].id)).or_default() +=
-                            translation - plans[actor].translation;
-                    }
+                    let delta = translation - plans[actor].translation;
                     plans[actor].translation = translation;
+                    applied.push((mover, actor, delta));
                 }
             }
+        }
+
+        // A push that fit against the other movers' starting poses can be
+        // squeezed by their final poses. Cancel both sources before Rapier.
+        let schedule = self.backend_pass_schedule();
+        let dt = self.backend.integration_parameters.dt;
+        let tolerance = self.backend.integration_parameters.allowed_linear_error();
+        loop {
+            let mut squeezed = BTreeSet::new();
+            for &(source, actor, _) in &applied {
+                let plan = &plans[actor];
+                let pose = rp::Pose::from_translation(plan.translation) * plan.shape_pose;
+                let bounds = plan.shape.compute_aabb(&pose);
+                for &other in &movers {
+                    if other == source {
+                        continue;
+                    }
+                    let body = &self.backend.bodies[other];
+                    if body.colliders().iter().any(|&fixture| {
+                        let collider = &self.backend.colliders[fixture];
+                        if !collider.is_enabled()
+                            || collider.is_sensor()
+                            || !plan.groups.test(collider.collision_groups())
+                            || !self
+                                .contact_policies
+                                .pair_allows(Some(native_id(plan.id)), Some(other))
+                            || !self.contact_policies.one_way_allows(
+                                fixture,
+                                collider,
+                                plan.shape.as_ref(),
+                                &plan.shape_pose,
+                            )
+                        {
+                            return false;
+                        }
+                        let end = accepted_collider_motion(body, collider, dt, &schedule)
+                            .position_at_time(1.);
+                        bounds.intersects(&collider.shape().compute_aabb(&end))
+                            && contact(&pose, plan.shape.as_ref(), &end, collider.shape(), 0.)
+                                .map_or(true, |hit| hit.is_some_and(|hit| hit.dist < -tolerance))
+                    }) {
+                        // Revert every mover that contributed to this capsule's push.
+                        squeezed.extend(applied.iter().filter_map(|&(mover, index, _)| {
+                            (actor == index).then_some(body_id(mover))
+                        }));
+                        if is_moving_kinematic(body) {
+                            squeezed.insert(body_id(other));
+                        }
+                    }
+                }
+            }
+            if squeezed.is_empty() {
+                break;
+            }
+            for id in &squeezed {
+                self.stop_character_pusher(native_id(*id), blocked);
+            }
+            applied.retain(|&(source, actor, delta)| {
+                if squeezed.contains(&body_id(source)) {
+                    plans[actor].translation -= delta;
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        if let Some(steps) = pushes.as_mut() {
+            for (source, actor, delta) in applied {
+                *steps.entry((body_id(source), plans[actor].id)).or_default() += delta;
+            }
+        }
+    }
+
+    fn stop_character_pusher(&mut self, mover: rp::RigidBodyHandle, blocked: &mut Vec<BodyId>) {
+        let body = body_id(mover);
+        self.stop_prescribed_body(body);
+        if !blocked.contains(&body) {
+            self.record_character_stop();
+            self.record_path_stop();
+            blocked.push(body);
         }
     }
 
@@ -158,8 +233,14 @@ impl PhysicsWorld3d {
             runtime.state.blocked_by_moving_obstacle = true;
             runtime.state.moving_obstacle_contact_checks += 1;
             let skin = runtime.config.skin_width;
-            let direction = hit.direction;
-            let mut desired = direction * hit.distance;
+            let mut desired = hit.direction * hit.distance;
+            if self.config.space == Space::PlanarXy {
+                desired.z = 0.;
+            }
+            let Some(direction) = desired.try_normalize() else {
+                accepted.push((hit.actor, plan.translation));
+                continue;
+            };
             for (old, &(_, previous)) in hits[..index].iter().zip(accepted.iter()) {
                 let peer = &plans[old.actor];
                 if direction.dot(old.direction) > 0.99
@@ -177,13 +258,58 @@ impl PhysicsWorld3d {
                 snap_to_ground: None,
                 ..plan.controller
             };
-            let movement = self
+            let mut movement = self
                 .kcc_move(plan, controller, desired, Some(mover))
                 .translation;
-            if (desired - movement).dot(direction)
-                > self.backend.integration_parameters.allowed_linear_error()
-            {
+            if self.config.space == Space::PlanarXy {
+                movement.z = 0.;
+            }
+            let tolerance = self.backend.integration_parameters.allowed_linear_error();
+            if (desired - movement).dot(direction) > tolerance {
                 return false;
+            }
+            let pose = rp::Pose::from_translation(plan.translation) * plan.shape_pose;
+            let bounds = plan.shape.compute_aabb(&pose);
+            let swept = bounds.merged(&bounds.translated(movement));
+            for (index, peer) in plans.iter().enumerate() {
+                // The mover contacts these peers directly. Their spacing is
+                // handled above, and their starting poses must not block this push.
+                if hits.iter().any(|hit| hit.actor == index)
+                    || !plan.groups.test(peer.groups)
+                    || !self
+                        .contact_policies
+                        .pair_allows(Some(native_id(plan.id)), Some(native_id(peer.id)))
+                {
+                    continue;
+                }
+                let peer_pose = rp::Pose::from_translation(peer.translation) * peer.shape_pose;
+                if !swept.intersects(&peer.shape.compute_aabb(&peer_pose)) {
+                    continue;
+                }
+                let options = ShapeCastOptions {
+                    max_time_of_impact: 1.,
+                    stop_at_penetration: false,
+                    ..ShapeCastOptions::default()
+                };
+                let obstructed = cast_shapes(
+                    &pose,
+                    movement,
+                    plan.shape.as_ref(),
+                    &peer_pose,
+                    rp::Vector::ZERO,
+                    peer.shape.as_ref(),
+                    options,
+                )
+                .map_or(true, |hit| {
+                    hit.is_some_and(|hit| {
+                        (1. - hit.time_of_impact) * movement.dot(pose.rotation * hit.normal1)
+                            > tolerance
+                    })
+                });
+                if obstructed {
+                    runtime.state.blocked_by_character = true;
+                    return false;
+                }
             }
             accepted.push((hit.actor, plan.translation + movement));
         }

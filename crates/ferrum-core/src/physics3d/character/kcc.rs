@@ -19,6 +19,7 @@ struct MovePlan {
     groups: rp::InteractionGroups,
     controller: KinematicCharacterController,
     translation: rp::Vector,
+    drive_velocity: rp::Vector,
 }
 
 #[derive(Clone, Copy)]
@@ -60,21 +61,6 @@ impl PhysicsWorld3d {
         let mut plans = Vec::with_capacity(characters.len());
         for (&id, runtime) in &mut characters {
             runtime.support_motion = None;
-            if runtime.state.grounded
-                && runtime.input.jump_speed == 0.
-                && runtime
-                    .state
-                    .ground
-                    .is_some_and(|support| blocked.contains(&support.body))
-            {
-                let body = &mut self.backend.bodies[native_id(id)];
-                body.set_next_kinematic_position(*body.position());
-                runtime.state.translation = [0.; 3];
-                runtime.state.velocity = [0.; 3];
-                runtime.state.carried_by = None;
-                runtime.state.carry_translation = [0.; 3];
-                continue;
-            }
             if let Some(plan) = self.kcc_plan(id, runtime, dt) {
                 plans.push(plan);
             }
@@ -217,6 +203,7 @@ impl PhysicsWorld3d {
             groups: collider.collision_groups(),
             controller: runtime.config.controller(),
             translation: rp::Vector::ZERO,
+            drive_velocity: rp::Vector::ZERO,
         };
         let up = plan.controller.up;
         let jump = std::mem::take(&mut runtime.input.jump_speed);
@@ -270,11 +257,11 @@ impl PhysicsWorld3d {
         if !grounded || jump > 0. || vertical_speed > 0. || moving_support.is_some() {
             controller.snap_to_ground = None;
         }
-        let desired = (rp::Vector::from(runtime.input.velocity)
+        plan.drive_velocity = rp::Vector::from(runtime.input.velocity)
             + rp::Vector::from(runtime.tick_velocity)
             + rp::Vector::from(runtime.external_velocity)
-            + up * walking_speed)
-            * dt;
+            + up * walking_speed;
+        let desired = plan.drive_velocity * dt;
         let lateral = desired - up * desired.dot(up);
         let use_clearance = moving_support.is_none()
             && jump == 0.
@@ -344,23 +331,28 @@ impl PhysicsWorld3d {
                 })
             },
         );
+        let (mut dynamic_ceiling, mut solid_ceiling) = (false, false);
         runtime.collisions.retain(|hit| {
             let target = &self.backend.colliders[hit.handle];
             blocked_by_character |= self.kcc_peer(target);
             if runtime.config.push_mass == 0. {
                 return false;
             }
-            if target
-                .parent()
-                .is_some_and(|id| self.backend.bodies[id].is_dynamic())
-            {
-                return true;
-            }
             let normal = super::super::character_geometry::collision_normal(
                 target,
                 plan.shape.as_ref(),
                 hit,
             );
+            let dynamic = target
+                .parent()
+                .is_some_and(|id| self.backend.bodies[id].is_dynamic());
+            if normal.dot(up) < -1.0e-4 {
+                dynamic_ceiling |= dynamic;
+                solid_ceiling |= !dynamic;
+            }
+            if dynamic {
+                return true;
+            }
             let horizontal = normal - up * normal.dot(up);
             if let Some(direction) = horizontal.try_normalize() {
                 external -= direction * external.dot(direction).min(0.);
@@ -431,11 +423,19 @@ impl PhysicsWorld3d {
         }
         if self.config.space == Space::PlanarXy {
             plan.translation.z = 0.;
+            carry.z = 0.;
+        }
+        if carry == rp::Vector::ZERO {
+            carried_by = None;
         }
         let hit_ceiling = vertical_speed > 0.
             && (desired - movement.translation).dot(up) > runtime.config.skin_width;
         runtime.state = CharacterState {
-            vertical_speed: if hit_ceiling { 0. } else { vertical_speed },
+            vertical_speed: if hit_ceiling && (!dynamic_ceiling || solid_ceiling) {
+                0.
+            } else {
+                vertical_speed
+            },
             sliding: movement.is_sliding_down_slope,
             hit_ceiling,
             dropped_contacts,
@@ -530,7 +530,7 @@ impl PhysicsWorld3d {
             if let Some(body) = self.backend.bodies.get(id).filter(|b| b.is_dynamic()) {
                 before
                     .entry(id.into_raw_parts())
-                    .or_insert((id, body.linvel()));
+                    .or_insert((id, body.linvel(), body.angvel()));
             }
         }
         if before.is_empty() {
@@ -568,17 +568,38 @@ impl PhysicsWorld3d {
             runtime.config.push_mass,
             &runtime.collisions,
         );
-        // Sample the change across the KCC call alone, before gravity and contacts run.
-        let impulse: rp::Vector = before
-            .values()
-            .map(|&(id, velocity)| {
-                let body = &queries.bodies[id];
-                (body.linvel() - velocity) * body.mass()
-            })
-            .sum();
-        let reaction = impulse / runtime.config.push_mass;
+        // Rapier applies an impulse at each manifold point. Bound the net
+        // reaction by the available drive. An upward hit uses the reduced
+        // mass once so additional ceiling points cannot spend the jump twice.
+        let mass = runtime.config.push_mass;
+        let mut drive = plan.drive_velocity;
+        let mut reaction = rp::Vector::ZERO;
+        for &(id, linear, angular) in before.values() {
+            let body = &mut queries.bodies[id];
+            let impulse = (body.linvel() - linear) * body.mass();
+            let Some(direction) = impulse.try_normalize() else {
+                continue;
+            };
+            let available_speed = drive.dot(direction).max(0.);
+            let mut accepted = available_speed * mass;
+            if runtime.state.hit_ceiling && direction.dot(plan.controller.up) > 0. {
+                let reduced_mass = body.mass() * mass / (body.mass() + mass);
+                let upward_limit = (available_speed - linear.dot(direction)).max(0.) * reduced_mass;
+                accepted = accepted.min(upward_limit);
+            }
+            let scale = (accepted / impulse.length()).min(1.);
+            if scale < 1. {
+                body.set_linvel(linear.lerp(body.linvel(), scale), true);
+                body.set_angvel(angular.lerp(body.angvel(), scale), true);
+            }
+            let applied = (body.linvel() - linear) * (body.mass() / mass);
+            drive -= applied;
+            reaction += applied;
+        }
         let vertical = reaction.dot(plan.controller.up);
-        runtime.state.vertical_speed -= vertical;
+        let limit = runtime.config.max_vertical_speed;
+        runtime.state.vertical_speed =
+            (runtime.state.vertical_speed - vertical).clamp(-limit, limit);
         runtime.external_velocity = (rp::Vector::from(runtime.external_velocity)
             - (reaction - plan.controller.up * vertical))
             .to_array();
@@ -1104,6 +1125,7 @@ fn p1b_kcc_chooses_the_nearest_walkable_part_of_a_compound() {
         groups: collider.collision_groups(),
         controller: runtime.config.controller(),
         translation: rp::Vector::ZERO,
+        drive_velocity: rp::Vector::ZERO,
     };
     assert_eq!(world.kcc_ground(&plan, 0.02).unwrap().body, support);
 }

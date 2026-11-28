@@ -24,9 +24,10 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
       };
       const results = [];
       try {
-        for (const mode of ["manual-default", "manual-configured"]) {
+        for (const mode of ["manual-default", "manual-configured", "automatic-raf"]) {
           const result = { mode, phase: "create", cleanupErrors: [], frames: 0 };
-          let engine, checkpoint, fileSession;
+          const automatic = mode === "automatic-raf";
+          let engine, checkpoint, fileSession, characterHandles;
           try {
             engine = await createEngine(() => { result.frames++; });
             engine.useDataScene();
@@ -34,7 +35,7 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
             engine.configureUnifiedPhysics({
               space: "spatial", gravity: [0, 0, 0], lengthUnit: 1, stepSeconds: dt,
             });
-            engine.configureFixedTimestep({ enabled: true, stepSeconds: dt });
+            engine.configureFixedTimestep({ enabled: !automatic, stepSeconds: dt });
             engine.configureAutoRigidBodyStep(false);
             const wall = engine.spawnUnifiedPhysicsBody({
               kind: "fixed", collider: { shape: { type: "box", halfExtents: [0.05, 1, 2] } },
@@ -50,17 +51,35 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
               ? engine.stepRigidBodies(seconds, { gravityX: 0, gravityY: 0, continuous: true })
               : engine.stepRigidBodies(seconds);
 
-            // Keep observable diagnostics from a completed tick. A mismatched
-            // fixed interval reaches Rust and is rejected before opening a tick.
+            // Keep observable diagnostics from a completed tick.
             step(dt);
+            if (automatic) {
+              const actor = engine.spawnUnifiedPhysicsBody({
+                kind: "kinematic-position", pose: { position: [20, 0, 0] },
+                collider: { shape: { type: "capsule", halfHeight: 0.25, radius: 0.25 } },
+              });
+              engine.configureUnifiedPhysicsCharacter(actor, { pushMass: 0.01 });
+              characterHandles = new Uint32Array([actor.entityId, actor.entityGeneration]);
+              // The command fits at the nominal 10ms. Automatic admission
+              // rejects the velocity it would produce in the 30ms RAF.
+              engine.addUnifiedPhysicsCharacterForces(characterHandles, new Float32Array([500_000, 0, 0]));
+              engine.configureAutoRigidBodyStep(true);
+            }
             fileSession = await createNativeGameFileSession(engine);
             result.stepBefore = engine.queryUnifiedPhysicsDiagnostics().step;
             result.before = body();
             result.timeBefore = engine.time();
             const saved = await fileSession.capture();
-            result.phase = "fixed-clock-admission";
-            try { step(dt * 0.5); }
-            catch (error) { result.rejection = String(error); }
+            result.phase = automatic ? "variable-frame-force-admission" : "fixed-clock-admission";
+            try {
+              if (automatic) {
+                engine.start();
+                pump(1000);
+                pump(1030);
+              } else {
+                step(dt * 0.5);
+              }
+            } catch (error) { result.rejection = String(error); }
             result.framesAtRejection = result.frames;
             result.pendingAtRejection = pending.size;
 
@@ -78,6 +97,10 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
             result.checkpointRestored = true;
 
             result.phase = "remove-and-restart";
+            if (automatic) {
+              engine.clearUnifiedPhysicsCharacterForces(characterHandles);
+              engine.configureAutoRigidBodyStep(false);
+            }
             engine.removeUnifiedPhysicsBody(wall);
             engine.setUnifiedPhysicsVelocities(handles, new Float32Array([300, 0, 0, 0, 0, 0]));
             result.recoveredDynamicBodies = step(dt).dynamicBodies;
@@ -111,9 +134,11 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
       }
       return results;
     });
-    assert.equal(report.results.length, 2);
+    assert.equal(report.results.length, 3);
     for (const result of report.results) {
-      assert.match(result.rejection ?? "", /native physics step skipped:.*(?:clock|timestep)/i, JSON.stringify(result));
+      const error = result.mode === "automatic-raf" ? /invalid character/i : /clock|timestep/i;
+      assert.match(result.rejection ?? "", /native physics step skipped:/i, JSON.stringify(result));
+      assert.match(result.rejection ?? "", error, JSON.stringify(result));
       assert.equal(result.error, undefined, JSON.stringify(result));
       assert.equal(result.framesAtRejection, 0, JSON.stringify(result));
       assert.equal(result.pendingAtRejection, 0, JSON.stringify(result));
@@ -135,7 +160,7 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
       assert.deepEqual(result.cleanupErrors, []);
     }
     report.status = "passed";
-    report.scope = "Packed SDK/Wasm fixed-clock admission rejects both manual step entry points without mutating poses, time, diagnostics or Native file bytes. Fresh Rust queries, checkpoint restoration, removal, RAF restart and idempotent destroy are exercised.";
+    report.scope = "Packed SDK/Wasm rejects both manual fixed-clock entries and an automatic RAF with an out-of-range external force duration without mutating poses, time, diagnostics or Native file bytes. Fresh Rust queries, checkpoint restoration, removal, RAF restart and idempotent destroy are exercised.";
     return report;
   } catch (error) {
     report.status = "failed"; report.error = String(error); throw error;

@@ -14,7 +14,9 @@ export interface UnifiedPhysicsCharacterOptions {
   snapDistance?: number;
   maxVerticalSpeed?: number;
   /** Virtual character mass: 0 (prescribed motion, default) or 0.0001..10000.
-   * Positive mass enables coupled dynamic reactions and external force/impulse commands.
+   * Positive mass enables pushes with an equal opposite impulse and external force/impulse commands.
+   * Incoming dynamic bodies see a kinematic capsule. Read collision events and apply any
+   * gameplay knockback with applyUnifiedPhysicsCharacterImpulses.
    */
   pushMass?: number;
 }

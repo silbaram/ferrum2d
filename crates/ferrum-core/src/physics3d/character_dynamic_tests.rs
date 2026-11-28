@@ -976,3 +976,184 @@ fn p2b_dense_capsule_chain_blocks_without_transferring_momentum() {
         );
     }
 }
+
+#[test]
+fn p2b_review_dynamic_ceiling_retains_the_finite_mass_reaction() {
+    for ratio in [1., 10., 0.1] {
+        let mut w = world();
+        w.create_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                pose: Pose {
+                    position: [0., -0.1, 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [2., 0.1, 2.],
+            }),
+        )
+        .unwrap();
+        let a = actor(&mut w, 0., 2.);
+        w.set_pose(
+            a,
+            Pose {
+                position: [0., 0.51, 0.],
+                ..Pose::default()
+            },
+        )
+        .unwrap();
+        w.enable_character(
+            a,
+            CharacterConfig {
+                push_mass: 2.,
+                max_vertical_speed: 4.,
+                step_height: 0.,
+                ..CharacterConfig::default()
+            },
+        )
+        .unwrap();
+        w.step_checked().unwrap();
+        assert!(w.character_state(a).unwrap().grounded);
+        w.set_character_input(
+            a,
+            CharacterInput {
+                jump_speed: 4.,
+                ..CharacterInput::default()
+            },
+        )
+        .unwrap();
+        w.step_checked().unwrap();
+        assert!((w.character_state(a).unwrap().vertical_speed - 4.).abs() < 1e-6);
+        let ceiling_y = w.body_state(a).unwrap().pose.position[1] + 0.76;
+        let b = w
+            .create_body(
+                BodyDesc {
+                    kind: BodyKind::Dynamic,
+                    pose: Pose {
+                        position: [0., ceiling_y, 0.],
+                        ..Pose::default()
+                    },
+                    ..BodyDesc::default()
+                },
+                ColliderDesc {
+                    density: 2. * ratio,
+                    ..ColliderDesc::new(Shape::Box {
+                        half_extents: [1., 0.25, 0.5],
+                    })
+                },
+            )
+            .unwrap();
+        w.step_checked().unwrap();
+        let state = w.character_state(a).unwrap();
+        let box_speed = w.body_state(b).unwrap().linear_velocity[1];
+        assert!(state.hit_ceiling);
+        assert!(box_speed > 0.);
+        if ratio == 1. {
+            assert!(
+                (box_speed - 2.).abs() < 0.08,
+                "equal-mass box speed {box_speed}"
+            );
+        }
+        let momentum_per_actor_mass = state.vertical_speed + box_speed * ratio;
+        assert!(
+            (momentum_per_actor_mass - 4.).abs() < 0.04,
+            "mass ratio {ratio}: actor {}, box {box_speed}, P/m={momentum_per_actor_mass}",
+            state.vertical_speed
+        );
+        assert!(state.vertical_speed.abs() <= 4.);
+        w.capture_snapshot().unwrap();
+    }
+}
+
+#[test]
+fn p2b_review_heavy_box_does_not_create_rebound_and_replays_after_restore() {
+    let mut w = world();
+    let a = actor(&mut w, 0., 2.);
+    let b = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Dynamic,
+                pose: Pose {
+                    position: [0.51, 0., 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc {
+                density: 20.,
+                ..ColliderDesc::new(Shape::Box {
+                    half_extents: [0.25, 1., 0.5],
+                })
+            },
+        )
+        .unwrap();
+    w.set_character_input(
+        a,
+        CharacterInput {
+            velocity: [4., 0., 0.],
+            ..CharacterInput::default()
+        },
+    )
+    .unwrap();
+    let mut replay = PhysicsWorld3d::from_snapshot(&w.capture_snapshot().unwrap()).unwrap();
+    for step in 0..6 {
+        w.step_checked().unwrap();
+        replay.step_checked().unwrap();
+        let vx = w.body_state(b).unwrap().linear_velocity[0];
+        let reaction = w.characters[&a].external_velocity[0];
+        assert!(reaction >= -4.01, "step={step}, reaction={reaction}");
+        if step == 0 {
+            assert!(vx > 0. && reaction < 0.);
+            assert!(
+                (reaction + 10. * vx).abs() < 0.04,
+                "reaction={reaction}; box={vx}"
+            );
+        }
+        assert_eq!(
+            w.capture_snapshot().unwrap().encoded_bytes(),
+            replay.capture_snapshot().unwrap().encoded_bytes()
+        );
+    }
+}
+
+#[test]
+fn p2b_two_capsules_can_push_one_dynamic_body() {
+    let mut w = world();
+    let a = actor(&mut w, 0., 2.);
+    let c = actor(&mut w, 0., 2.);
+    for (id, z) in [(a, -0.4), (c, 0.4)] {
+        w.set_pose(
+            id,
+            Pose {
+                position: [0., 0., z],
+                ..Pose::default()
+            },
+        )
+        .unwrap();
+        w.set_character_input(
+            id,
+            CharacterInput {
+                velocity: [4., 0., 0.],
+                ..CharacterInput::default()
+            },
+        )
+        .unwrap();
+    }
+    let b = dynamic(&mut w, 0.51);
+    w.step_checked().unwrap();
+    let [first, second] = [a, c].map(|id| w.characters[&id].external_velocity[0]);
+    let speed = w.body_state(b).unwrap().linear_velocity[0];
+    assert!(
+        (-4. ..0.).contains(&first)
+            && (-4. ..0.).contains(&second)
+            && speed > 0.
+            && speed <= 4. * 2_f32.sqrt(),
+        "{first}, {second}, {speed}"
+    );
+    assert!(
+        (first + second + speed).abs() < 0.04,
+        "{first}, {second}, {speed}"
+    );
+}

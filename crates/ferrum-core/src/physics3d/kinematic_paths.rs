@@ -202,6 +202,7 @@ impl PhysicsWorld3d {
 
         let mut stopped = Vec::new();
         let mut pushes = BTreeMap::new();
+        let mut carries = BTreeMap::<BodyId, Vec<(BodyId, rp::Vector)>>::new();
         let velocity_starts: Vec<_> = self
             .backend
             .bodies
@@ -215,6 +216,20 @@ impl PhysicsWorld3d {
             self.backend.integration_parameters.dt = seconds;
             self.set_path_targets(paths, &scratch, end);
             self.step_kcc_interval(paths, start, end, &mut stopped, Some(&mut pushes));
+            for (&rider, runtime) in &self.characters {
+                if let Some(support) = runtime.state.carried_by {
+                    let sources = carries.entry(rider).or_default();
+                    let old = sources
+                        .iter()
+                        .position(|(body, _)| *body == support)
+                        .map_or(rp::Vector::ZERO, |index| sources.remove(index).1);
+                    sources.push((
+                        support,
+                        old + rp::Vector::from(runtime.state.carry_translation),
+                    ));
+                }
+            }
+            self.accumulate_character_slice(&mut scratch);
             for body in stopped.drain(..) {
                 if let Some(index) = scratch.ids.iter().position(|&id| id == body) {
                     scratch.stopped[index] = Some(0.);
@@ -224,11 +239,16 @@ impl PhysicsWorld3d {
                         .iter()
                         .any(|path| path.body == body && path.sweep_sensors)
                 {
-                    self.rewind_kinematic_path(&scratch, body, &pushes, &velocity_starts);
+                    self.rewind_kinematic_path(
+                        &mut scratch,
+                        body,
+                        &mut pushes,
+                        &mut carries,
+                        &velocity_starts,
+                    );
                 }
                 scratch.stopped_bodies.push(body);
             }
-            self.accumulate_character_slice(&mut scratch);
         }
         self.backend.integration_parameters.dt = native_dt;
         self.character_motion.backend_motion.committed_seconds = Time::from(native_dt);
@@ -241,9 +261,10 @@ impl PhysicsWorld3d {
 
     fn rewind_kinematic_path(
         &mut self,
-        scratch: &PathScratch,
+        scratch: &mut PathScratch,
         body: BodyId,
-        pushes: &BTreeMap<(BodyId, BodyId), rp::Vector>,
+        pushes: &mut BTreeMap<(BodyId, BodyId), rp::Vector>,
+        carries: &mut BTreeMap<BodyId, Vec<(BodyId, rp::Vector)>>,
         velocity_starts: &[(rp::RigidBodyHandle, rp::Pose)],
     ) {
         let handle = native_id(body);
@@ -263,16 +284,19 @@ impl PhysicsWorld3d {
             platform.set_position(original, true);
             self.query_updates.extend_from_slice(platform.colliders());
         }
-        for (id, total) in &scratch.characters {
-            let carry = if total.carried_by == Some(body) {
-                rp::Vector::from(total.carry_translation)
-            } else {
-                rp::Vector::ZERO
-            };
-            let pushed = pushes
-                .get(&(body, *id))
-                .copied()
+        for (id, total) in &mut scratch.characters {
+            let carry = carries
+                .get_mut(id)
+                .and_then(|sources| {
+                    let index = sources.iter().position(|(source, _)| *source == body)?;
+                    let (_, carry) = sources.remove(index);
+                    total.carried_by = sources.last().map(|&(source, _)| source);
+                    Some(carry)
+                })
                 .unwrap_or(rp::Vector::ZERO);
+            let pushed = pushes.remove(&(body, *id)).unwrap_or(rp::Vector::ZERO);
+            total.carry_translation =
+                (rp::Vector::from(total.carry_translation) - carry).to_array();
             let undone = carry + pushed;
             if undone == rp::Vector::ZERO {
                 continue;
@@ -286,9 +310,10 @@ impl PhysicsWorld3d {
             self.query_updates.extend_from_slice(rider.colliders());
             let translation = rp::Vector::from(runtime.state.translation) - undone;
             runtime.state.translation = translation.to_array();
-            if carry != rp::Vector::ZERO {
-                runtime.state.carry_translation = (-carry).to_array();
+            total.translation = (rp::Vector::from(total.translation) - undone).to_array();
+            if runtime.state.carried_by == Some(body) {
                 runtime.state.carried_by = None;
+                runtime.state.carry_translation = [0.; 3];
             }
         }
         self.refresh_queries();
@@ -633,17 +658,17 @@ impl PhysicsWorld3d {
                 runtime.state.velocity = total.translation.map(|v| v / native_dt);
                 // A forward and return slice can cancel exactly while the
                 // rider remains grounded on the same platform.
-                runtime.state.carried_by = if retain_grounded_carrier {
+                runtime.state.carried_by = if total.carry_translation != [0.; 3] {
+                    total.carried_by
+                } else if retain_grounded_carrier {
                     total.carried_by.filter(|&body| {
                         runtime
                             .state
                             .ground
                             .is_some_and(|ground| ground.body == body)
                     })
-                } else if total.carry_translation == [0.; 3] {
-                    None
                 } else {
-                    total.carried_by
+                    None
                 };
                 runtime.state.carry_translation = total.carry_translation;
                 runtime.state.hit_ceiling = total.hit_ceiling;

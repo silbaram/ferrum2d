@@ -647,6 +647,17 @@ fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
             );
             checked_positive_steps(&mut world, 5);
             assert!(world.character_state(rider).unwrap().grounded);
+            if blocked {
+                // Simulate the previous slice's published diagnostics. A held
+                // support must not publish them again as this slice's work.
+                let previous = &mut world.characters.get_mut(&rider).unwrap().state;
+                previous.blocked_by_character = true;
+                previous.blocked_by_moving_obstacle = true;
+                previous.character_pair_casts = 9;
+                previous.character_pair_contact_checks = 9;
+                previous.moving_obstacle_casts = 9;
+                previous.moving_obstacle_contact_checks = 9;
+            }
             let original = world.body_state(platform).unwrap().pose;
             let before = position(&world, rider);
             world
@@ -660,7 +671,7 @@ fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
                 .set_character_input(
                     rider,
                     CharacterInput {
-                        velocity: [1., 0., 0.],
+                        velocity: [1., 0., if blocked { -2. * sign } else { 0. }],
                         ..Default::default()
                     },
                 )
@@ -677,7 +688,21 @@ fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
             assert!((y - before[1]).abs() <= 0.005, "y={y}, before={before:?}");
             if blocked {
                 // A blocked rider stops the rotating carrier as a group.
-                assert_eq!(position(&world, rider), before);
+                assert!(
+                    x > before[0] + 0.014 && (z - before[2]).abs() <= 0.012,
+                    "x={x}; z={z}"
+                );
+                assert!(!state.blocked_by_character && !state.blocked_by_moving_obstacle);
+                assert_eq!(
+                    state.character_pair_casts + state.character_pair_contact_checks,
+                    0
+                );
+                assert_eq!(
+                    state.moving_obstacle_casts + state.moving_obstacle_contact_checks,
+                    0
+                );
+                assert_eq!(state.carried_by, None);
+                assert_eq!(state.carry_translation, [0.; 3]);
                 assert_eq!(world.body_state(platform).unwrap().pose, original);
                 assert_eq!(world.step_statistics().kinematic_path_stops, 1);
             } else {

@@ -202,6 +202,7 @@ fn native_engine_platform_and_receding_wall_preserve_carry_phase_and_diagnostics
         assert_eq!(e.spatial_moving_platform_stats(), vec![1, 0]);
         assert!((e.capture_spatial_moving_platforms()[6] - step as f64 * 0.1).abs() < 0.0001);
         let work = e.unified_physics_step_statistics().unwrap();
+        assert!(state.moving_obstacle_casts > 0);
         assert_eq!(state.failed_moving_obstacle_casts, 0);
         assert_eq!(work.kinematic_path_stops, 0);
     }
