@@ -2,7 +2,6 @@ use super::*;
 
 fn c12_checked_motion(w: &mut PhysicsWorld3d, label: &str) {
     let result = w.step_checked();
-    if result.is_err() {}
     assert!(
         result.is_ok(),
         "first actual checked failure: {label} {result:?}"
