@@ -1,51 +1,21 @@
-//! Engine frame publication follows the actual native completion boundary.
+//! Engine frame publication after checked native ticks.
 use super::{tick_gameplay_timer_triggers, Engine, FixedTimestepUpdate, InputState};
 use crate::engine::unified_physics::UnifiedPhysicsError;
 
 impl Engine {
-    pub(in crate::engine) fn reset_native_motion_attempt(&mut self) {
-        if let Some(runtime) = &mut self.unified_physics {
-            runtime.begin_actual_motion_attempt();
-        }
-    }
-
-    pub(super) fn actual_native_motion_failure(&self) -> Option<UnifiedPhysicsError> {
-        self.unified_physics
-            .as_ref()?
-            .actual_motion_result()
-            .err()
-            .map(Into::into)
-    }
-
     pub(super) fn native_step_failure(&self) -> Option<UnifiedPhysicsError> {
-        self.actual_native_motion_failure()
-            .or_else(|| self.unified_physics.as_ref()?.frame_step_failure())
-    }
-
-    pub(super) fn actual_native_committed_seconds(&self) -> f32 {
-        self.unified_physics
-            .as_ref()
-            .map_or(0., |r| r.actual_motion_completed_seconds())
+        self.unified_physics.as_ref()?.frame_step_failure()
     }
 
     pub(super) fn begin_checked_native_frame(&mut self) {
-        self.reset_native_motion_attempt();
         if let Some(runtime) = &mut self.unified_physics {
             runtime.begin_checked_frame();
         }
     }
 
-    /// Checked entries report actual-motion rejection first, then any clock,
-    /// prepare or commit failure that skipped native physics in this call.
+    /// Checked entries report clock, preparation and commit failures.
     /// Raw `update_frame` keeps the retained diagnostic only.
     pub(super) fn checked_native_frame(&self) -> Result<(), String> {
-        if let Some(error) = self.actual_native_motion_failure() {
-            return Err(format!(
-                "Ferrum2D actual native motion rejected after {} committed seconds: {}",
-                self.actual_native_committed_seconds(),
-                error
-            ));
-        }
         match self
             .unified_physics
             .as_ref()
@@ -93,10 +63,7 @@ impl Engine {
         }
     }
 
-    /// The ordinary fixed path keeps its original wall-clock/accumulator
-    /// contract. On a new actual-motion failure only the committed duration is
-    /// reported as consumed; the rejected suffix is explicitly dropped and no
-    /// post-physics gameplay, render interpolation or frame publication runs.
+    /// Publish completed intervals; a rejected tick stops frame processing.
     pub(super) fn advance_fixed_native_simulation(
         &mut self,
         delta: f64,
@@ -117,7 +84,6 @@ impl Engine {
         let update = self.fixed_timestep.advance(delta as f32);
         let seconds = self.fixed_timestep.config().step_seconds;
         for step_index in 0..update.steps {
-            self.reset_native_motion_attempt();
             if self.render_interpolation_enabled {
                 self.world.begin_render_interpolation_step();
             }
@@ -125,30 +91,17 @@ impl Engine {
             let (resumed, presses) = self.begin_native_gameplay_tick(seconds, step_index, input);
             self.step_auto_rigid_bodies(seconds);
             if let Some(error) = self.native_step_failure() {
-                let partial = self.actual_native_committed_seconds().clamp(0., seconds);
-                if step_index == 0 && partial > 0. && resumed != Some(false) {
-                    self.fixed_timestep_input_latch.clear();
-                }
-                if partial == 0. {
-                    self.suspend_native_gameplay_tick(resumed, step_index);
-                }
-                // `steps` counts positive-duration native intervals here. An
-                // incomplete interval is accompanied by Err and exact seconds,
-                // never presented as a successfully completed nominal tick.
-                let consumed = step_index as f32 * seconds + partial;
+                self.suspend_native_gameplay_tick(resumed, step_index);
                 self.last_fixed_update = FixedTimestepUpdate {
-                    steps: step_index + u32::from(partial > 0.),
+                    steps: step_index,
                     alpha: 0.,
-                    consumed_seconds: consumed,
+                    consumed_seconds: step_index as f32 * seconds,
                     dropped_seconds: update.dropped_seconds
-                        + (update.steps - step_index) as f32 * seconds
-                        - partial,
+                        + (update.steps - step_index) as f32 * seconds,
                 };
                 self.physics_counters
                     .record_fixed_update(self.last_fixed_update);
                 self.world.reset_render_interpolation();
-                // Engine's frame clock advances only on a complete successful
-                // frame. Native's separately reported physical prefix remains.
                 self.elapsed_seconds = frame_elapsed;
                 return Err(error);
             }

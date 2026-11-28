@@ -407,7 +407,7 @@ fn pulley_wall_keeps_a_full_rapier_tick_in_rigid_kcc_and_path_worlds() {
                 w.step_checked().unwrap();
             }
             assert_eq!(w.step_statistics().backend_steps, 4, "{mode} wall={wall}");
-            near(f64::from(w.actual_motion_completed_seconds()), 0.1, 1e-6);
+
             near(
                 f64::from(w.body_state(witness).unwrap().pose.position[0]),
                 0.4,

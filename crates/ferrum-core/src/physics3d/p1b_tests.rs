@@ -273,10 +273,6 @@ fn p1b_kcc_resolves_peer_contacts_and_keeps_the_ordinary_step() {
     for _ in 0..12 {
         world.step_checked().unwrap();
         assert_eq!(world.step_statistics().backend_steps, 1);
-        assert_eq!(
-            world.actual_motion_completed_time(),
-            f64::from(world.config().step_seconds)
-        );
         touched |= world.character_state(left).unwrap().blocked_by_character;
         assert!(world.p1b_character_overlap() < 1.0e-4);
     }

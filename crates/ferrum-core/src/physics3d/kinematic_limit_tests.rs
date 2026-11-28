@@ -48,10 +48,6 @@ fn blocked_path_does_not_shorten_the_other_bodies_tick() {
     assert_eq!(w.kinematic_path_progress(p), (0., true));
     assert_eq!(w.step_statistics().kinematic_path_stops, 1);
     assert_eq!(w.step_statistics().backend_steps, 1);
-    assert_eq!(
-        w.actual_motion_completed_time(),
-        f64::from(w.config().step_seconds)
-    );
     assert!((w.body_state(free).unwrap().linear_velocity[0] - 1.0).abs() < 1e-5);
     assert_eq!(w.body_state(other).unwrap().pose.position[0], 5.0);
     w.step_checked().unwrap();
@@ -179,39 +175,10 @@ fn original_bar_obstacle_gap(w: &PhysicsWorld3d, bar: BodyId, obstacle: BodyId) 
     };
     let a = collider(bar);
     let b = collider(obstacle);
-    let mut work = super::solver_trajectory::Work {
-        used: 0,
-        limit: 32 * 1024 * 1024,
-    };
-    let fixed = |pose| super::solver_trajectory::ShapeMotion {
-        curve: super::solver_trajectory::Curve::Constant {
-            pose,
-            start_time: 0.,
-            end_time: 1.,
-        },
-        local_center: rapier3d::prelude::Vector::ZERO,
-        local_pose: rapier3d::prelude::Pose::IDENTITY,
-    };
-    let mut minimum = f32::INFINITY;
-    super::solver_trajectory::contacts_full_shapes(
-        fixed(*a.position()),
-        a.shape(),
-        fixed(*b.position()),
-        b.shape(),
-        0.,
-        10.,
-        &mut work,
-        &mut |contact, _, _, _| {
-            minimum = minimum.min(contact.dist);
-            Ok(())
-        },
-    )
-    .unwrap();
-    assert!(
-        minimum.is_finite(),
-        "the two original boxes produce a finite full-shape contact query"
-    );
-    minimum
+    rapier3d::parry::query::contact(a.position(), a.shape(), b.position(), b.shape(), 10.)
+        .unwrap()
+        .expect("original boxes within contact query range")
+        .dist
 }
 
 #[test]
@@ -225,10 +192,6 @@ fn rotation_cast_stops_a_bar_before_its_tip_crosses_an_obstacle() {
     assert!(progress == (0., true), "{progress:?}");
     assert_eq!(w.step_statistics().kinematic_path_failures, 0);
     assert!(original_bar_obstacle_gap(&w, p, obstacle) >= 0.);
-    assert_eq!(
-        w.actual_motion_completed_time(),
-        f64::from(w.config.step_seconds)
-    );
 }
 
 #[test]
@@ -248,10 +211,6 @@ fn capped_position_path_retains_native_cap_and_rejects_only_the_actual_target_pr
     let (fraction, stopped) = limited.kinematic_path_progress_precise(bar);
     assert!(stopped && fraction == 0., "{fraction:?}/{stopped}");
     assert_eq!(limited.step_statistics().kinematic_path_failures, 0);
-    assert_eq!(
-        limited.actual_motion_completed_time(),
-        f64::from(limited.config.step_seconds)
-    );
     assert!(original_bar_obstacle_gap(&limited, bar, obstacle) >= 0.);
     assert_ne!(
         limited.body_state(bar).unwrap().pose.rotation,
@@ -484,48 +443,4 @@ fn path_one_way_policy_passes_from_below_and_stops_from_above() {
             assert_eq!(w.kinematic_path_progress(p), (0., true));
         }
     }
-}
-
-#[test]
-fn preview_pair_work_counts_each_query_once_and_is_separate_from_ccd() {
-    let mut w = world();
-    w.force_character_motion_proof();
-    let p = body(&mut w, BodyKind::KinematicPosition, 0.0, -10.0);
-    let mut actors = Vec::new();
-    for (x, velocity) in [(-1.0, 10.0), (1.0, -10.0)] {
-        let a = w
-            .create_body(
-                BodyDesc {
-                    kind: BodyKind::KinematicPosition,
-                    pose: pose(x, 0.0),
-                    ..BodyDesc::default()
-                },
-                ColliderDesc::new(Shape::Capsule {
-                    half_height: 0.25,
-                    radius: 0.25,
-                }),
-            )
-            .unwrap();
-        w.enable_character(a, CharacterConfig::default()).unwrap();
-        w.set_character_input(
-            a,
-            CharacterInput {
-                velocity: [velocity, 0.0, 0.0],
-                ..CharacterInput::default()
-            },
-        )
-        .unwrap();
-        actors.push(a);
-    }
-    step(&mut w, p, pose(0.0, -10.0));
-    let s = w.step_statistics();
-    let actual: usize = actors
-        .iter()
-        .map(|&a| w.character_state(a).unwrap().character_pair_casts)
-        .sum();
-    assert!(actual > 0);
-    assert_eq!(s.character_preview_pair_casts as usize, actual / 2);
-    assert_eq!(s.character_preview_passes, 1);
-    assert_eq!(s.ccd_prediction_checks, 0);
-    assert_eq!(s.ccd_clamp_checks, 0);
 }

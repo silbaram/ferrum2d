@@ -327,7 +327,7 @@ pub enum PhysicsError {
     InvalidJoint,
     /// The joint slot/generation is no longer live in this world.
     StaleJoint,
-    /// Valid motion inputs could not be certified or resolved within the actual solver plan.
+    /// Reserved error ordinal. Current product stepping does not emit this error.
     UnresolvedMotion,
 }
 

@@ -19,11 +19,10 @@ pub(super) const LIMITS: Limits = Limits {
     max_scratch_bytes: 0,
 };
 
-// Conservative fixed field visits, including the complete 12-slot stop array
-// and its bounded duplicate checks. These are logical cold work, not CPU time.
+// Conservative fixed field visits for the runtime, accumulated motion and path
+// progress records. These are logical cold work units.
 const BASE_WORK: u64 = 8;
 const RUNTIME_WORK: u64 = 384;
-const PREVIEW_WORK: u64 = 160;
 const TOTAL_WORK: u64 = 128;
 const BODY_COLLIDER_WORK: u64 = 8;
 const PATH_TIME_WORK: u64 = 8;
@@ -34,7 +33,7 @@ pub(super) fn validate(
 ) -> Result<Usage, PhysicsSnapshotError> {
     let invalid = || PhysicsSnapshotError::InvalidState;
     let capacity = || PhysicsSnapshotError::Capacity;
-    let (previews, totals) = world.path_scratch.saved_character_payload_counts();
+    let totals = world.path_scratch.saved_character_payload_counts();
     let (cuts, ids, stopped) = world.path_scratch.saved_time_payload_counts();
     // These are the existing authored path maxima (16 paths, 4 knots each),
     // checked before the owner walks any saved time/identity backing storage.
@@ -44,7 +43,7 @@ pub(super) fn validate(
     let path_time_records = cuts + ids + stopped; // At most97 after the O(1) caps.
                                                   // WorldConfig has already passed the native constructor validator. Checking
                                                   // raw lengths is O(1), before any payload/index/reference walk.
-    if [world.characters.len(), previews, totals]
+    if [world.characters.len(), totals]
         .iter()
         .any(|&n| n > world.config.max_characters)
     {
@@ -56,7 +55,6 @@ pub(super) fn validate(
     };
     for (length, allowance) in [
         (world.characters.len(), RUNTIME_WORK),
-        (previews, PREVIEW_WORK),
         (totals, TOTAL_WORK),
         (path_time_records, PATH_TIME_WORK),
     ] {

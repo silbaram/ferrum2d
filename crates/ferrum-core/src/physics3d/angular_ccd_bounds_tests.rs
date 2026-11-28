@@ -275,28 +275,12 @@ fn angular_ccd_one_below_record_capacity_preserves_physics_counts_and_next_tick(
     assert_eq!(exact.ccd_clamps().len(), 2);
     assert_eq!(low.ccd_clamps().len(), 1);
     assert_eq!(low.step_statistics().ccd_clamps_dropped, 1);
-    assert_eq!(
-        exact.actual_motion_completed_seconds(),
-        exact.config.step_seconds
-    );
-    assert_eq!(
-        low.actual_motion_completed_seconds(),
-        low.config.step_seconds
-    );
     for tick in 2..=7 {
         exact
             .step_checked()
             .unwrap_or_else(|error| panic!("full observation capacity, tick {tick}: {error:?}"));
         low.step_checked()
             .unwrap_or_else(|error| panic!("one observation slot, tick {tick}: {error:?}"));
-        assert_eq!(
-            exact.actual_motion_completed_seconds(),
-            exact.config.step_seconds
-        );
-        assert_eq!(
-            low.actual_motion_completed_seconds(),
-            low.config.step_seconds
-        );
         for (i, j) in ids.into_iter().zip(other) {
             assert_eq!(exact.body_state(i).unwrap(), low.body_state(j).unwrap());
         }
@@ -319,7 +303,6 @@ fn angular_ccd_sdk_rotating_bars_complete_thirty_two_consecutive_ticks() {
         for tick in 1..=32 {
             w.step_checked()
                 .unwrap_or_else(|error| panic!("SDK pairs at {levels:?}, tick {tick}: {error:?}"));
-            assert_eq!(w.actual_motion_completed_seconds(), w.config.step_seconds);
             assert!(w.step_statistics().backend_steps > 0);
             if tick == 1 {
                 assert_eq!(w.step_statistics().ccd_clamps, pairs);
@@ -425,10 +408,6 @@ fn angular_ccd_small_angle_long_offset_sparse_and_dense_candidate_cost() {
             assert!(
                 result.is_ok(),
                 "angle={angle} z={z} first actual checked failure: {result:?}"
-            );
-            assert_eq!(
-                w.actual_motion_completed_time(),
-                f64::from(w.config().step_seconds)
             );
             let stats = w.step_statistics();
             if z == 0.0 {

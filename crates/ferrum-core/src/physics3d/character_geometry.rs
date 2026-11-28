@@ -37,52 +37,6 @@ pub(super) fn contact(
     ))
 }
 
-/// Exact character-capsule/cuboid contact when the capsule lies beyond one face
-/// plane and its whole footprint is strictly inside that face. The face is then
-/// the closest box feature for every ball of the capsule, so the distance is the
-/// capsule's support along the face normal. `None` leaves edges, corners and
-/// penetration to the general query; `Some(None)` is a certain miss.
-pub(super) fn capsule_box_face_contact(
-    target: &dyn rp::Shape,
-    target_pose: &rp::Pose,
-    character: &dyn rp::Shape,
-    character_pose: &rp::Pose,
-    prediction: f32,
-) -> Option<Option<Contact>> {
-    let relative = target_pose.inv_mul(character_pose);
-    let Some((gap, normal, true)) =
-        super::character_query::capsule_box_plane(target, character, &relative, rp::Vector::ZERO)
-    else {
-        return None;
-    };
-    // `capsule_box_plane` only returns finite gaps.
-    if gap <= 0.0 {
-        return None;
-    }
-    if gap > prediction {
-        return Some(None);
-    }
-    let (half, capsule) = (target.as_cuboid()?.half_extents, character.as_capsule()?);
-    let axis = (0..3).find(|&axis| normal[axis] != 0.0)?;
-    let (a, b) = (relative * capsule.segment.a, relative * capsule.segment.b);
-    // The ball nearest the face; a segment parallel to it touches along its length.
-    let centre = match (a[axis] * normal[axis]).total_cmp(&(b[axis] * normal[axis])) {
-        std::cmp::Ordering::Less => a,
-        std::cmp::Ordering::Greater => b,
-        std::cmp::Ordering::Equal => (a + b) * 0.5,
-    };
-    let mut on_face = centre;
-    on_face[axis] = normal[axis] * half[axis];
-    let normal1 = target_pose.rotation * normal;
-    Some(Some(Contact::new(
-        target_pose * on_face,
-        target_pose * (centre - normal * capsule.radius),
-        normal1,
-        -normal1,
-        gap,
-    )))
-}
-
 /// Recover an exact box face normal when a noisy witness lies inside that face.
 /// Edge/corner contacts keep their geometric normal and remain free to slide.
 pub(super) fn target_normal(

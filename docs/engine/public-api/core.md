@@ -1204,7 +1204,7 @@ stepHeight/snapDistance 0은 해당 기능을 끈다. pushMass는 0 또는 0.000
 `carryTranslation`은 틱에 실제로 운반된 변위이며 0이 아니면 `carriedBy`가 운반했던 지지체를 가리킨다.
 
 캐릭터 상태의 `couplingVisits`, `couplingLimitFlag`, `obstacleLimitFlag`, `failedPairCasts`,
-`failedObstacleContacts`는 P2b 이후 항상 0이며 P3에서 정리한다.
+`failedObstacleContacts`는 28-word v1 상태의 예약 필드다. 카운터는 0, flag는 false로 반환한다.
 
 ```ts
 const actor = engine.spawnUnifiedPhysicsBody({
@@ -1482,7 +1482,7 @@ contact buffer는 다음 contact query, observation buffer는 다음 observation
 
 - `kinematicCharacterStops`, `kinematicPathCasts/Failures/Stops`: prescribed 이동 제한 작업.
 - `characterPreviewPasses`, `characterPreviewPairCasts/PairContacts`, `characterPreviewCouplingVisits/CouplingLimits`,
-  `characterPreviewObstacleCasts/ObstacleContacts/ObstacleFailures`: P2b 이후 항상 0이며 P3에서 정리한다.
+  `characterPreviewObstacleCasts/ObstacleContacts/ObstacleFailures`: 71-word v1 진단의 예약 필드이며 항상 0이다.
 - `backendSteps`, `ccdSubsteps`, `solverContacts`, `solverConstraints`: 실제 backend/CCD 호출과 solver에 제출한 점·manifold/관절 수.
 - `trackedContactPairs`, `dynamicBodies`, `angularBodies`, `sleepingBodies`, `bodiesWoken`, `bodiesPutToSleep`:
   narrow-phase cache와 body 상태. tracked pair는 현재 닿지 않는 cache도 포함한다.
@@ -1492,9 +1492,9 @@ contact buffer는 다음 contact query, observation buffer는 다음 observation
 
 step은 마지막 완료 물리 구간이다. frame은 현재 Engine frame의 작업 수를 합치고 body/island/cache gauge는
 마지막 tick 값을 쓴다. frame에서 tick을 실행하지 않으면 frame 수치는 0이며 step은 이전 tick 값을 유지한다.
-`stepRigidBodies`가 첫 물리 구간을 승인하기 전에 예외가 발생하면 직전 완료 틱의 `step` 진단과
-충돌 관측을 다시 읽을 수 있다. 오류 메시지의 `committed seconds`는 해당 호출에서 이미 진행한
-물리 시간이다.
+`stepRigidBodies`가 첫 물리 틱을 시작하기 전에 예외가 발생하면 직전 완료 틱의 `step` 진단과
+충돌 관측을 다시 읽을 수 있다. `UnresolvedMotion`은 기존 공개 오류 코드와 ordinal을 유지하는
+예약 값이며 현재 제품 경로에서는 발생하지 않는다.
 clock 입력(음수·NaN·0.1ms 미만 양수 등), native 준비·commit 실패(Transform 없는 collider, 범위를 넘는
 legacy force, capacity 초과 등)로 그 frame의 native step을 건너뛴 경우에도 frame update와 `stepRigidBodies`는
 `native physics step skipped` 오류를 던진다. 시계 입력과 가변 프레임의 외력 시간 검사에서 사전 거절한 오류는 해당 호출에만 보고하며 체크포인트와

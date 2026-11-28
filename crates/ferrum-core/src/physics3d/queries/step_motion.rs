@@ -3,11 +3,8 @@
 //! even after earlier projectiles have been clamped to their first hit.
 use super::*;
 use crate::physics3d::motion_time::Time;
-mod exact;
 mod file_admission;
 mod finish;
-#[cfg(test)]
-mod logical_clock_tests;
 use rapier3d::parry::bounding_volume::{Aabb, BoundingVolume};
 use rapier3d::parry::partitioning::{Bvh, BvhWorkspace};
 use rapier3d::parry::query::{
@@ -25,7 +22,8 @@ pub(in crate::physics3d) struct StepMotion {
     #[serde(skip)]
     workspace: BvhWorkspace,
     leaves: usize,
-    exact_failed: bool,
+    #[serde(skip)]
+    capture_failed: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -43,25 +41,6 @@ struct TargetMotion {
     motion: NonlinearRigidMotion,
     start_fraction: Time,
     end_fraction: Time,
-    exact: Option<exact::Segment>,
-}
-
-impl StepMotion {
-    pub(in crate::physics3d) fn stage_tick(&mut self, prior: &mut Self) {
-        prior.ready = self.ready;
-        prior.elapsed = self.elapsed;
-        prior.exact_failed = self.exact_failed;
-        std::mem::swap(&mut self.starts, &mut prior.starts);
-        std::mem::swap(&mut self.segments, &mut prior.segments);
-    }
-
-    pub(in crate::physics3d) fn restore_tick(&mut self, prior: &mut Self) {
-        self.ready = prior.ready;
-        self.elapsed = prior.elapsed;
-        self.exact_failed = prior.exact_failed;
-        std::mem::swap(&mut self.starts, &mut prior.starts);
-        std::mem::swap(&mut self.segments, &mut prior.segments);
-    }
 }
 
 impl PhysicsWorld3d {
@@ -89,7 +68,7 @@ impl PhysicsWorld3d {
         self.step_motion.starts.clear();
         self.step_motion.segments.clear();
         self.step_motion.elapsed = 0.0;
-        self.step_motion.exact_failed = false;
+        self.step_motion.capture_failed = false;
         if !self.step_motion.enabled {
             return;
         }
@@ -111,162 +90,6 @@ impl PhysicsWorld3d {
                 local_pose: collider.position_wrt_parent().copied().unwrap_or_default(),
             });
         }
-    }
-
-    pub(in crate::physics3d) fn record_step_motion_segment(
-        &mut self,
-        end_fraction: impl Into<Time>,
-    ) {
-        let end_fraction = end_fraction.into();
-        let capture = &mut self.step_motion;
-        if !capture.enabled {
-            return;
-        }
-        let trace = self.events.2.get_mut().unwrap_or_else(|p| p.into_inner());
-        trace.sort();
-        let start_fraction = capture.elapsed;
-        let duration = self.backend.integration_parameters.dt;
-        // Legacy records retain their old f32 interpolation arithmetic. The
-        // actual curve records use their independent precise pass clock.
-        let fraction = |time: f32| {
-            (start_fraction as f32
-                + (time / duration).clamp(0.0, 1.0) * (end_fraction as f32 - start_fraction as f32))
-                as Time
-        };
-        let actual_domain = trace.precise_domain();
-        let actual_global = !trace.actual.is_empty();
-        let tick_seconds = Time::from(self.config.step_seconds);
-        let precise_fraction = |time: Time| {
-            if actual_global {
-                if time == actual_domain.start {
-                    start_fraction
-                } else if time == actual_domain.end {
-                    end_fraction
-                } else {
-                    (time / tick_seconds).clamp(start_fraction, end_fraction)
-                }
-            } else {
-                start_fraction
-                    + (time / actual_domain.duration()).clamp(0., 1.)
-                        * (end_fraction - start_fraction)
-            }
-        };
-        for start in &mut capture.starts {
-            let Some(body) = self.backend.bodies.get(start.body) else {
-                continue;
-            };
-            let Some(collider) = self.backend.colliders.get(start.collider) else {
-                continue;
-            };
-            let center = body.local_center_of_mass();
-            let end = *body.position();
-            if exact::capture_body(
-                trace,
-                start,
-                body,
-                collider.is_sensor(),
-                &precise_fraction,
-                &mut capture.segments,
-                &mut capture.exact_failed,
-            ) {
-                // Final correction is an endpoint, never a timed teleport.
-                let final_com = end.prepend_translation(center);
-                if capture.segments.len() >= 1 << 20 || capture.segments.try_reserve(1).is_err() {
-                    capture.exact_failed = true;
-                } else {
-                    capture.segments.push(target_motion(
-                        start,
-                        center,
-                        final_com,
-                        final_com,
-                        end_fraction,
-                        end_fraction,
-                    ));
-                }
-                start.pose = end;
-                continue;
-            }
-            let key = start.body.into_raw_parts();
-            let from = trace
-                .motions
-                .partition_point(|m| m.body.into_raw_parts() < key);
-            let to = trace
-                .motions
-                .partition_point(|m| m.body.into_raw_parts() <= key);
-            let motions = &trace.motions[from..to];
-            let from = trace
-                .clamps
-                .partition_point(|m| m.body.into_raw_parts() < key);
-            let to = trace
-                .clamps
-                .partition_point(|m| m.body.into_raw_parts() <= key);
-            let clamps = &trace.clamps[from..to];
-            if motions.is_empty() && clamps.is_empty()
-                || body.body_type() == rp::RigidBodyType::KinematicPositionBased
-            {
-                // No exact capture was selected. Use the authored positions at
-                // the pass boundaries, including the sensor interpolation path.
-                capture.segments.push(target_motion(
-                    start,
-                    center,
-                    start.pose.prepend_translation(center),
-                    end.prepend_translation(center),
-                    start_fraction,
-                    end_fraction,
-                ));
-            } else {
-                for motion in motions {
-                    // CCD replaces the solved path for its time slice. Never report
-                    // a discarded overshoot through an obstacle as an actual hit.
-                    if clamps.iter().any(|clamp| {
-                        motion.start_time >= clamp.start_time && motion.start_time < clamp.end_time
-                    }) {
-                        continue;
-                    }
-                    capture.segments.push(target_motion(
-                        start,
-                        center,
-                        motion.start,
-                        motion.end,
-                        fraction(motion.start_time),
-                        fraction(motion.end_time),
-                    ));
-                }
-                for clamp in clamps {
-                    let impact =
-                        clamp.start_time + (clamp.end_time - clamp.start_time) * clamp.fraction;
-                    capture.segments.push(target_motion(
-                        start,
-                        center,
-                        clamp.start,
-                        clamp.end,
-                        fraction(clamp.start_time),
-                        fraction(impact),
-                    ));
-                    capture.segments.push(target_motion(
-                        start,
-                        center,
-                        clamp.end,
-                        clamp.end,
-                        fraction(impact),
-                        fraction(clamp.end_time),
-                    ));
-                }
-                // Final pose corrections (e.g. ratio-joint projection) are not an
-                // extra time interval. Test their endpoint without sweeping a teleport.
-                let final_com = end.prepend_translation(center);
-                capture.segments.push(target_motion(
-                    start,
-                    center,
-                    final_com,
-                    final_com,
-                    end_fraction,
-                    end_fraction,
-                ));
-            }
-            start.pose = end;
-        }
-        capture.elapsed = end_fraction;
     }
 
     pub(in crate::physics3d) fn record_interpolated_step_motion(&mut self) {
@@ -304,22 +127,15 @@ impl PhysicsWorld3d {
     pub(in crate::physics3d) fn finish_interpolated_step_motion(&mut self) {
         // Charge captured geometry and BVH topology independently of the solver.
         const MAX_CAPTURE_WORK: u64 = 32 * 1024 * 1024;
-        let mut work = crate::physics3d::solver_trajectory::Work {
+        let mut work = crate::physics3d::motion_work::Work {
             used: 0,
             limit: MAX_CAPTURE_WORK,
         };
-        self.finish_step_motion(&mut work);
-    }
-
-    pub(in crate::physics3d) fn finish_step_motion(
-        &mut self,
-        work: &mut crate::physics3d::solver_trajectory::Work,
-    ) {
-        self.step_motion.finish(&self.backend.colliders, work);
+        self.step_motion.finish(&self.backend.colliders, &mut work);
     }
 
     /// Casts against this tick's captured target motion, using normalized tick time.
-    /// The ordinary path interpolates each target's published start and end
+    /// Each target interpolates between its published start and end
     /// poses. Targets that turn and return within a tick may not be observed.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn sweep_step_motion(
@@ -343,10 +159,6 @@ impl PhysicsWorld3d {
         let bounds = shape.compute_aabb(&pose);
         let bounds = bounds.merged(&bounds.translated(translation));
         out.clear();
-        let mut work = crate::physics3d::solver_trajectory::Work {
-            used: 0,
-            limit: 32 * 1024 * 1024,
-        };
         for index in self.step_motion.bvh.intersect_aabb(&bounds) {
             let segment = &self.step_motion.segments[index as usize];
             let Some(collider) = self.backend.colliders.get(segment.collider) else {
@@ -360,21 +172,6 @@ impl PhysicsWorld3d {
             let Some(target) = collider_ref(segment.collider, collider) else {
                 continue;
             };
-            if let Some(exact) = &segment.exact {
-                if let Some(hit) = exact::cast(
-                    exact,
-                    segment,
-                    target,
-                    collider.shape(),
-                    shape.as_ref(),
-                    &pose,
-                    translation,
-                    &mut work,
-                )? {
-                    out.push(hit);
-                }
-                continue;
-            }
             let query = NonlinearRigidMotion::new(
                 rp::Pose::from_parts(
                     pose.translation + translation * segment.start_fraction as f32,
@@ -443,7 +240,6 @@ fn target_motion(
         ),
         start_fraction,
         end_fraction,
-        exact: None,
     }
 }
 
@@ -520,33 +316,4 @@ fn cast_motion(
             initial_overlap: hit.time_of_impact == 0.0,
         }
     }))
-}
-
-#[cfg(test)]
-impl StepMotion {
-    pub(in crate::physics3d) fn test_exact_segments(
-        &self,
-        owner: rp::RigidBodyHandle,
-    ) -> Vec<(
-        crate::physics3d::solver_trajectory::ShapeMotion,
-        Time,
-        Time,
-        Time,
-        Time,
-    )> {
-        self.segments
-            .iter()
-            .filter_map(|row| {
-                row.exact.as_ref().filter(|s| s.owner == owner).map(|s| {
-                    (
-                        s.motion,
-                        s.start_time,
-                        s.end_time,
-                        row.start_fraction,
-                        row.end_fraction,
-                    )
-                })
-            })
-            .collect()
-    }
 }

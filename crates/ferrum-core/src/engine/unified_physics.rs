@@ -716,33 +716,22 @@ impl Engine {
         // Inputs no tick consumed (failed admission) are restaged on retry.
         runtime.physics.discard_staged_tick_inputs();
         let restored = runtime.finish_automatic_planar_motion(&mut self.world, motion.is_ok());
-        // Keep prior removals observable if no native time was accepted. Once
-        // time advances, free all legacy slots before collecting solver breaks.
-        let advanced = runtime.physics.actual_motion_completed_seconds() > 0.;
-        if motion.is_ok() || advanced {
+        // A rejected tick keeps the previous outputs and restores the
+        // projectile observation settings prepared for this attempt.
+        if motion.is_ok() {
             runtime.native_joint_events.clear();
             runtime.joint_stream.take_legacy_dropped();
         }
-        if let Err(error) = motion.and(restored) {
-            // A failed suffix may follow complete CCD slices. Synchronize only
-            // those actual native poses; no lifecycle/impact/gameplay success
-            // or nominal-step statistics are emitted for the failed interval.
-            if advanced {
-                let _ = runtime.finish_planar(&mut self.world);
-                for &(id, generation) in runtime.bindings.keys() {
-                    let _ = runtime.write_entity(&mut self.world, Entity { id, generation });
-                }
-                runtime.finish_spatial_actor(&self.spatial_scene, &mut self.world);
-            }
-            if !advanced {
-                runtime.restore_projectile_starts();
-                runtime
-                    .physics
-                    .restore_step_motion_capture_state(capture_state);
-                runtime.last_error.reject_preflight(error);
-            } else {
-                runtime.last_error.record_step(error);
-            }
+        if let Err(error) = motion {
+            runtime.restore_projectile_starts();
+            runtime
+                .physics
+                .restore_step_motion_capture_state(capture_state);
+            runtime.last_error.reject_preflight(error);
+            return false;
+        }
+        if let Err(error) = restored {
+            runtime.last_error.record_step(error);
             return false;
         }
         self.world.physics_diagnostics.begin_step();
@@ -808,15 +797,6 @@ impl Engine {
 }
 
 impl UnifiedPhysicsRuntime {
-    #[cfg(test)]
-    pub(in crate::engine) fn force_exact_motion_fixture(&mut self) {
-        self.physics.force_character_motion_proof();
-    }
-
-    pub(in crate::engine) fn begin_actual_motion_attempt(&mut self) {
-        self.physics.clear_actual_motion_outcome();
-    }
-
     pub(in crate::engine) fn begin_checked_frame(&mut self) {
         self.last_error.frame_step_failure = None;
     }
@@ -833,13 +813,6 @@ impl UnifiedPhysicsRuntime {
         self.suspended_tick = Some(presses_delivered);
     }
 
-    pub(in crate::engine) fn actual_motion_result(&self) -> Result<(), PhysicsError> {
-        self.physics.actual_motion_result()
-    }
-
-    pub(in crate::engine) fn actual_motion_completed_seconds(&self) -> f32 {
-        self.physics.actual_motion_completed_seconds()
-    }
     pub(in crate::engine) fn imports_planar_components(&self) -> bool {
         self.physics.config().space == Space::PlanarXy
     }

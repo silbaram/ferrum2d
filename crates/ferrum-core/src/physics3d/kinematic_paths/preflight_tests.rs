@@ -2,7 +2,7 @@ use super::*;
 use crate::physics3d::{BodyDesc, BodyKind, ColliderDesc, Shape, WorldConfig};
 
 #[test]
-fn dense_sensor_graph_path_ticks_without_the_proof_journal_budget() {
+fn dense_sensor_graph_path_completes_with_a_bounded_event_queue() {
     let mut w = PhysicsWorld3d::new(WorldConfig {
         gravity: [0.; 3],
         max_bodies: 121,
@@ -37,10 +37,6 @@ fn dense_sensor_graph_path_ticks_without_the_proof_journal_budget() {
         .unwrap();
     w.step_checked().unwrap();
     assert!(w.backend.narrow_phase.intersection_pairs().count() > 1000);
-    w.begin_backend_motion_tick();
-    // Reproduce the old path admission directly. The journal's graph budget
-    // rejected this valid world even though ordinary Rapier could step it.
-    assert!(w.begin_backend_step_rollback().is_err());
     let target = Pose {
         position: [21., 0., 0.],
         ..Default::default()

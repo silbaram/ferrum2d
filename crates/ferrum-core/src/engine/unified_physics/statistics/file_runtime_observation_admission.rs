@@ -50,9 +50,7 @@ fn step(v: StepStatistics, max: usize, b: &mut Budget) -> Result<(), Error> {
             && ((v.islands == 0 && v.island_bodies == 0 && v.largest_island_bodies == 0)
                 || (v.islands > 0 && v.largest_island_bodies > 0))
             && v.kinematic_path_failures <= v.kinematic_path_casts
-            && v.character_preview_obstacle_failures
-                <= v.character_preview_obstacle_casts
-                    .saturating_add(v.character_preview_obstacle_contacts)
+            && v.reserved_diagnostics_are_zero()
             && v.ccd_clamps_dropped <= v.ccd_clamps,
         "runtime_statistics",
         "step_gauges",

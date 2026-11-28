@@ -322,61 +322,6 @@ fn more_than_sixteen_independent_external_commands_can_stop_in_one_tick() {
 }
 
 #[test]
-fn contact_planes_find_three_axis_motion_and_detect_incompatible_constraints() {
-    use super::character_constraints::{project, Plane};
-    use rapier3d::prelude::Vector;
-    let s = std::f32::consts::FRAC_1_SQRT_2;
-    let a = Vector::new(s, s, 0.0);
-    let b = Vector::new(-s, s, 0.0);
-    let mut planes = vec![
-        Plane {
-            normal: a,
-            offset: 1.0,
-        },
-        Plane {
-            normal: b,
-            offset: 2.0,
-        },
-        Plane {
-            normal: Vector::Z,
-            offset: 3.0,
-        },
-    ];
-    let expected = a + b * 2.0 + Vector::Z * 3.0;
-    assert!((project(Vector::ZERO, &planes).unwrap() - expected).length() < 1e-5);
-    planes.push(Plane {
-        normal: -a,
-        offset: -0.5,
-    });
-    assert!(project(Vector::ZERO, &planes).is_none());
-}
-
-#[test]
-fn near_parallel_contacts_do_not_create_an_unbounded_escape_along_planar_locks() {
-    use super::character_constraints::{project, Plane};
-    use rapier3d::prelude::Vector;
-    let planes = [
-        Plane {
-            normal: Vector::new(-1.0, 0.00001, 0.0),
-            offset: 6.0,
-        },
-        Plane {
-            normal: Vector::X,
-            offset: 0.0,
-        },
-        Plane {
-            normal: Vector::Z,
-            offset: 0.0,
-        },
-        Plane {
-            normal: -Vector::Z,
-            offset: 0.0,
-        },
-    ];
-    assert!(project(Vector::ZERO, &planes).is_none());
-}
-
-#[test]
 fn squeeze_events_preserve_unrelated_jump_input_and_full_tick_translation() {
     let (mut w, _) = setup();
     wall(&mut w, BodyKind::Fixed, -1.0);

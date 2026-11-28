@@ -178,8 +178,8 @@ fn native_snapshot_backend_capture_rejects_live_and_retired_soft_state() {
 #[test]
 fn native_snapshot_backend_previous_native_version_is_rejected() {
     let world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
-    assert_eq!(super::super::PHYSICS_SNAPSHOT_VERSION, 7);
-    for previous in [2u32, 3, 4, 5, 6] {
+    assert_eq!(super::super::PHYSICS_SNAPSHOT_VERSION, 8);
+    for previous in [2u32, 3, 4, 5, 6, 7] {
         let mut packet = world.capture_snapshot().unwrap();
         packet.bytes[8..12].copy_from_slice(&previous.to_le_bytes());
         assert!(matches!(
@@ -251,7 +251,7 @@ fn native_snapshot_backend_bad_marker_with_valid_envelope_keeps_live_world_exact
 
 #[test]
 fn native_snapshot_private_time_wire_width_and_decode_allowance_are_exact() {
-    use crate::physics3d::solver_trajectory::Time;
+    use crate::physics3d::motion_time::Time;
     let values: (Time, Time, Time) = (0.5_f64.next_up(), 0.5_f64.next_down(), -0.);
     let bytes = postcard::to_allocvec(&values).unwrap();
     assert_eq!(bytes.len(), 3 * std::mem::size_of::<Time>());

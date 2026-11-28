@@ -119,7 +119,7 @@ fn character_runtime_admission_valid_crc_bad_input_and_state_reject_before_commi
             header.encoded_bytes()
         );
     }
-    for case in 0..10 {
+    for case in 0..8 {
         let mut candidate = PhysicsWorld3d::from_snapshot(&header).unwrap();
         let runtime = candidate.characters.get_mut(&actor).unwrap();
         match case {
@@ -128,14 +128,7 @@ fn character_runtime_admission_valid_crc_bad_input_and_state_reject_before_commi
             2 => runtime.state.carry_translation[1] = f32::NAN,
             3 => runtime.state.vertical_speed = f32::INFINITY,
             4 => runtime.tick_velocity[0] = f32::NAN,
-            5 => runtime.carry_fraction = -1.,
-            6 => {
-                runtime.motion_stop = Some(crate::physics3d::character_motion::MotionStop {
-                    fraction: f64::NAN,
-                    bodies: [Some(actor); 12],
-                })
-            }
-            7 => {
+            5 => {
                 runtime.state.grounded = true;
                 runtime.state.ground = Some(crate::physics3d::ColliderRef {
                     body: BodyId {
@@ -146,7 +139,7 @@ fn character_runtime_admission_valid_crc_bad_input_and_state_reject_before_commi
                     sensor: false,
                 });
             }
-            8 => {
+            6 => {
                 runtime.state.grounded = true;
                 runtime.state.ground = Some(crate::physics3d::ColliderRef {
                     body: actor,
@@ -154,7 +147,7 @@ fn character_runtime_admission_valid_crc_bad_input_and_state_reject_before_commi
                     sensor: true,
                 });
             }
-            9 => runtime.state.failed_pair_casts = 1,
+            7 => runtime.state.failed_pair_casts = 1,
             _ => unreachable!(),
         }
         let snapshot = unchecked(&candidate, &header);
@@ -343,14 +336,21 @@ fn character_runtime_admission_cold_move_state_velocity_is_not_reconstructed() {
 }
 
 fn path_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
-    let (world, actor, platform) = support_fixture(PhysicsWorld3d::force_character_motion_proof);
-    assert_eq!(world.path_scratch.saved_character_payload_counts(), (2, 2));
+    let (mut world, actor, platform) = support_fixture();
+    let mut pose = world.body_state(platform).unwrap().pose;
+    pose.position[0] += 0.25;
+    world
+        .step_with_kinematic_paths(&[crate::physics3d::KinematicPath {
+            body: platform,
+            sweep_sensors: false,
+            knots: vec![(1., pose)],
+        }])
+        .unwrap();
+    assert_eq!(world.path_scratch.saved_character_payload_counts(), 2);
     (world, actor, platform)
 }
 
-fn support_fixture(
-    configure: impl FnOnce(&mut PhysicsWorld3d),
-) -> (PhysicsWorld3d, BodyId, BodyId) {
+fn support_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
     let (mut world, actor, _) = fixture();
     world
         .enable_character(
@@ -401,7 +401,6 @@ fn support_fixture(
             }),
         )
         .unwrap();
-    configure(&mut world);
     world.step();
     assert!(world.character_state(actor).unwrap().grounded);
     world
@@ -430,10 +429,10 @@ fn support_fixture(
 }
 
 #[test]
-fn character_runtime_admission_persistent_preview_and_total_valid_crc_damage_is_guard_only() {
+fn character_runtime_admission_persistent_path_total_valid_crc_damage_is_guard_only() {
     let (world, _, _) = path_fixture();
     let before = world.capture_snapshot().unwrap();
-    for case in 0..20 {
+    for case in 0..9 {
         let mut damaged = PhysicsWorld3d::from_snapshot(&before).unwrap();
         damaged.path_scratch.damage_character_payload_for_test(case);
         let raw = postcard::to_allocvec(&Capture { world: &damaged }).unwrap();
@@ -470,7 +469,7 @@ fn character_runtime_admission_persistent_preview_and_total_valid_crc_damage_is_
 
 #[test]
 fn character_runtime_admission_support_removal_clear_and_reenable_replay() {
-    let (mut world, actor, platform) = support_fixture(|_| {});
+    let (mut world, actor, platform) = support_fixture();
     let state = world.character_state(actor).unwrap();
     assert_eq!(state.ground.unwrap().body, platform);
     assert_eq!(state.carried_by, Some(platform));
@@ -575,10 +574,10 @@ fn reject_fixture(candidate: &PhysicsWorld3d, header: &PhysicsSnapshot, label: &
 fn character_runtime_admission_all_numeric_arrays_relations_and_config_fields_are_checked() {
     let (world, actor, _) = fixture();
     let header = world.capture_snapshot().unwrap();
-    for case in 0..48 {
+    for case in (0..=23).chain(36..=43).chain(45..=47) {
         let mut candidate = PhysicsWorld3d::from_snapshot(&header).unwrap();
         let runtime = candidate.characters.get_mut(&actor).unwrap();
-        if case < 24 {
+        if case < 21 {
             let arrays = [
                 &mut runtime.state.translation,
                 &mut runtime.state.velocity,
@@ -587,36 +586,13 @@ fn character_runtime_admission_all_numeric_arrays_relations_and_config_fields_ar
                 &mut runtime.external_velocity,
                 &mut runtime.external_force,
                 &mut runtime.pending_impulse,
-                &mut runtime.contact_velocity,
             ];
             arrays[case / 3][case % 3] = f32::NAN;
         } else {
             match case {
-                24 => runtime.state.vertical_speed = f32::NAN,
-                25 => runtime.state.vertical_speed = runtime.config.max_vertical_speed + 1.,
-                26 => runtime.state.vertical_speed = -runtime.config.max_vertical_speed - 1.,
-                27 => runtime.carry_fraction = f64::NAN,
-                28 => runtime.carry_fraction = -f64::EPSILON,
-                29 => runtime.carry_fraction = 1. + f64::EPSILON,
-                30..=35 => {
-                    let mut bodies = [None; 12];
-                    bodies[0] = Some(actor);
-                    let mut fraction = 0.5;
-                    match case {
-                        30 => fraction = f64::NAN,
-                        31 => fraction = -f64::EPSILON,
-                        32 => fraction = 1. + f64::EPSILON,
-                        33 => bodies[0] = None,
-                        34 => {
-                            bodies[0] = None;
-                            bodies[1] = Some(actor);
-                        }
-                        35 => bodies[1] = Some(actor),
-                        _ => unreachable!(),
-                    }
-                    runtime.motion_stop =
-                        Some(crate::physics3d::character_motion::MotionStop { fraction, bodies });
-                }
+                21 => runtime.state.vertical_speed = f32::NAN,
+                22 => runtime.state.vertical_speed = runtime.config.max_vertical_speed + 1.,
+                23 => runtime.state.vertical_speed = -runtime.config.max_vertical_speed - 1.,
                 36 => runtime.state.failed_pair_casts = 1,
                 37 => runtime.state.failed_moving_obstacle_casts = 1,
                 38 => runtime.state.failed_moving_obstacle_contacts = 1,
@@ -631,7 +607,6 @@ fn character_runtime_admission_all_numeric_arrays_relations_and_config_fields_ar
                 41 => runtime.external_velocity[0] = 1.,
                 42 => runtime.external_force[0] = 1.,
                 43 => runtime.pending_impulse[0] = 1.,
-                44 => runtime.contact_velocity[0] = 1.,
                 45..=47 => {
                     runtime.state.grounded = true;
                     runtime.state.ground = Some(crate::physics3d::ColliderRef {
@@ -813,12 +788,12 @@ fn character_runtime_admission_result_speed_can_exceed_single_command_cap() {
 }
 
 #[test]
-fn character_runtime_admission_real_preview_counts_have_exact_budget_without_reintegration() {
+fn character_runtime_admission_path_totals_have_exact_budget_without_reintegration() {
     let (world, _, _) = path_fixture();
     let before = world.capture_snapshot().unwrap();
     let usage = character_admission::validate(&world, character_admission::LIMITS).unwrap();
-    assert_eq!(world.path_scratch.saved_time_payload_counts(), (1, 0, 0));
-    assert_eq!(usage.work, 8 + 2 * (384 + 160 + 128 + 8) + 8);
+    assert_eq!(world.path_scratch.saved_time_payload_counts(), (1, 1, 1));
+    assert_eq!(usage.work, 8 + 2 * (384 + 128 + 8) + 24);
     assert_eq!(usage.scratch_bytes, 0);
     for maximum in [usage.work, usage.work - 1] {
         let result = character_admission::validate(
@@ -844,7 +819,7 @@ fn character_runtime_admission_real_preview_counts_have_exact_budget_without_rei
 }
 
 #[test]
-fn rapier_path_checkpoint_replays_support_preview_and_pending_jump() {
+fn rapier_path_checkpoint_replays_support_and_pending_jump() {
     use crate::physics3d::KinematicPath;
 
     let (mut world, actor, _) = fixture();
@@ -910,7 +885,7 @@ fn rapier_path_checkpoint_replays_support_preview_and_pending_jump() {
 
 #[test]
 fn character_runtime_admission_grounded_jump_is_retained_then_consumed_once() {
-    let (mut world, actor, _) = support_fixture(|_| {});
+    let (mut world, actor, _) = support_fixture();
     assert!(world.character_state(actor).unwrap().grounded);
     world
         .set_character_input(
@@ -1331,165 +1306,8 @@ fn character_runtime_admission_disabled_controller_keeps_pending_signed_commands
 }
 
 #[test]
-fn character_runtime_admission_actual_preview_motion_stop_survives_source_removal() {
-    let mut world = PhysicsWorld3d::new(WorldConfig {
-        gravity: [0.; 3],
-        step_seconds: 0.1,
-        ..WorldConfig::default()
-    })
-    .unwrap();
-    let actor = world
-        .create_body(
-            BodyDesc {
-                kind: BodyKind::KinematicPosition,
-                ..BodyDesc::default()
-            },
-            ColliderDesc::new(Shape::Capsule {
-                half_height: 0.25,
-                radius: 0.25,
-            }),
-        )
-        .unwrap();
-    world
-        .enable_character(
-            actor,
-            CharacterConfig {
-                step_height: 0.,
-                ..CharacterConfig::default()
-            },
-        )
-        .unwrap();
-    let mut moving = None;
-    for (x, kind) in [(-1., BodyKind::Fixed), (3., BodyKind::KinematicPosition)] {
-        let id = world
-            .create_body(
-                BodyDesc {
-                    kind,
-                    pose: Pose {
-                        position: [x, 0., 0.],
-                        ..Pose::default()
-                    },
-                    ..BodyDesc::default()
-                },
-                ColliderDesc::new(Shape::Box {
-                    half_extents: [0.25, 2., 5.],
-                }),
-            )
-            .unwrap();
-        if kind == BodyKind::KinematicPosition {
-            moving = Some(id);
-        }
-    }
-    let moving = moving.unwrap();
-    world
-        .set_kinematic_target(
-            moving,
-            Pose {
-                position: [-3., 0., 0.],
-                ..Pose::default()
-            },
-        )
-        .unwrap();
-    // This is the actual internal preview producer, before an accepted step;
-    // it is not a synthetic stop supplied by the admission implementation.
-    let mut backup = Vec::new();
-    world.preview_characters(&mut backup);
-    let stop = world.characters[&actor].motion_stop.as_ref().unwrap();
-    assert!((0. ..=1.).contains(&stop.fraction));
-    assert!(stop.bodies.contains(&Some(moving)));
-    let stage = world.capture_snapshot().unwrap();
-    assert_eq!(
-        PhysicsWorld3d::from_snapshot(&stage)
-            .unwrap()
-            .capture_snapshot()
-            .unwrap()
-            .encoded_bytes(),
-        stage.encoded_bytes()
-    );
-    world.remove_body(moving).unwrap();
-    assert!(world.characters[&actor]
-        .motion_stop
-        .as_ref()
-        .unwrap()
-        .bodies
-        .contains(&Some(moving)));
-    let packet = world.capture_snapshot().unwrap();
-    let mut restored = PhysicsWorld3d::from_snapshot(&packet).unwrap();
-    for _ in 0..6 {
-        world.step();
-        restored.step();
-        assert_eq!(
-            world.capture_snapshot().unwrap().encoded_bytes(),
-            restored.capture_snapshot().unwrap().encoded_bytes()
-        );
-    }
-}
-
-#[test]
-fn precise_character_fractions_keep_sub_f32_bits_signed_zero_and_six_tick_codec_replay() {
-    use crate::physics3d::{character_motion::MotionStop, solver_trajectory::Time};
-    for (carry, stop) in [(0.5_f64.next_up(), 0.5_f64.next_down()), (-0., -0.)] {
-        let (mut world, actor, _) = fixture();
-        let retired = world
-            .create_body(
-                BodyDesc {
-                    kind: BodyKind::KinematicPosition,
-                    pose: Pose {
-                        position: [100., 2., 0.],
-                        ..Pose::default()
-                    },
-                    ..BodyDesc::default()
-                },
-                ColliderDesc::new(Shape::Box {
-                    half_extents: [0.5; 3],
-                }),
-            )
-            .unwrap();
-        world.remove_body(retired).unwrap();
-        // These are controlled cold saved fields. The public producer/step
-        // fixture is retained; no assertion claims a public scalar setter.
-        let runtime = world.characters.get_mut(&actor).unwrap();
-        runtime.carry_fraction = carry;
-        let mut bodies = [None; 12];
-        bodies[0] = Some(retired);
-        runtime.motion_stop = Some(MotionStop {
-            fraction: stop,
-            bodies,
-        });
-        let saved = world.capture_snapshot().unwrap();
-        assert_eq!(
-            u32::from_le_bytes(saved.bytes[8..12].try_into().unwrap()),
-            7
-        );
-        let mut restored = PhysicsWorld3d::from_snapshot(&saved).unwrap();
-        let runtime = &restored.characters[&actor];
-        assert_eq!(runtime.carry_fraction.to_bits(), carry.to_bits());
-        assert_eq!(
-            runtime.motion_stop.as_ref().unwrap().fraction.to_bits(),
-            stop.to_bits()
-        );
-        assert_eq!(
-            postcard::to_allocvec(&(carry, stop)).unwrap().len(),
-            2 * std::mem::size_of::<Time>()
-        );
-        assert_eq!(
-            saved.encoded_bytes(),
-            restored.capture_snapshot().unwrap().encoded_bytes()
-        );
-        for _ in 0..6 {
-            world.step_checked().unwrap();
-            restored.step_checked().unwrap();
-            assert_eq!(
-                world.capture_snapshot().unwrap().encoded_bytes(),
-                restored.capture_snapshot().unwrap().encoded_bytes()
-            );
-        }
-    }
-}
-
-#[test]
 fn precise_authored_path_times_have_exact_cold_work_valid_crc_rejection_and_six_tick_replay() {
-    use crate::physics3d::{solver_trajectory::Time, KinematicPath};
+    use crate::physics3d::{motion_time::Time, KinematicPath};
     let (mut world, _, _) = fixture();
     let platform = world
         .create_body(
@@ -1533,7 +1351,7 @@ fn precise_authored_path_times_have_exact_cold_work_valid_crc_rejection_and_six_
     assert!(world.path_scratch.saved_time_payload_valid());
     let saved = world.capture_snapshot().unwrap();
     let usage = character_admission::validate(&world, character_admission::LIMITS).unwrap();
-    assert_eq!(usage.work, 8 + 384 + 160 + 128 + 8 + 8 * (2 + 1 + 1));
+    assert_eq!(usage.work, 8 + 384 + 128 + 8 + 8 * (2 + 1 + 1));
     assert_eq!(usage.scratch_bytes, 0);
     for maximum in [usage.work, usage.work - 1] {
         assert_eq!(
@@ -1611,7 +1429,6 @@ fn precise_completed_query_payload_valid_crc_damage_keeps_native_source_unchange
         ..WorldConfig::default()
     })
     .unwrap();
-    world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
     world
         .create_body(
@@ -1627,7 +1444,7 @@ fn precise_completed_query_payload_valid_crc_damage_keeps_native_source_unchange
         .unwrap();
     world.step_checked().unwrap();
     let saved = world.capture_snapshot().unwrap();
-    for case in 0..16 {
+    for case in 0..8 {
         let mut candidate = PhysicsWorld3d::from_snapshot(&saved).unwrap();
         candidate.step_motion.test_corrupt_precise_payload(case);
         reject_fixture(&candidate, &saved, &format!("precise query payload {case}"));

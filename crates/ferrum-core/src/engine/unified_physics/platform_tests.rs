@@ -82,11 +82,6 @@ pub(super) fn tick(e: &mut Engine, count: usize) {
     for _ in 0..count {
         e.update(f64::from(e.fixed_timestep.config().step_seconds));
         if e.unified_physics_error().is_some() {
-            e.unified_physics
-                .as_ref()
-                .unwrap()
-                .physics
-                .diagnostic_actual_motion("first checked platform tick failure");
             eprintln!(
                 "C12_PLATFORM phase={:?}",
                 e.capture_spatial_moving_platforms()
@@ -206,11 +201,6 @@ fn full_cycle_inside_tick_preserves_rider_transport_and_motion_work() {
     let start = e.unified_body_state(a).unwrap().pose.position;
     tick(&mut e, 1);
     let end = e.unified_body_state(a).unwrap().pose.position;
-    e.unified_physics
-        .as_ref()
-        .unwrap()
-        .physics
-        .diagnostic_actual_motion("full cycle before original displacement assertion");
     eprintln!(
         "C12_FULL_CYCLE start={start:?} end={end:?} character={:?} phase={:?}",
         e.unified_character_state(a),

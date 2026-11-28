@@ -15,9 +15,6 @@ pub(super) fn tight_epsilon(length_unit: f32, config: &CharacterConfig) -> f32 {
     (length_unit * 1e-6).min(config.skin_width * 0.001)
 }
 
-mod tight_ground_admission;
-pub(super) use tight_ground_admission::certified_tight_ground_admitted;
-
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CharacterProbeScratch {
     #[serde(with = "crate::checkpoint_codec::workspace_vector")]

@@ -25,8 +25,6 @@ struct WorldState {
     #[serde(with = "backend_state::State")]
     backend: rp::PhysicsWorld,
     statistics: super::statistics::Statistics,
-    #[serde(skip)]
-    tick_outputs: super::world::tick_outputs::TickOutputs,
     config: WorldConfig,
     #[serde(skip)]
     interval_nominal_seconds: Option<f32>,
@@ -35,17 +33,13 @@ struct WorldState {
     query_updates: Vec<rp::ColliderHandle>,
     collider_shape_revisions: BTreeMap<super::ColliderId, u64>,
     path_scratch: super::kinematic_paths::PathScratch,
+    #[serde(skip)]
+    path_work: super::kinematic_paths::PathScratch,
     step_motion: super::queries::StepMotion,
     #[serde(with = "stored_characters")]
     characters: BTreeMap<BodyId, CharacterRuntime>,
     #[serde(skip)]
-    character_motion: Box<super::character_motion::MotionScene>,
-    #[serde(skip)]
     character_order: Vec<BodyId>,
-    #[serde(skip)]
-    character_contacts: super::character_contacts::Scratch,
-    #[serde(skip)]
-    character_dynamics: super::character_dynamics::Scratch,
     joints: BTreeMap<super::JointId, JointRuntime>,
     joint_events: Vec<super::JointEvent>,
     dropped_joint_events: usize,
@@ -66,22 +60,13 @@ struct Capture<'a> {
 }
 #[derive(serde::Deserialize)]
 struct Restore {
-    #[serde(deserialize_with = "read_world")]
+    #[serde(with = "WorldState")]
     world: PhysicsWorld3d,
 }
 
-fn read_world<'de, D: serde::Deserializer<'de>>(source: D) -> Result<PhysicsWorld3d, D::Error> {
-    // Serde skips the transient scratch, so its fixed heap allocation needs
-    // an explicit charge before the remote world's default constructs it.
-    crate::checkpoint_decode::reserve::<super::character_motion::MotionScene>(1)
-        .map_err(|_| serde::de::Error::custom("physics motion scratch allocation budget"))?;
-    WorldState::deserialize(source)
-}
-
 /// Native checkpoint format. Changing persistent fields requires a new version.
-/// Version7 stores private trajectory domains and normalized controller/path
-/// fractions as f64; original native observer labels and physical dt remain f32.
-pub const PHYSICS_SNAPSHOT_VERSION: u32 = 7;
+/// Version 8 stores the interpolated projectile capture and prescribed path stops.
+pub const PHYSICS_SNAPSHOT_VERSION: u32 = 8;
 /// Maximum encoded checkpoint size, including its envelope.
 pub const PHYSICS_SNAPSHOT_MAX_BYTES: usize = 64 * 1024 * 1024;
 const HEADER: usize = 32;
@@ -423,6 +408,9 @@ impl PhysicsWorld3d {
             }
         }
         character_admission::validate(self, character_admission::LIMITS)?;
+        if !self.step_statistics().reserved_diagnostics_are_zero() {
+            return Err(PhysicsSnapshotError::InvalidState);
+        }
         self.step_motion.validate_saved_payload()?;
         for (id, joint) in &self.joints {
             if self

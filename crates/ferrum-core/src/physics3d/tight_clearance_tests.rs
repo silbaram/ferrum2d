@@ -944,9 +944,6 @@ fn tight_dynamic_push_and_preview_replay_do_not_duplicate_momentum() {
     for dt in [0.007, 1. / 60., 0.021] {
         let (mut w, actor, _, _, roof) = fixture(0.0003, 0., false);
         let first = w.step_checked();
-        if first.is_err() {
-            w.diagnostic_actual_motion("tight setup first checked failure");
-        }
         assert!(first.is_ok(), "{first:?}");
         let pushed = w
             .create_body(
@@ -978,9 +975,6 @@ fn tight_dynamic_push_and_preview_replay_do_not_duplicate_momentum() {
             for current in [&mut w, &mut replay] {
                 assert!(current.begin_interval(dt, true).unwrap());
                 let result = current.step_checked();
-                if result.is_err() {
-                    current.diagnostic_actual_motion("tight push first checked failure");
-                }
                 current.end_interval();
                 assert!(result.is_ok(), "{result:?}");
             }

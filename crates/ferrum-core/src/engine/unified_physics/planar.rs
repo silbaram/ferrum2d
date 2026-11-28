@@ -428,8 +428,7 @@ impl UnifiedPhysicsRuntime {
     }
 
     /// Stages legacy force/impulse/sleep components for the next native tick.
-    /// The tick applies them inside its rollback journal, so a zero-progress
-    /// rejection leaves no partial input and the retry stages them once again.
+    /// A tick consumes them after its admission checks succeed.
     pub(super) fn apply_planar_inputs(&mut self, world: &World) -> Result<(), UnifiedPhysicsError> {
         self.physics.discard_staged_tick_inputs();
         for (&(id, generation), binding) in &self.bindings {

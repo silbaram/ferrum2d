@@ -44,28 +44,9 @@ struct EventBuffer {
     queued: Vec<CollisionEvent>,
     limit: usize,
     dropped: usize,
-    #[serde(skip)]
-    mark: Option<(usize, usize)>,
-    #[serde(skip)]
-    previous_pairs: BTreeMap<(ColliderId, ColliderId), Option<CollisionEvent>>,
 }
 
 impl EventBuffer {
-    fn record_pair_change(
-        &mut self,
-        key: (ColliderId, ColliderId),
-        old: Option<CollisionEvent>,
-        new: Option<CollisionEvent>,
-    ) {
-        if self.mark.is_none() || old == new {
-            return;
-        }
-        // Only the difference from the original active set is retained.
-        // A pair that enters and leaves repeatedly cannot grow this journal.
-        if *self.previous_pairs.entry(key).or_insert(old) == new {
-            self.previous_pairs.remove(&key);
-        }
-    }
     fn push(&mut self, event: CollisionEvent) {
         if self.queued.len() < self.limit {
             self.queued.push(event);
@@ -76,7 +57,6 @@ impl EventBuffer {
 
     fn stop(&mut self, key: (ColliderId, ColliderId), removed: bool) {
         if let Some(mut event) = self.active.remove(&key) {
-            self.record_pair_change(key, Some(event), None);
             event.phase = CollisionPhase::Exit;
             event.removed = removed;
             self.push(event);
@@ -91,61 +71,9 @@ impl EventBuffer {
 pub(super) struct EventCollector(
     Mutex<EventBuffer>,
     pub(super) Mutex<super::contact_impulses::ImpulseBuffer>,
-    pub(super) Mutex<super::motion_trace::MotionTrace>,
 );
 
 impl EventCollector {
-    pub(super) fn begin_tick_events(&mut self) {
-        let b = self.0.get_mut().unwrap_or_else(|p| p.into_inner());
-        b.mark = Some((b.queued.len(), b.dropped));
-    }
-
-    pub(super) fn finish_tick_events(&mut self, rejected: bool) {
-        let b = self.0.get_mut().unwrap_or_else(|p| p.into_inner());
-        if let Some((queued, dropped)) = b.mark.take() {
-            if rejected {
-                b.queued.truncate(queued);
-                b.dropped = dropped;
-                for (key, old) in std::mem::take(&mut b.previous_pairs) {
-                    if let Some(event) = old {
-                        b.active.insert(key, event);
-                    } else {
-                        b.active.remove(&key);
-                    }
-                }
-            } else {
-                b.previous_pairs.clear();
-            }
-        }
-    }
-    /// Complete a restored output Vec's fallible backing reservation before
-    /// native execution/publication. Limits are the existing persistent owner
-    /// max_events bytes, not transient body-count-based trajectory scratch.
-    pub(in crate::physics3d) fn prepare_actual_contact_impulses(
-        &self,
-        expected_limit: usize,
-        work: &mut super::solver_trajectory::Work,
-        max_output_bytes: usize,
-    ) -> Result<(), super::solver_trajectory::TrajectoryError> {
-        self.1
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .prepare_actual(expected_limit, work, max_output_bytes)
-    }
-
-    /// Additional physical impulses after native PGS, already admitted by the
-    /// actual-response staging owner. Does not touch manifold/warm-start data.
-    pub(in crate::physics3d) fn record_actual_contact_impulses(
-        &self,
-        contacts: &[super::ContactImpulse],
-        solved: usize,
-    ) {
-        self.1
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .record_actual(contacts, solved);
-    }
-
     pub fn new(limit: usize) -> Self {
         Self(
             Mutex::new(EventBuffer {
@@ -153,11 +81,8 @@ impl EventCollector {
                 queued: Vec::with_capacity(limit),
                 limit,
                 dropped: 0,
-                mark: None,
-                previous_pairs: BTreeMap::new(),
             }),
             Mutex::new(super::contact_impulses::ImpulseBuffer::new(limit)),
-            Mutex::new(super::motion_trace::MotionTrace::default()),
         )
     }
 
@@ -225,61 +150,6 @@ pub(super) fn collider_ref(
 }
 
 impl rp::EventHandler for EventCollector {
-    fn wants_body_motion(&self) -> bool {
-        self.2.lock().unwrap_or_else(|p| p.into_inner()).enabled
-    }
-
-    fn handle_body_motion_pass_started(&self, duration: f32) {
-        self.2
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .begin_pass(duration);
-    }
-
-    fn handle_solver_body_motion(&self, motion: rapier3d::pipeline::SolverBodyMotion) {
-        self.2
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .record(motion);
-    }
-
-    fn handle_solver_body_integration(
-        &self,
-        integration: rapier3d::pipeline::SolverBodyIntegration,
-    ) {
-        self.2
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .record_integration(integration);
-    }
-
-    fn handle_body_motion_clamped(
-        &self,
-        body: rp::RigidBodyHandle,
-        start: rp::Pose,
-        end: rp::Pose,
-        sweep: &rapier3d::parry::query::sweep_toi::Sweep,
-        fraction: f32,
-    ) {
-        self.2
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .accepted_clamp(body, start, end, sweep, fraction);
-    }
-
-    fn handle_body_motion_clamp(
-        &self,
-        body: rp::RigidBodyHandle,
-        start: rp::Pose,
-        end: rp::Pose,
-        fraction: f32,
-    ) {
-        self.2
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .clamp(body, start, end, fraction);
-    }
-
     fn handle_collision_event(
         &self,
         _bodies: &rp::RigidBodySet,
@@ -310,7 +180,6 @@ impl rp::EventHandler for EventCollector {
                 removed: false,
             };
             let old = buffer.active.insert(key, event);
-            buffer.record_pair_change(key, old, Some(event));
             if old.is_none() {
                 buffer.push(event);
             }

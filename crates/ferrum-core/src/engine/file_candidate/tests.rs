@@ -3,11 +3,11 @@ use crate::gameplay_variables::{GameplayVariableScope, GameplayVariableType};
 use crate::physics3d::{BodyDesc, ColliderDesc, Pose, Shape, Space, WorldConfig};
 use std::sync::Arc;
 
-mod actual_native_ccd;
 mod authoring_snapshot_integration;
 mod builtin_integration;
 mod controller_output_integration;
 mod data_movement_integration;
+mod interpolated_motion;
 mod runtime_payload_integration;
 mod scratch_integration;
 mod sharing_integration;

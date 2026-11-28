@@ -114,9 +114,7 @@ impl PhysicsWorld3d {
         if paths.len() + additional > 16 {
             return Err(PhysicsError::CapacityExceeded);
         }
-        if !self.backend_motion_enabled() {
-            self.prepare_rapier_ratio_tick()?;
-        }
+        self.prepare_rapier_ratio_tick()?;
         saved.clear();
         for request in requests {
             let body = &mut self.backend.bodies[native_id(request.body)];

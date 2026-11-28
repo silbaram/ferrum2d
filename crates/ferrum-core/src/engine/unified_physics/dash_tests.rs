@@ -349,11 +349,6 @@ fn native_dash_planar_legacy_kinematic_import_on_first_tick() {
     wall(&mut e, 2., 0.);
     bind(&mut e, a, 4.);
     fire(&mut e);
-    e.unified_physics
-        .as_ref()
-        .unwrap()
-        .physics
-        .diagnostic_actual_motion("legacy-import dash first tick");
     eprintln!(
         "C12_ENGINE_DASH state={:?} error={:?} cooldown={}",
         e.unified_body_state(a),
