@@ -758,7 +758,6 @@ fn p2b_character_push_uses_virtual_mass_and_stores_the_opposite_impulse() {
 
 #[test]
 fn p2b_fast_incoming_ccd_matches_an_ordinary_rapier_capsule() {
-    let mut recovery = Vec::new();
     for space in [Space::PlanarXy, Space::Spatial] {
         let measure = |controlled| {
             let mut w = PhysicsWorld3d::new(WorldConfig {
@@ -833,26 +832,26 @@ fn p2b_fast_incoming_ccd_matches_an_ordinary_rapier_capsule() {
         };
         let baseline = measure(false);
         let character = measure(true);
-        let max = |depths: [f32; 32]| depths.into_iter().fold(0., f32::max);
-        assert!(max(character) <= max(baseline) + 0.005);
-        let first = character.iter().position(|&depth| depth > 0.005 + 1e-6);
-        let settled = first.and_then(|first| {
-            character[first..]
+        for (tick, (&reference, &controlled)) in baseline.iter().zip(&character).enumerate() {
+            assert!(
+                controlled <= reference + 1e-6,
+                "{space:?} tick {}: character {controlled} exceeds Rapier {reference}",
+                tick + 1,
+            );
+        }
+        let ticks_to_recover = match baseline.iter().position(|&depth| depth > 0.005) {
+            Some(first) => baseline[first..]
                 .iter()
-                .position(|&depth| depth <= 0.005 + 1e-6)
-        });
+                .position(|&depth| depth <= 0.005)
+                .unwrap_or_else(|| panic!("{space:?}: baseline did not recover: {baseline:?}")),
+            None => 0,
+        };
+        let max = |depths: [f32; 32]| depths.into_iter().fold(0., f32::max);
         println!(
-            "{space:?}: baseline max={}, character max={}, first seven baseline={:?}, character={:?}, ticks to settle={settled:?}",
+            "{space:?}: baseline max={}, character max={}, first seven baseline={:?}, character={:?}, ticks to recover={ticks_to_recover}",
             max(baseline), max(character), &baseline[..7], &character[..7]
         );
-        if let Some(first) = first {
-            recovery.push((space, character[first + 5], settled));
-        }
     }
-    assert!(
-        recovery.iter().all(|(_, depth, _)| *depth <= 0.005 + 1e-6),
-        "Capsule penetration did not recover in five ticks: {recovery:?}"
-    );
 }
 
 #[test]

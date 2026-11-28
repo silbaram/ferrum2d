@@ -111,7 +111,7 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
                   collider: { shape: { type: "box", halfExtents: [0.5, 0.5, 0.5] }, density: 2, friction: 0 } });
                 const ids = new Uint32Array([capsule.entityId, capsule.entityGeneration, target.entityId, target.entityGeneration]);
                 sim.setUnifiedPhysicsCollisionEventsEnabled(true);
-                const rows = Array.from({ length: 7 }, () => {
+                const rows = Array.from({ length: 32 }, () => {
                   sim.stepRigidBodies(dt);
                   const { floats } = sim.queryUnifiedPhysicsBodyStates(ids);
                   const row = {
@@ -172,7 +172,13 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
       assert(r.impact.at(-1).boxVelocity > -0.1, "The kinematic contact must stop or deflect the box");
       r.overlap = r.impact.map(capsuleBoxDepth);
       r.baselineOverlap = r.baseline.map(capsuleBoxDepth);
-      assert(Math.max(...r.overlap) <= Math.max(...r.baselineOverlap) + 0.005);
+      for (const [tick, depth] of r.overlap.entries()) {
+        assert(depth <= r.baselineOverlap[tick] + 1e-6,
+          `${r.space} tick ${tick + 1}: character ${depth} exceeds Rapier ${r.baselineOverlap[tick]}`);
+      }
+      const firstOverlap = r.baselineOverlap.findIndex(depth => depth > 0.005);
+      assert(firstOverlap === -1 || r.baselineOverlap.slice(firstOverlap).some(depth => depth <= 0.005),
+        `${r.space}: the ordinary capsule did not recover within the 32-tick sample`);
       assert(r.knockbackX < -0.049, "The game-authored impulse must move the actor");
       assert(r.cost.frames > 0 && r.cost.nativeFrames === r.cost.frames);
       assert(Number.isFinite(r.cost.maxRustMs) && r.cost.maxRustMs < 500);

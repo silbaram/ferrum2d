@@ -28,11 +28,9 @@ export async function probeFixed50msNativeGameplayNavigation(browser, url) {
     assert.equal(result.steps, 405);
     const stateSha256 = createHash("sha256")
       .update(JSON.stringify([result.initial, result.final, result.stats])).digest("hex");
-    // Positions and navigation counters of the 405-step reproduction. Updated on
-    // 2026-11-22 when crowd avoidance moved from Parry's capsule cast to the exact
-    // swept segment distance (Parry missed some real crossings). The previous
-    // hash was b8b5b9a178db225d391a05ee88e4c4fcbbd0eab0a69def7ff01c7f0abca9e163.
-    assert.equal(stateSha256, "da6e9fd49d89addd7d87e6a7b296f1a82bca7ff2ff7542c890c4544aace6776d");
+    // Positions and navigation counters of the 405-step reproduction after
+    // the Rapier KCC transition. Checkpoint replay is asserted separately.
+    assert.equal(stateSha256, "486c58c1e2a2fec256d42c63fc567da28d89576a5305d3c6be24ec8d96f9a301");
     return { ...result, inputFrameMs: 50, stateSha256 };
   } finally {
     await page.close();
