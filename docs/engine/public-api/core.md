@@ -1199,7 +1199,12 @@ stepHeight/snapDistance 0은 해당 기능을 끈다. pushMass는 0 또는 0.000
 들어오는 동적 물체에는 캐릭터가 키네마틱 바디로 작동하며 접촉만으로 자동 밀리지 않는다.
 캐릭터는 Rapier KCC로 이동한다. 캐릭터끼리는 서로 막고 표면을 따라 미끄러지며, 운동량을 주고받지 않는다.
 벽이 가로막은 외부 속도 성분은 소거된다. 지지체나 키네마틱 장애물에 의해 이동한 거리는
-캐릭터 상태에 반영된다.
+캐릭터 상태에 반영된다. 막힌 발판은 틱 시작 자세에 머물고 탑승자는 정지한 발판 위에서도
+KCC 입력으로 걸을 수 있다. `carryTranslation`이 0이 아니면 `carriedBy`가 운반했던 지지체를
+가리킨다. 되돌린 발판의 운반은 합계에서 빠진다.
+
+캐릭터 상태의 `couplingVisits`, `couplingLimitFlag`, `obstacleLimitFlag`, `failedPairCasts`,
+`failedObstacleContacts`는 P2b 이후 항상 0이며 P3에서 정리한다.
 
 ```ts
 const actor = engine.spawnUnifiedPhysicsBody({
@@ -1477,7 +1482,7 @@ contact buffer는 다음 contact query, observation buffer는 다음 observation
 
 - `kinematicCharacterStops`, `kinematicPathCasts/Failures/Stops`: prescribed 이동 제한 작업.
 - `characterPreviewPasses`, `characterPreviewPairCasts/PairContacts`, `characterPreviewCouplingVisits/CouplingLimits`,
-  `characterPreviewObstacleCasts/ObstacleContacts/ObstacleFailures`: controller preview 작업. 실제 수용된 이동 비용과 구분한다.
+  `characterPreviewObstacleCasts/ObstacleContacts/ObstacleFailures`: P2b 이후 항상 0이며 P3에서 정리한다.
 - `backendSteps`, `ccdSubsteps`, `solverContacts`, `solverConstraints`: 실제 backend/CCD 호출과 solver에 제출한 점·manifold/관절 수.
 - `trackedContactPairs`, `dynamicBodies`, `angularBodies`, `sleepingBodies`, `bodiesWoken`, `bodiesPutToSleep`:
   narrow-phase cache와 body 상태. tracked pair는 현재 닿지 않는 cache도 포함한다.
@@ -1492,7 +1497,9 @@ step은 마지막 완료 물리 구간이다. frame은 현재 Engine frame의 �
 물리 시간이다.
 clock 입력(음수·NaN·0.1ms 미만 양수 등), native 준비·commit 실패(Transform 없는 collider, 범위를 넘는
 legacy force, capacity 초과 등)로 그 frame의 native step을 건너뛴 경우에도 frame update와 `stepRigidBodies`는
-`native physics step skipped` 오류를 던진다. 조회·gameplay 보조 진단은 계속 진행 가능한 기록으로 남는다.
+`native physics step skipped` 오류를 던진다. 시계 입력과 가변 프레임의 외력 시간 검사에서 사전 거절한 오류는 해당 호출에만 보고하며 체크포인트와
+Native 저장 파일에 기록하지 않는다. 지정 경로 틱에는 기존 작업 공간 사전 검사가 남아 있어
+한도를 넘으면 `CapacityExceeded`를 반환할 수 있다. 조회·gameplay 보조 진단은 계속 진행 가능한 기록으로 남는다.
 진행 0초로 거부된 tick은 legacy force/impulse/sleep 입력을 native rollback 안에서 되돌린다. Data Scene에서
 같은 tick의 tween과 scene update는 이미 실행됐으므로 다음 시도는 물리 단계부터 재개하며, 1회성 입력은
 재개된 tick의 물리 이후 gameplay에 한 번만 전달된다.

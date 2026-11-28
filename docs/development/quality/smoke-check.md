@@ -65,7 +65,8 @@ byteLength를 `custom.nativeRuntime`에 보존한다. capture는 pause/resume �
 진행하지 않고 RAF·busy 상태를 정리하는지, 원래 오류 전달과 checkpoint·재시작·해제가 가능한지 검사한다.
 frame pipeline/manual step 회귀는 checked entry를 한 번만 호출하고 거부 시 output/stat 읽기를 하지 않는지
 검사한다. Packed `native-checked-error-probe.mjs`는 고정 간격과 다른 값을 기본·설정 지정
-수동 스텝에 넘겨 Wasm 사전 거절을 검사한다. 자세·시간·직전 CCD 진단·Native 저장 바이트 보존,
+수동 스텝에 넘겨 Wasm 사전 거절을 검사한다. 자동 모드는 nominal 간격에서 승인된 외력이
+30ms RAF에서 속도 한도를 넘게 해 사전 거절을 검증한다. 자세·시간·직전 CCD 진단·Native 저장 바이트 보존,
 새 Rust 질의, 체크포인트 복원, RAF 재시작과 중복 destroy를 확인한다. 실행은
 `smoke:unified-physics-web`에 연결한다. 틱 안의 롤백은 Core의
 `injected_native_tick_failure_preserves_diagnostics_checkpoint_and_native_file`과
