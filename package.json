@@ -60,7 +60,7 @@
     "smoke:tile-multi": "pnpm --filter @ferrum2d/studio build && node tests/smoke/aseprite-project-smoke.mjs --tiles --multi-tilesets",
     "smoke:tile-project": "pnpm --filter @ferrum2d/studio build && node tests/smoke/aseprite-project-smoke.mjs --tiles",
     "test:placement-grid": "node --test tests/smoke/placement-grid.test.mjs",
-    "test:placement-camera": "node --test tests/smoke/placement-spatial-camera.test.mjs tests/smoke/placement-spatial-pose.test.mjs",
+    "test:placement-camera": "node --test tests/smoke/placement-spatial-camera.test.mjs tests/smoke/placement-spatial-pose.test.mjs tests/smoke/placement-scene-presentation.test.mjs",
     "test:placement-locale": "node --test tests/smoke/placement-locale.test.mjs",
     "test:placement-commands": "node --test tests/smoke/placement-command-palette.test.mjs tests/smoke/placement-key-hints.test.mjs",
     "test:placement-layouts": "node --test tests/smoke/placement-workspace-preferences.test.mjs",
