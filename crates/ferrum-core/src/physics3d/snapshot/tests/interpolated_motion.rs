@@ -76,3 +76,33 @@ fn completed_rotating_interpolated_queries_survive_native_codec_and_six_tick_con
         restored.step();
     }
 }
+
+impl PhysicsSnapshot {
+    pub(crate) fn test_interpolated_query(bytes: &[u8], pose: Pose) -> Vec<SweepHit> {
+        let saved = Self {
+            bytes: bytes.to_vec(),
+        };
+        let world = PhysicsWorld3d::from_snapshot(&saved).unwrap();
+        let mut hits = Vec::new();
+        world
+            .sweep_step_motion(
+                &Shape::Sphere { radius: 0.1 },
+                pose,
+                [0.; 3],
+                &QueryFilter::default(),
+                &mut hits,
+                64,
+            )
+            .unwrap();
+        hits
+    }
+
+    pub(crate) fn test_bad_interpolated_time(bytes: &[u8]) -> Vec<u8> {
+        let saved = Self {
+            bytes: bytes.to_vec(),
+        };
+        let mut world = PhysicsWorld3d::from_snapshot(&saved).unwrap();
+        world.step_motion.test_corrupt_precise_payload(3);
+        unchecked(&world).bytes
+    }
+}

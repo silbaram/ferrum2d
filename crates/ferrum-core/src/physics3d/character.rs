@@ -95,11 +95,11 @@ pub struct CharacterState {
     pub character_pair_casts: usize,
     /// Geometric capsule-pair contact queries at sweep starts and constraint refreshes.
     pub character_pair_contact_checks: usize,
-    /// Constraint row visits during coupled capsule velocity resolution.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_coupling_iterations: usize,
-    /// Whether the bounded coupled solver or contact timeline exhausted its work limit.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_coupling_iteration_limit: bool,
-    /// Unsupported backend pair queries, which conservatively block the affected motion.
+    /// Reserved v1 diagnostic. Always zero.
     pub failed_pair_casts: usize,
     /// Relative obstacle casts, including static obstacles reached during a push.
     pub moving_obstacle_casts: usize,
@@ -107,11 +107,11 @@ pub struct CharacterState {
     pub failed_moving_obstacle_casts: usize,
     /// Geometric contact queries at sweep starts and simultaneous obstacle contacts.
     pub moving_obstacle_contact_checks: usize,
-    /// Unsupported contact queries; moving constraints stop conservatively.
+    /// Reserved v1 diagnostic. Always zero.
     pub failed_moving_obstacle_contacts: usize,
     /// Whether relative obstacle motion constrained or pushed this character.
     pub blocked_by_moving_obstacle: bool,
-    /// Whether the bounded moving-obstacle solve exhausted its iterations.
+    /// Reserved v1 diagnostic. Always zero.
     pub moving_obstacle_iteration_limit: bool,
 }
 
@@ -129,6 +129,13 @@ pub(super) struct CharacterRuntime {
     pub pending_impulse: [f32; 3],
     #[serde(skip)]
     pub support_motion: Option<(BodyId, rp::Vector, rp::Vector)>,
+}
+
+#[cfg(test)]
+impl CharacterRuntime {
+    pub(super) fn input_velocity(&self) -> [f32; 3] {
+        self.input.velocity
+    }
 }
 
 impl CharacterConfig {

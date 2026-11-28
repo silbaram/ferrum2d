@@ -164,11 +164,6 @@ fn planar_span_filters_fast_ccd_without_clamping_to_other_floors() {
             .unwrap();
         w.step_checked()
             .unwrap_or_else(|error| panic!("blocked={blocked}: {error:?}"));
-        assert_eq!(
-            w.actual_motion_completed_time(),
-            f64::from(w.config().step_seconds),
-            "the CCD result must describe a completed tick, blocked={blocked}"
-        );
         let x = w.body_state(b).unwrap().pose.position[0];
         if blocked {
             assert!(x < -0.1, "{x}");

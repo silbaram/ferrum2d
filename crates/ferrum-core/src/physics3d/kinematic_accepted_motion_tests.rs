@@ -110,14 +110,10 @@ fn kinematic_accepted_joint_pass_schedule_keeps_real_collision() {
         if joint {
             unrelated_joint(&mut w);
         }
-        let (params, passes) = w.kinematic_prediction_schedule();
+        let (params, passes) = w.backend_pass_schedule();
         let (expected_bar_pose, _) =
             w.backend.bodies[native_id(b)].predict_kinematic_motion(&params, passes);
         w.step_checked().unwrap();
-        assert_eq!(
-            w.actual_motion_completed_time(),
-            f64::from(w.config().step_seconds)
-        );
         let state = w.character_state(a).unwrap();
         assert_eq!(
             state.blocked_by_moving_obstacle, joint,
@@ -164,7 +160,7 @@ fn kinematic_accepted_predicts_actual_com_endpoints_and_pass_damping() {
                     if joint {
                         unrelated_joint(&mut w);
                     }
-                    let schedule = w.kinematic_prediction_schedule();
+                    let schedule = w.backend_pass_schedule();
                     let body = &w.backend.bodies[native_id(b)];
                     let (next, angle) = body.predict_kinematic_motion(&schedule.0, schedule.1);
                     assert_eq!(angle.z.signum(), sign);
@@ -220,7 +216,7 @@ fn kinematic_accepted_zero_angular_preserves_raw_motion_bitwise() {
                 body,
                 c,
                 0.1,
-                &w.kinematic_prediction_schedule(),
+                &w.backend_pass_schedule(),
             );
             assert_eq!(raw.start, accepted.start);
             assert_eq!(raw.local_center, accepted.local_center);
@@ -237,10 +233,10 @@ fn kinematic_accepted_recomputes_current_event_interval_not_scaled_old_cap() {
     let mut w = world(0.1);
     let b = bar(&mut w, 40., 0.);
     let body = &w.backend.bodies[native_id(b)];
-    let s = w.kinematic_prediction_schedule();
+    let s = w.backend_pass_schedule();
     let long = body.predict_kinematic_motion(&s.0, s.1);
     w.backend.integration_parameters.dt = 0.025;
-    let s = w.kinematic_prediction_schedule();
+    let s = w.backend_pass_schedule();
     let short = w.backend.bodies[native_id(b)].predict_kinematic_motion(&s.0, s.1);
     // Both intervals still exceed the backend cap. Reusing 1/4 of the old
     // displacement would disagree with the next actual backend call.
@@ -257,7 +253,7 @@ fn kinematic_accepted_winding_and_pose_projection_are_not_authored_input_mutatio
     let c = &w.backend.colliders[body.colliders()[0]];
     let raw = super::kinematic_motion::collider_motion(body, c, 0.1);
     assert_eq!(raw.angvel, rp::Vector::new(0., 0., 4.));
-    let s = w.kinematic_prediction_schedule();
+    let s = w.backend_pass_schedule();
     let accepted = super::kinematic_motion::accepted_collider_motion(body, c, 0.1, &s);
     assert!(accepted.angvel.z < 0.8);
     assert_eq!(
@@ -288,7 +284,7 @@ fn kinematic_accepted_rotating_ground_carry_uses_actual_endpoint() {
         assert!(w.character_state(a).unwrap().grounded);
         w.set_velocity(platform, [0.; 3], [0., omega, 0.]).unwrap();
         let next = w.backend.bodies[native_id(platform)]
-            .predict_kinematic_motion(&w.kinematic_prediction_schedule().0, 1)
+            .predict_kinematic_motion(&w.backend_pass_schedule().0, 1)
             .0;
         let local = w.backend.bodies[native_id(platform)].position().inverse()
             * rp::Vector::from(w.body_state(a).unwrap().pose.position);

@@ -77,6 +77,23 @@ pub struct StepStatistics {
     pub ccd_clamps_dropped: u32,
 }
 
+impl StepStatistics {
+    pub(crate) fn reserved_diagnostics_are_zero(self) -> bool {
+        [
+            self.character_preview_passes,
+            self.character_preview_pair_casts,
+            self.character_preview_pair_contacts,
+            self.character_preview_coupling_visits,
+            self.character_preview_coupling_limits,
+            self.character_preview_obstacle_casts,
+            self.character_preview_obstacle_contacts,
+            self.character_preview_obstacle_failures,
+        ]
+        .into_iter()
+        .all(|value| value == 0)
+    }
+}
+
 /// A position clamp applied by CCD. Coordinates come from the CCD cast itself.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CcdClamp {

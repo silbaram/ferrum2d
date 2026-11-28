@@ -56,25 +56,8 @@ fn x(w: &PhysicsWorld3d, id: BodyId) -> f32 {
 
 #[track_caller]
 fn step_report_checked(w: &mut PhysicsWorld3d, control: &str) {
-    let expected_seconds = f64::from(w.backend.integration_parameters.dt);
-    let result = w.step_checked();
-    eprintln!(
-        "C23_COUPLING_STEP case={:?} control={control} result={result:?} completed={} expected={expected_seconds} statistics={:?}",
-        std::thread::current().name(),
-        w.actual_motion_completed_time(),
-        w.step_statistics(),
-    );
-    w.diagnostic_actual_motion(control);
-    assert_eq!(
-        result,
-        Ok(()),
-        "{control}: rejected character coupling tick"
-    );
-    assert_eq!(
-        w.actual_motion_completed_time(),
-        expected_seconds,
-        "{control}: character coupling did not commit the full original tick",
-    );
+    w.step_checked()
+        .unwrap_or_else(|error| panic!("{control}: {error:?}"));
 }
 
 #[test]
@@ -137,13 +120,7 @@ fn free_capsule_chain_is_pushed_without_a_false_squeeze_stop() {
         let p = wall(&mut w, 3.0, BodyKind::KinematicPosition);
         let target = -(count as f32 + 3.0);
         w.set_kinematic_target(p, pose(target)).unwrap();
-        let tick_seconds = f64::from(w.backend.integration_parameters.dt);
         assert_eq!(w.step_checked(), Ok(()), "count={count}");
-        assert_eq!(
-            w.actual_motion_completed_time(),
-            tick_seconds,
-            "count={count}"
-        );
         assert_eq!(
             w.step_statistics().kinematic_character_stops,
             0,

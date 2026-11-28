@@ -35,9 +35,9 @@ impl CharacterStateRecord {
             s.sliding,
             s.hit_ceiling,
             s.blocked_by_character,
-            s.character_coupling_iteration_limit,
+            false,
             s.blocked_by_moving_obstacle,
-            s.moving_obstacle_iteration_limit,
+            false,
             s.ground.is_some(),
             s.carried_by.is_some(),
         ]
@@ -63,12 +63,12 @@ impl CharacterStateRecord {
                 s.dropped_contacts,
                 s.character_pair_casts,
                 s.character_pair_contact_checks,
-                s.character_coupling_iterations,
-                s.failed_pair_casts,
+                0,
+                0,
                 s.moving_obstacle_casts,
                 s.failed_moving_obstacle_casts,
                 s.moving_obstacle_contact_checks,
-                s.failed_moving_obstacle_contacts,
+                0,
             ]
             .map(|v| v.min(u32::MAX as usize) as u32),
         }

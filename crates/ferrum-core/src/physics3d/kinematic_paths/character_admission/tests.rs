@@ -4,40 +4,17 @@ impl PathScratch {
     // Private actual-codec damage stays in the ADT owner rather than exposing
     // mutable backing arrays to a production admission caller.
     pub(in crate::physics3d) fn damage_character_payload_for_test(&mut self, case: usize) {
-        assert_eq!(self.preview.len(), 2);
         assert_eq!(self.characters.len(), 2);
         match case {
-            0 => self.preview[0].input.velocity[0] = f32::NAN,
-            1 => self.preview[0].input.jump_speed = f32::NAN,
-            2 => self.preview[0].state.translation[0] = f32::NAN,
-            3 => self.preview[0].state.ground.as_mut().unwrap().sensor = true,
-            4 => self.preview[0].external_velocity[0] = f32::NAN,
-            5 => self.preview[0].pending_impulse[0] = f32::NAN,
-            6 => self.preview[0].contact_velocity[0] = f32::NAN,
-            7 => self.preview[0].id.slot = u32::MAX,
-            8 => {
-                self.preview.pop();
-            }
-            9 => self.characters[0].1.translation[0] = f32::NAN,
-            10 => self.characters[0].1.carry_translation[0] = f32::NAN,
-            11 => self.characters[0].1.velocity[0] = 0.1,
-            12 => self.characters[0].1.vertical_speed = 0.1,
-            13 => self.characters[0].1.sliding = true,
-            14 => {
-                self.preview[1].id = self.preview[0].id;
-                self.characters[1].0 = self.characters[0].0;
-            }
-            15 => self.characters.swap(0, 1),
-            16 => {
-                self.preview[0].state.failed_moving_obstacle_contacts =
-                    self.preview[0].state.moving_obstacle_contact_checks + 1
-            }
-            17 => self.preview[0].input.jump_speed = 10001.,
-            18 => {
-                self.characters[0].1.failed_pair_casts =
-                    self.characters[0].1.character_pair_casts + 1
-            }
-            19 => self.characters[0].1.grounded = true,
+            0 => self.characters[0].1.translation[0] = f32::NAN,
+            1 => self.characters[0].1.carry_translation[0] = f32::NAN,
+            2 => self.characters[0].1.velocity[0] = 0.1,
+            3 => self.characters[0].1.vertical_speed = 0.1,
+            4 => self.characters[0].1.sliding = true,
+            5 => self.characters[1].0 = self.characters[0].0,
+            6 => self.characters.swap(0, 1),
+            7 => self.characters[0].1.failed_pair_casts = 1,
+            8 => self.characters[0].1.grounded = true,
             _ => unreachable!(),
         }
     }

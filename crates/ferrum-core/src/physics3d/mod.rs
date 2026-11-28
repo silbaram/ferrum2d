@@ -158,4 +158,4 @@ mod angular_ccd_bounds_tests;
 mod kinematic_accepted_motion_tests;
 
 #[cfg(test)]
-mod actual_trajectory_tests;
+mod kinematic_replay_tests;

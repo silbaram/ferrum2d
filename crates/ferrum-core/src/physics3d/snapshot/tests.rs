@@ -1,12 +1,12 @@
 use super::*;
 use crate::physics3d::*;
 
-mod actual_paths;
 mod body_numerics;
 mod contact_numerics;
 mod contact_workspaces;
 mod continuation;
 mod integration_admission;
+mod interpolated_motion;
 mod joint_numerics;
 mod pending_removals;
 mod shape_domain;

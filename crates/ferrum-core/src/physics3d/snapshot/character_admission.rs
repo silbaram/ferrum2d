@@ -19,8 +19,8 @@ pub(super) const LIMITS: Limits = Limits {
     max_scratch_bytes: 0,
 };
 
-// Conservative fixed field visits, including the complete 12-slot stop array
-// and its bounded duplicate checks. These are logical cold work, not CPU time.
+// Conservative fixed field visits for the runtime, accumulated motion and path
+// progress records. These are logical cold work units.
 const BASE_WORK: u64 = 8;
 const RUNTIME_WORK: u64 = 384;
 const TOTAL_WORK: u64 = 128;

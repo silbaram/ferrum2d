@@ -1,4 +1,4 @@
-//! Read-only admission of the persistent character copies in path scratch.
+//! Cold validation of saved path progress and per-character transport totals.
 use super::PathScratch;
 use crate::physics3d::Space;
 
@@ -46,8 +46,7 @@ impl PathScratch {
         for (id, total) in &self.characters {
             if previous.is_some_and(|previous| previous >= *id)
                 || !total.saved_payload_valid(space, 10000.)
-                // Totals start at Default, then only translation/carry and
-                // diagnostics are accumulated by step_kinematic_tick.
+                // Only translation, carry and diagnostics accumulate across path slices.
                 || total.grounded
                 || total.ground.is_some()
                 || total.sliding

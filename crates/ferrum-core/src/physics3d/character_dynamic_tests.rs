@@ -2,9 +2,7 @@ use super::*;
 
 fn c12_checked_motion(w: &mut PhysicsWorld3d, label: &str) {
     let result = w.step_checked();
-    if result.is_err() {
-        w.diagnostic_actual_motion(label);
-    }
+    if result.is_err() {}
     assert!(
         result.is_ok(),
         "first actual checked failure: {label} {result:?}"
@@ -620,10 +618,6 @@ fn finite_character_crate_and_fixed_wall_share_the_accepted_stop() {
     let crate_before = w.body_state(d).unwrap().pose.position[0];
     w.step_checked()
         .expect("positive finite crate/wall stop must execute");
-    assert_eq!(
-        w.actual_motion_completed_time(),
-        f64::from(w.config.step_seconds)
-    );
     assert!(w.body_state(a).unwrap().pose.position[0] > actor_before);
     assert!(w.body_state(d).unwrap().pose.position[0] > crate_before);
     let capsule = &w.backend.colliders

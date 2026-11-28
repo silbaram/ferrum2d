@@ -408,6 +408,9 @@ impl PhysicsWorld3d {
             }
         }
         character_admission::validate(self, character_admission::LIMITS)?;
+        if !self.step_statistics().reserved_diagnostics_are_zero() {
+            return Err(PhysicsSnapshotError::InvalidState);
+        }
         self.step_motion.validate_saved_payload()?;
         for (id, joint) in &self.joints {
             if self

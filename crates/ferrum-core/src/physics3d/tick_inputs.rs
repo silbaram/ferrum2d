@@ -1,6 +1,4 @@
-//! Engine inputs staged for the next fixed tick. They are applied after the
-//! tick's rollback journal opens, so a zero-progress rejection restores the
-//! pre-input bodies and the caller can stage the same inputs again on retry.
+//! Engine inputs staged until a fixed tick passes admission.
 use super::{BodyId, PhysicsError, PhysicsWorld3d};
 
 /// One body's legacy-component inputs, applied in field order.

@@ -220,22 +220,20 @@ fn expected_contact_projection(w: &mut PhysicsWorld3d, actor: BodyId, dt: f32) -
 }
 
 #[test]
-fn contact_free_preview_preserves_pending_impulse_then_consumes_exact_j_over_m_once() {
+fn contact_free_probe_preserves_pending_impulse_then_consumes_exact_j_over_m_once() {
     let (mut w, actor, _, _) = fixture([-10., 2., 10.], None);
     w.apply_character_impulse(actor, [0., 0., 5.]).unwrap();
     let before = w.capture_snapshot().unwrap();
     let mut reference = PhysicsWorld3d::from_snapshot(&before).unwrap();
-    let mut preview = vec![];
+    let pose = w.body_state(actor).unwrap().pose;
+    let mut probe = super::CharacterProbeScratch::default();
     for _ in 0..3 {
-        w.preview_characters(&mut preview);
-        w.restore_character_preview(&preview);
+        w.probe_character_motion(actor, pose, [0., 0., 0.1], false, &mut probe)
+            .unwrap();
         assert_eq!(w.characters[&actor].pending_impulse, [0., 0., 5.]);
         assert_eq!(w.characters[&actor].external_velocity, [0.; 3]);
-        assert_eq!(w.body_state(actor).unwrap().pose.position, [-10., 2., 10.]);
+        assert_eq!(w.body_state(actor).unwrap().pose, pose);
     }
-    // The internal preview also prepares backend targets. Runtime rollback must
-    // preserve inputs; after acceptance the complete state must match a world
-    // that never ran those extra previews.
     w.step();
     reference.step();
     assert_eq!(

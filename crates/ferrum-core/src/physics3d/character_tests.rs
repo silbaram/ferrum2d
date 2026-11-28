@@ -58,10 +58,6 @@ fn checked_positive_steps(world: &mut PhysicsWorld3d, count: usize) {
     for tick in 0..count {
         let result = world.step_checked();
         assert!(result.is_ok(), "positive tick {tick}/{count}: {result:?}");
-        assert_eq!(
-            world.actual_motion_completed_time(),
-            f64::from(world.config().step_seconds)
-        );
     }
 }
 
@@ -187,10 +183,6 @@ fn character_platform_carry_and_input_survive_joint_substeps() {
                 assert!(
                     result.is_ok(),
                     "tick={tick} snap={snap_distance} joint={with_joint}: {result:?}"
-                );
-                assert_eq!(
-                    world.actual_motion_completed_time(),
-                    f64::from(world.config().step_seconds)
                 );
                 let p = position(&world, body);
                 assert!((p[0] - t * 3.0).abs() < 0.035, "tick={tick}: {p:?}");
