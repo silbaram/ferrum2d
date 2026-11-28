@@ -166,20 +166,7 @@ impl UnifiedPhysicsRuntime {
         let result = self.physics.step_with_kinematic_paths(&paths);
         self.finish_native_dashes(result.is_ok());
         self.platform_motion.paths = paths;
-        let failure = result.err();
-        let completed = match failure {
-            Some(error) if !self.physics.backend_motion_enabled() => return Err(error.into()),
-            Some(error) => {
-                let completed = (self.physics.actual_motion_completed_time()
-                    / f64::from(self.physics.config().step_seconds))
-                .clamp(0., 1.);
-                if completed == 0. {
-                    return Err(error.into());
-                }
-                completed
-            }
-            None => 1.,
-        };
+        result?;
         let motion = &mut self.platform_motion;
         let mut blocked = 0;
         for ((p, path), phase) in motion
@@ -189,15 +176,13 @@ impl UnifiedPhysicsRuntime {
             .zip(&mut motion.phases)
         {
             let (fraction, stopped) = self.physics.kinematic_path_progress_precise(path.body);
-            if stopped || failure.is_some() {
-                phase.1 = (p.start
-                    + f64::from(self.physics.config().step_seconds) * fraction.min(completed))
-                    % p.period;
+            if stopped {
+                phase.1 =
+                    (p.start + f64::from(self.physics.config().step_seconds) * fraction) % p.period;
                 blocked += u32::from(stopped);
             }
         }
-        // Publish only the actual completed prefix. Phase is a future target
-        // input, so it must not round-trip through an f32 observation getter.
+        // Phase feeds the next authored target, so keep its full precision.
         scene.finish_native_platform_step(
             &motion.phases,
             self.physics
@@ -233,11 +218,7 @@ impl UnifiedPhysicsRuntime {
             } else {
                 Some((tiles.physics_revision(), scene.revision))
             };
-        if let Some(error) = failure {
-            Err(error.into())
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 }
 

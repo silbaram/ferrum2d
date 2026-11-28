@@ -3,8 +3,6 @@ use super::motion_time::Time;
 use super::types::{valid_pose, validate_plane};
 
 mod character_admission;
-mod event_prefix;
-pub(super) mod wake_join;
 use super::world::{native_id, native_pose};
 use super::{BodyId, CharacterState, PhysicsError, PhysicsWorld3d, Pose};
 use rapier3d::prelude as rp;
@@ -24,78 +22,11 @@ pub(super) struct PathScratch {
     ids: Vec<BodyId>,
     stopped: Vec<Option<Time>>,
     stopped_bodies: Vec<BodyId>,
-    #[serde(skip)]
-    pending_stops: Vec<BodyId>,
-    #[serde(skip)]
-    preview: Vec<super::character::CharacterPreview>,
     targets: Vec<(rp::RigidBodyHandle, rp::Pose, rp::Pose)>,
     characters: Vec<(BodyId, CharacterState)>,
 }
 
 impl PhysicsWorld3d {
-    fn publish_actual_path_stops(
-        &mut self,
-        scratch: &mut PathScratch,
-        dt: Time,
-    ) -> Result<(), PhysicsError> {
-        self.charge_actual_stop_work(
-            scratch.ids.len() + scratch.targets.len(),
-            scratch.stopped_bodies.len(),
-        )?;
-        for index in 0..scratch.ids.len() {
-            let body = scratch.ids[index];
-            let Some(seconds) = self.actual_prescribed_stop(body) else {
-                continue;
-            };
-            let fraction = (seconds / dt).clamp(0., 1.);
-            let first = scratch.stopped[index].is_none();
-            scratch.stopped[index] =
-                Some(scratch.stopped[index].map_or(fraction, |old| old.min(fraction)));
-            if !scratch.stopped_bodies.contains(&body) {
-                if scratch.stopped_bodies.try_reserve(1).is_err() {
-                    self.character_motion
-                        .backend_motion
-                        .fail(super::solver_trajectory::TrajectoryError::WorkLimit);
-                    return Err(PhysicsError::CapacityExceeded);
-                }
-                scratch.stopped_bodies.push(body);
-            }
-            if first {
-                self.record_path_stop();
-            }
-            for runtime in self
-                .characters
-                .values_mut()
-                .filter(|r| r.state.carried_by == Some(body))
-            {
-                runtime.carry_fraction = runtime.carry_fraction.min(fraction);
-            }
-        }
-        for index in 0..scratch.targets.len() {
-            let (slot, generation) = scratch.targets[index].0.into_raw_parts();
-            let body = BodyId { slot, generation };
-            let Some(seconds) = self.actual_prescribed_stop(body) else {
-                continue;
-            };
-            if !scratch.stopped_bodies.contains(&body) {
-                if scratch.stopped_bodies.try_reserve(1).is_err() {
-                    self.character_motion
-                        .backend_motion
-                        .fail(super::solver_trajectory::TrajectoryError::WorkLimit);
-                    return Err(PhysicsError::CapacityExceeded);
-                }
-                scratch.stopped_bodies.push(body);
-            }
-            for runtime in self
-                .characters
-                .values_mut()
-                .filter(|r| r.state.carried_by == Some(body))
-            {
-                runtime.carry_fraction = runtime.carry_fraction.min((seconds / dt).clamp(0., 1.));
-            }
-        }
-        Ok(())
-    }
     pub(crate) fn kinematic_path_progress(&self, body: BodyId) -> (f32, bool) {
         let (fraction, stopped) = self.kinematic_path_progress_precise(body);
         (fraction as f32, stopped)
@@ -131,10 +62,6 @@ impl PhysicsWorld3d {
             return self.step_checked();
         }
         self.validate_kinematic_paths(paths)?;
-        if self.backend_motion_enabled() {
-            self.step_kinematic_tick(paths);
-            return self.actual_motion_result();
-        }
         self.step_rapier_kinematic_tick(paths)
     }
 
@@ -183,43 +110,39 @@ impl PhysicsWorld3d {
                 return Err(PhysicsError::InvalidBody);
             }
         }
-        if !self.backend_motion_enabled() {
-            // Merge cuts in a small fixed buffer. The same validation is used
-            // before Engine dash staging and at the direct physics entry.
-            let mut cuts = [1.; 49];
-            let mut count = 1;
-            for path in paths {
-                for &(time, _) in &path.knots[..path.knots.len() - 1] {
-                    cuts[count] = time;
-                    count += 1;
-                }
+        // Merge cuts in a small fixed buffer. The same validation is used
+        // before Engine dash staging and at the direct physics entry.
+        let mut cuts = [1.; 49];
+        let mut count = 1;
+        for path in paths {
+            for &(time, _) in &path.knots[..path.knots.len() - 1] {
+                cuts[count] = time;
+                count += 1;
             }
-            let cuts = &mut cuts[..count];
-            cuts.sort_unstable_by(f32::total_cmp);
-            let dt = Time::from(self.backend.integration_parameters.dt);
-            let mut start = 0.;
-            for &cut in cuts.iter() {
-                let end = Time::from(cut);
-                if end > start {
-                    let seconds = super::motion_time::native_duration(dt * (end - start))
-                        .map_err(|_| PhysicsError::InvalidBody)?;
-                    self.validate_rapier_step_seconds(seconds)?;
-                    start = end;
-                }
+        }
+        let cuts = &mut cuts[..count];
+        cuts.sort_unstable_by(f32::total_cmp);
+        let dt = Time::from(self.backend.integration_parameters.dt);
+        let mut start = 0.;
+        for &cut in cuts.iter() {
+            let end = Time::from(cut);
+            if end > start {
+                let seconds = super::motion_time::native_duration(dt * (end - start))?;
+                self.validate_rapier_step_seconds(seconds)?;
+                start = end;
             }
         }
         Ok(())
     }
 
     fn step_rapier_kinematic_tick(&mut self, paths: &[KinematicPath]) -> Result<(), PhysicsError> {
-        let mut scratch = std::mem::take(&mut self.tick_outputs.paths);
+        let mut scratch = std::mem::take(&mut self.path_work);
         self.prepare_path_scratch(paths, &mut scratch);
         let native_dt = self.backend.integration_parameters.dt;
         if let Err(error) = self.begin_fixed_step() {
-            self.tick_outputs.paths = scratch;
+            self.path_work = scratch;
             return Err(error);
         }
-        self.save_character_preview(&mut scratch.preview);
 
         let mut stopped = Vec::new();
         let mut start = 0.;
@@ -228,7 +151,7 @@ impl PhysicsWorld3d {
             // Checked before tick begin by validate_kinematic_paths.
             self.backend.integration_parameters.dt = (Time::from(native_dt) * (end - start)) as f32;
             self.set_path_targets(paths, &scratch, end);
-            self.step_kcc_interval(paths, start, end, &mut stopped);
+            self.step_kcc_interval(paths, &mut stopped);
             self.accumulate_character_slice(&mut scratch);
             // The stop applies to this slice. Earlier poses and contact results
             // are already committed, and the path continues from this boundary.
@@ -241,281 +164,13 @@ impl PhysicsWorld3d {
             start = end;
         }
         self.backend.integration_parameters.dt = native_dt;
-        self.character_motion.backend_motion.committed_seconds = Time::from(native_dt);
-        self.publish_character_slices(&scratch, native_dt, true);
+        self.publish_character_slices(&scratch, native_dt);
         self.finish_fixed_step();
         std::mem::swap(&mut self.path_scratch, &mut scratch);
-        self.tick_outputs.paths = scratch;
+        self.path_work = scratch;
         Ok(())
     }
 
-    pub(super) fn step_kinematic_tick(&mut self, paths: &[KinematicPath]) {
-        if self.begin_fixed_step().is_err() {
-            return;
-        }
-        let mut scratch = std::mem::take(&mut self.tick_outputs.paths);
-        self.prepare_path_scratch(paths, &mut scratch);
-        if self.configure_actual_paths(paths).is_err() {
-            self.finish_fixed_step();
-            self.tick_outputs.paths = scratch;
-            return;
-        }
-        let native_dt = self.backend.integration_parameters.dt;
-        let dt = Time::from(native_dt);
-        let mut start = 0.0;
-        let mut dynamic_events = 0usize;
-        let mut wake_refinements = 0;
-        let dynamic_event_budget = self.characters.len().saturating_mul(32).max(32);
-        'cuts: for cut in 0..scratch.cuts.len() {
-            let cut_end = scratch.cuts[cut];
-            let mut retry_end: Option<Time> = None;
-            while start < cut_end {
-                let end = retry_end.unwrap_or(cut_end).min(cut_end);
-                self.character_dynamics.invalidate();
-                self.backend.integration_parameters.dt =
-                    match super::motion_time::native_duration(dt * (end - start)) {
-                        Ok(seconds) => seconds,
-                        Err(error) => {
-                            self.character_motion.backend_motion.fail(error);
-                            break 'cuts;
-                        }
-                    };
-                self.set_path_targets(paths, &scratch, end);
-                self.refresh_queries();
-                if self.capture_actual_interval_credit().is_err() {
-                    break 'cuts;
-                }
-                let credit_start = self.actual_motion_completed_time();
-                let controllers_with_static_obstacles = !self.characters.is_empty()
-                    && paths.is_empty()
-                    && !self.has_moving_character_obstacles()
-                    && self.characters.values().all(|r| r.config.push_mass == 0.);
-                if controllers_with_static_obstacles {
-                    // Static scenery and massless peer controllers cannot
-                    // select an earlier path stop or finite-mass contact.
-                    // Keep the pre-step state paired with the saved totals.
-                    // The committed controller pass still resolves contacts.
-                    self.save_character_preview(&mut scratch.preview);
-                } else {
-                    self.preview_characters(&mut scratch.preview);
-                    self.restore_character_preview(&scratch.preview);
-                    self.solve_character_dynamic_contacts();
-                    self.preview_characters(&mut scratch.preview);
-                    self.refresh_path_motion_queries();
-                }
-                #[cfg(test)]
-                if std::thread::current().name().is_some_and(|name| {
-                    name.ends_with(
-                        "full_cycle_inside_tick_preserves_rider_transport_and_motion_work",
-                    )
-                }) {
-                    eprintln!(
-                        "C12_CYCLE_PREVIEW start={start} end={end} stops={:?} stopped_bodies={:?}",
-                        scratch.stopped, scratch.stopped_bodies
-                    );
-                    for (id, r) in &self.characters {
-                        eprintln!("C12_CYCLE_RUNTIME id={id:?} state={:?} fraction={} blocker={:?} motion_stop={:?} free={:?} geometric={:?} free_carry={:?}",
-                            r.state,r.carry_fraction,r.carry_blocker,r.motion_stop,r.free_velocity,r.free_translation,r.free_carry_translation);
-                    }
-                }
-                let mut limit =
-                    self.limit_kinematic_paths(paths, &scratch.stopped, &scratch.preview);
-                let character_fraction = self.character_stops(
-                    &scratch.preview,
-                    &scratch.stopped_bodies,
-                    &mut scratch.pending_stops,
-                );
-                if !scratch.pending_stops.is_empty() {
-                    if character_fraction < limit.fraction {
-                        limit.mask = 0;
-                        limit.others.clear();
-                        limit.fraction = character_fraction;
-                    } else if character_fraction > limit.fraction {
-                        scratch.pending_stops.clear();
-                    }
-                }
-                #[cfg(test)]
-                if std::thread::current().name().is_some_and(|name| {
-                    name.ends_with(
-                        "full_cycle_inside_tick_preserves_rider_transport_and_motion_work",
-                    )
-                }) {
-                    eprintln!("C12_CYCLE_LIMIT start={start} end={end} fraction={} mask={} other={:?} char_fraction={character_fraction} char_stops={:?}",
-                        limit.fraction,limit.mask,limit.others,scratch.pending_stops);
-                }
-                let mut character_stop_count = scratch.pending_stops.len();
-                for other in &limit.others {
-                    if !scratch.pending_stops.contains(other) {
-                        scratch.pending_stops.push(*other);
-                    }
-                }
-                self.record_path_queries(
-                    limit.casts,
-                    limit.failures,
-                    !controllers_with_static_obstacles && !scratch.preview.is_empty(),
-                );
-                let mut dynamic_fraction = self.limit_character_dynamic_motion();
-                if dynamic_fraction < 1. && dynamic_events >= dynamic_event_budget {
-                    // Fall back to the bounded conservative movement sweep for
-                    // the suffix. Time and persistent forces still advance.
-                    for runtime in self.characters.values_mut() {
-                        runtime.dynamic_limited = true;
-                    }
-                    dynamic_fraction = 1.;
-                }
-                self.restore_character_preview(&scratch.preview);
-                let mut dynamic_event = dynamic_fraction < limit.fraction;
-                if dynamic_event {
-                    limit.mask = 0;
-                    scratch.pending_stops.clear();
-                    limit.fraction = dynamic_fraction;
-                }
-                let mut impact =
-                    if limit.mask == 0 && scratch.pending_stops.is_empty() && !dynamic_event {
-                        end
-                    } else {
-                        start + (end - start) * limit.fraction
-                    };
-                if impact > start && impact < end && self.needs_prefix_recheck() {
-                    let event = self.refine_prefix_event(
-                        paths,
-                        &mut scratch,
-                        start,
-                        impact,
-                        dt,
-                        limit.mask,
-                        character_stop_count,
-                        dynamic_event,
-                        dynamic_events < dynamic_event_budget,
-                        event_prefix::MAX_REFINEMENTS,
-                    );
-                    impact = event.impact;
-                    limit.mask = event.mask;
-                    character_stop_count = event.character_stops;
-                    dynamic_event = event.dynamic;
-                }
-                if self.actual_motion_result().is_err() {
-                    let _ = self.finish_actual_interval_credit(credit_start);
-                    break 'cuts;
-                }
-                if dynamic_event {
-                    dynamic_events += 1;
-                }
-                if impact > start {
-                    self.backend.integration_parameters.dt =
-                        match super::motion_time::native_duration(dt * (impact - start)) {
-                            Ok(seconds) => seconds,
-                            Err(error) => {
-                                self.character_motion.backend_motion.fail(error);
-                                let _ = self.finish_actual_interval_credit(credit_start);
-                                break 'cuts;
-                            }
-                        };
-                    self.set_path_targets(paths, &scratch, impact);
-                    // The controller already selected these exact stop owners.
-                    // Register their consumer role before the first Native
-                    // interval so no unverified earlier prefix is skipped by a
-                    // later promotion. Full actual admission still owns motion.
-                    if let Err(error) = self.classify_preview_stop_consumers(&scratch.pending_stops)
-                    {
-                        self.character_motion.backend_motion.fail(error);
-                        let _ = self.finish_actual_interval_credit(credit_start);
-                        break 'cuts;
-                    }
-                    self.step_characters();
-                    if let Err(error) = self.classify_coupled_drivers() {
-                        self.character_motion.backend_motion.fail(error);
-                        let _ = self.finish_actual_interval_credit(credit_start);
-                        break 'cuts;
-                    }
-                    self.step_with_joints(start, impact);
-                    let credited = self.finish_actual_interval_credit(credit_start).is_ok();
-                    let stops = self.publish_actual_path_stops(&mut scratch, dt).is_ok();
-                    let accepted = credited && stops;
-                    if accepted {
-                        self.finish_characters();
-                    }
-                    let progressed = self.actual_motion_completed_time() > credit_start;
-                    if accepted || progressed {
-                        self.accumulate_character_slice(&mut scratch);
-                    }
-                    if !accepted {
-                        if progressed {
-                            wake_refinements = 0;
-                        }
-                        if wake_refinements == event_prefix::MAX_REFINEMENTS {
-                            break 'cuts;
-                        }
-                        wake_refinements += 1;
-                        start = (self.actual_motion_completed_time() / dt).clamp(start, cut_end);
-                        if start >= cut_end {
-                            break 'cuts;
-                        }
-                        match self.retry_actual_wake(dt * (cut_end - start)) {
-                            Ok(Some(
-                                super::character_motion::backend::WakeRetry::Joined
-                                | super::character_motion::backend::WakeRetry::Promoted,
-                            )) => {
-                                retry_end = None;
-                                wake_refinements = 0;
-                                continue;
-                            }
-                            Ok(Some(super::character_motion::backend::WakeRetry::Prefix(
-                                seconds,
-                            ))) => {
-                                let next = start + seconds / dt;
-                                if next <= start || next > cut_end {
-                                    self.character_motion
-                                        .backend_motion
-                                        .fail(super::motion_error::TrajectoryError::InvalidTime);
-                                    break 'cuts;
-                                }
-                                retry_end = Some(next);
-                                continue;
-                            }
-                            _ => break 'cuts,
-                        }
-                    }
-                    wake_refinements = 0;
-                } else {
-                    let _ = self.finish_actual_interval_credit(credit_start);
-                }
-                // Every event stops at least one new prescribed body. Zero-time
-                // contacts never integrate dt=0 or consume queued character input.
-                for (stop_index, &id) in scratch.pending_stops.iter().enumerate() {
-                    if stop_index >= character_stop_count {
-                        self.stop_prescribed_body(id);
-                    } else {
-                        self.stop_character_obstacle(id);
-                    }
-                    scratch.stopped_bodies.push(id);
-                    if let Some(index) = paths.iter().position(|p| p.body == id) {
-                        if scratch.stopped[index].is_none() {
-                            scratch.stopped[index] = Some(impact);
-                            self.record_path_stop();
-                        }
-                    }
-                }
-                for (index, stop) in scratch.stopped.iter_mut().enumerate() {
-                    if limit.mask & (1 << index) != 0 && stop.is_none() {
-                        *stop = Some(impact);
-                        self.record_path_stop();
-                    }
-                }
-                start = impact;
-                if retry_end.is_some_and(|end| start >= end) {
-                    retry_end = None;
-                }
-            }
-        }
-        self.backend.integration_parameters.dt = native_dt;
-        self.publish_character_slices(&scratch, native_dt, false);
-        self.finish_fixed_step();
-        if self.actual_motion_completed_time() > 0. || self.actual_motion_result().is_ok() {
-            std::mem::swap(&mut self.path_scratch, &mut scratch);
-        }
-        self.tick_outputs.paths = scratch;
-    }
     fn prepare_path_scratch(&self, paths: &[KinematicPath], scratch: &mut PathScratch) {
         scratch.cuts.clear();
         scratch.cuts.push(1.0);
@@ -560,26 +215,15 @@ impl PhysicsWorld3d {
                 total.blocked_by_character |= current.blocked_by_character;
                 total.character_pair_casts += current.character_pair_casts;
                 total.character_pair_contact_checks += current.character_pair_contact_checks;
-                total.character_coupling_iterations += current.character_coupling_iterations;
-                total.character_coupling_iteration_limit |=
-                    current.character_coupling_iteration_limit;
-                total.failed_pair_casts += current.failed_pair_casts;
                 total.moving_obstacle_casts += current.moving_obstacle_casts;
                 total.failed_moving_obstacle_casts += current.failed_moving_obstacle_casts;
                 total.moving_obstacle_contact_checks += current.moving_obstacle_contact_checks;
-                total.failed_moving_obstacle_contacts += current.failed_moving_obstacle_contacts;
                 total.blocked_by_moving_obstacle |= current.blocked_by_moving_obstacle;
-                total.moving_obstacle_iteration_limit |= current.moving_obstacle_iteration_limit;
                 total.dropped_contacts += current.dropped_contacts;
             }
         }
     }
-    fn publish_character_slices(
-        &mut self,
-        scratch: &PathScratch,
-        native_dt: f32,
-        retain_grounded_carrier: bool,
-    ) {
+    fn publish_character_slices(&mut self, scratch: &PathScratch, native_dt: f32) {
         for (id, total) in &scratch.characters {
             if let Some(runtime) = self.characters.get_mut(id) {
                 runtime.state.translation = total.translation;
@@ -588,33 +232,23 @@ impl PhysicsWorld3d {
                 // rider remains grounded on the same platform.
                 runtime.state.carried_by = if total.carry_translation != [0.; 3] {
                     total.carried_by
-                } else if retain_grounded_carrier {
+                } else {
                     total.carried_by.filter(|&body| {
                         runtime
                             .state
                             .ground
                             .is_some_and(|ground| ground.body == body)
                     })
-                } else {
-                    None
                 };
                 runtime.state.carry_translation = total.carry_translation;
                 runtime.state.hit_ceiling = total.hit_ceiling;
                 runtime.state.blocked_by_character = total.blocked_by_character;
                 runtime.state.character_pair_casts = total.character_pair_casts;
                 runtime.state.character_pair_contact_checks = total.character_pair_contact_checks;
-                runtime.state.character_coupling_iterations = total.character_coupling_iterations;
-                runtime.state.character_coupling_iteration_limit =
-                    total.character_coupling_iteration_limit;
-                runtime.state.failed_pair_casts = total.failed_pair_casts;
                 runtime.state.moving_obstacle_casts = total.moving_obstacle_casts;
                 runtime.state.failed_moving_obstacle_casts = total.failed_moving_obstacle_casts;
                 runtime.state.moving_obstacle_contact_checks = total.moving_obstacle_contact_checks;
-                runtime.state.failed_moving_obstacle_contacts =
-                    total.failed_moving_obstacle_contacts;
                 runtime.state.blocked_by_moving_obstacle = total.blocked_by_moving_obstacle;
-                runtime.state.moving_obstacle_iteration_limit =
-                    total.moving_obstacle_iteration_limit;
                 runtime.state.dropped_contacts = total.dropped_contacts;
             }
         }

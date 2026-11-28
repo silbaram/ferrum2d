@@ -43,24 +43,6 @@ struct TargetMotion {
     end_fraction: Time,
 }
 
-impl StepMotion {
-    pub(in crate::physics3d) fn stage_tick(&mut self, prior: &mut Self) {
-        prior.ready = self.ready;
-        prior.elapsed = self.elapsed;
-        prior.capture_failed = self.capture_failed;
-        std::mem::swap(&mut self.starts, &mut prior.starts);
-        std::mem::swap(&mut self.segments, &mut prior.segments);
-    }
-
-    pub(in crate::physics3d) fn restore_tick(&mut self, prior: &mut Self) {
-        self.ready = prior.ready;
-        self.elapsed = prior.elapsed;
-        self.capture_failed = prior.capture_failed;
-        std::mem::swap(&mut self.starts, &mut prior.starts);
-        std::mem::swap(&mut self.segments, &mut prior.segments);
-    }
-}
-
 impl PhysicsWorld3d {
     pub(crate) fn step_motion_capture_state(&self) -> StepMotionCaptureState {
         StepMotionCaptureState {
@@ -149,18 +131,11 @@ impl PhysicsWorld3d {
             used: 0,
             limit: MAX_CAPTURE_WORK,
         };
-        self.finish_step_motion(&mut work);
-    }
-
-    pub(in crate::physics3d) fn finish_step_motion(
-        &mut self,
-        work: &mut crate::physics3d::motion_work::Work,
-    ) {
-        self.step_motion.finish(&self.backend.colliders, work);
+        self.step_motion.finish(&self.backend.colliders, &mut work);
     }
 
     /// Casts against this tick's captured target motion, using normalized tick time.
-    /// The ordinary path interpolates each target's published start and end
+    /// Each target interpolates between its published start and end
     /// poses. Targets that turn and return within a tick may not be observed.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn sweep_step_motion(

@@ -32,7 +32,7 @@ enum KccQuery {
 impl PhysicsWorld3d {
     pub(in crate::physics3d) fn step_character_kcc(&mut self) -> Result<(), PhysicsError> {
         self.begin_fixed_step()?;
-        self.step_kcc_interval(&[], 0., 1., &mut Vec::new());
+        self.step_kcc_interval(&[], &mut Vec::new());
         self.finish_fixed_step();
         Ok(())
     }
@@ -40,8 +40,6 @@ impl PhysicsWorld3d {
     pub(in crate::physics3d) fn step_kcc_interval(
         &mut self,
         paths: &[KinematicPath],
-        start: f64,
-        end: f64,
         stopped: &mut Vec<BodyId>,
     ) {
         self.refresh_queries();
@@ -77,7 +75,7 @@ impl PhysicsWorld3d {
             );
         }
         self.characters = characters;
-        self.step_with_joints(start, end);
+        self.step_with_joints();
         for id in velocity_stops {
             self.stop_prescribed_body(id);
         }
@@ -109,6 +107,32 @@ impl PhysicsWorld3d {
             }
         }
         self.characters = characters;
+    }
+
+    fn refresh_path_motion_queries(&mut self) {
+        let schedule = self.backend_pass_schedule();
+        for (_, body) in self
+            .backend
+            .bodies
+            .iter()
+            .filter(|(_, b)| b.is_enabled() && b.is_kinematic())
+        {
+            for &id in body.colliders() {
+                if let Some(collider) = self.backend.colliders.get(id).filter(|c| c.is_enabled()) {
+                    let motion = accepted_collider_motion(
+                        body,
+                        collider,
+                        self.backend.integration_parameters.dt,
+                        &schedule,
+                    );
+                    self.backend.broad_phase.set_aabb(
+                        &self.backend.integration_parameters,
+                        id,
+                        motion_bounds(collider.shape(), &motion),
+                    );
+                }
+            }
+        }
     }
 
     fn kcc_ground(&self, plan: &MovePlan, distance: f32) -> Option<ColliderRef> {
@@ -838,7 +862,7 @@ impl PhysicsWorld3d {
                 }
             }
         }
-        self.record_path_queries(casts, failures, false);
+        self.record_path_queries(casts, failures);
         for &id in &blocked {
             self.stop_prescribed_body(id);
         }

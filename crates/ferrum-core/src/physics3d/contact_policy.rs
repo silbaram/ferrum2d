@@ -40,8 +40,6 @@ pub(super) struct ContactPolicies {
     pub(super) corrections: BTreeMap<ColliderId, super::ContactCorrection>,
     pub(super) surfaces: BTreeMap<ColliderId, [f32; 3]>,
     pub(super) spans: BTreeMap<BodyId, PlanarCollisionSpan>,
-    /// Only character/dynamic pairs whose impulses are owned by the controller.
-    pub(super) character_dynamic_pairs: std::collections::BTreeSet<(ColliderId, ColliderId)>,
 }
 
 fn body_id(handle: rp::RigidBodyHandle) -> BodyId {
@@ -102,13 +100,7 @@ impl ContactPolicies {
 
     pub(super) fn flags(&self, body: BodyId, collider: ColliderId) -> rp::ActiveHooks {
         let mut flags = rp::ActiveHooks::empty();
-        if self.spans.contains_key(&body)
-            || self.one_way.contains_key(&collider)
-            || self
-                .character_dynamic_pairs
-                .iter()
-                .any(|&(a, b)| a == collider || b == collider)
-        {
+        if self.spans.contains_key(&body) || self.one_way.contains_key(&collider) {
             flags |=
                 rp::ActiveHooks::FILTER_CONTACT_PAIRS | rp::ActiveHooks::FILTER_INTERSECTION_PAIR;
         }
@@ -129,14 +121,7 @@ impl rp::PhysicsHooks for ContactPolicies {
         {
             return None;
         }
-        let a = collider_id(context.collider1);
-        let b = collider_id(context.collider2);
-        let pair = if a < b { (a, b) } else { (b, a) };
-        Some(if self.character_dynamic_pairs.contains(&pair) {
-            rp::SolverFlags::empty()
-        } else {
-            rp::SolverFlags::COMPUTE_RIGID_IMPULSES
-        })
+        Some(rp::SolverFlags::COMPUTE_RIGID_IMPULSES)
     }
 
     fn filter_intersection_pair(&self, context: &rp::PairFilterContext) -> bool {

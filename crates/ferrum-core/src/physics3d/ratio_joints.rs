@@ -164,23 +164,11 @@ impl PhysicsWorld3d {
         }
     }
 
-    pub(super) fn solve_ratio_joints(&mut self, pass: ConstraintPass) -> bool {
+    pub(super) fn solve_ratio_joints(&mut self, pass: ConstraintPass) {
         let dt = self.backend.integration_parameters.dt;
         let positions = pass == ConstraintPass::Positions;
-        let proof = self.backend_motion_enabled();
         if positions {
-            if proof {
-                if let Err(error) = self
-                    .character_motion
-                    .backend_motion
-                    .prepare_disabled_pairs(&self.joints)
-                {
-                    self.character_motion.backend_motion.fail(error);
-                    return false;
-                }
-            } else {
-                self.ratio_tick.refresh_disabled_pairs(&self.joints);
-            }
+            self.ratio_tick.refresh_disabled_pairs(&self.joints);
         }
         // Bounded Gauss-Seidel sweeps cover chains of ratio joints without allocating.
         for _ in 0..8 {
@@ -390,19 +378,7 @@ impl PhysicsWorld3d {
                         count += 1;
                     }
                     let changes = &compact[..count];
-                    if proof {
-                        if let Err(error) = super::character_motion::backend::admit_ratio_positions(
-                            &self.backend.bodies,
-                            &self.backend.colliders,
-                            &self.contact_policies,
-                            changes,
-                            self.backend.integration_parameters.allowed_linear_error(),
-                            &mut self.character_motion.backend_motion,
-                        ) {
-                            self.character_motion.backend_motion.fail(error);
-                            return false;
-                        }
-                    } else if !correction_fits(
+                    if !correction_fits(
                         &self.backend.bodies,
                         &self.backend.colliders,
                         &self.contact_policies,
@@ -486,6 +462,5 @@ impl PhysicsWorld3d {
                 self.advance_planar_angles(0.0);
             }
         }
-        true
     }
 }

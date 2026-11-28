@@ -1,6 +1,5 @@
 //! Native work counts and CCD observations, independent of geometric queries.
 use super::events::collider_ref;
-use super::motion_time::Domain;
 use super::world::native_id;
 use super::{BodyId, ColliderRef, PhysicsWorld3d};
 
@@ -13,26 +12,25 @@ pub struct StepStatistics {
     pub kinematic_character_stops: u32,
     /// Prescribed path collider-pair casts, separate from backend CCD work.
     pub kinematic_path_casts: u32,
-    /// Unsupported prescribed-path casts or nonconverging event-prefix previews;
-    /// affected paths stop conservatively while the accepted clock is consumed.
+    /// Unsupported moving-obstacle casts, which stop the path conservatively.
     pub kinematic_path_failures: u32,
     /// Distinct prescribed paths stopped by an obstacle or a blocked rider.
     pub kinematic_path_stops: u32,
-    /// Controller previews for prescribed motion limits, without consuming input or pushing bodies.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_preview_passes: u32,
-    /// Pair casts done by controller previews, excluded from accepted character state counts.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_preview_pair_casts: u32,
-    /// Capsule-pair contact queries in previews, counted once per pair query.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_preview_pair_contacts: u32,
-    /// Participant visits to coupled constraint rows during previews (two for a pair row).
+    /// Reserved v1 diagnostic. Always zero.
     pub character_preview_coupling_visits: u32,
-    /// Preview participants reaching a coupled solver or timeline work limit.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_preview_coupling_limits: u32,
-    /// Relative moving-obstacle pair queries performed by controller previews.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_preview_obstacle_casts: u32,
-    /// Geometric contact queries at sweep starts and contact refreshes in previews.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_preview_obstacle_contacts: u32,
-    /// Unsupported sweep/contact queries encountered by controller previews.
+    /// Reserved v1 diagnostic. Always zero.
     pub character_preview_obstacle_failures: u32,
     /// Calls into the backend pipeline (one normally; several for joint substeps).
     pub backend_steps: u32,
@@ -108,17 +106,6 @@ fn count(n: usize) -> u32 {
     n.min(u32::MAX as usize) as u32
 }
 
-impl Statistics {
-    pub(super) fn stage_step(&mut self, prior: &mut Self) {
-        // Keep an empty, already reserved CCD buffer on the live side.
-        prior.clamps.clear();
-        if self.clamps.is_empty() && self.clamps.capacity() > prior.clamps.capacity() {
-            std::mem::swap(&mut self.clamps, &mut prior.clamps);
-        }
-        std::mem::swap(self, prior);
-    }
-}
-
 impl PhysicsWorld3d {
     pub(super) fn record_character_stop(&mut self) {
         self.statistics.step.kinematic_character_stops = self
@@ -128,49 +115,12 @@ impl PhysicsWorld3d {
             .saturating_add(1);
     }
 
-    pub(super) fn record_path_queries(&mut self, casts: u32, failures: u32, preview: bool) {
+    pub(super) fn record_path_queries(&mut self, casts: u32, failures: u32) {
         let s = &mut self.statistics.step;
         s.kinematic_path_casts = s.kinematic_path_casts.saturating_add(casts);
         s.kinematic_path_failures = s.kinematic_path_failures.saturating_add(failures);
-        if !preview {
-            return;
-        }
-        s.character_preview_passes = s.character_preview_passes.saturating_add(1);
-        // The controller records each pair query on both participants.
-        let participants = self.characters.values().fold(0usize, |sum, runtime| {
-            sum.saturating_add(runtime.state.character_pair_casts)
-        });
-        s.character_preview_pair_casts = s
-            .character_preview_pair_casts
-            .saturating_add(count(participants / 2));
-        let pair_contacts = self.characters.values().fold(0usize, |sum, r| {
-            sum.saturating_add(r.state.character_pair_contact_checks)
-        });
-        s.character_preview_pair_contacts = s
-            .character_preview_pair_contacts
-            .saturating_add(count(pair_contacts / 2));
-        for runtime in self.characters.values() {
-            s.character_preview_coupling_visits = s
-                .character_preview_coupling_visits
-                .saturating_add(count(runtime.state.character_coupling_iterations));
-            s.character_preview_coupling_limits = s
-                .character_preview_coupling_limits
-                .saturating_add(u32::from(runtime.state.character_coupling_iteration_limit));
-            s.character_preview_obstacle_contacts = s
-                .character_preview_obstacle_contacts
-                .saturating_add(count(runtime.state.moving_obstacle_contact_checks));
-            s.character_preview_obstacle_failures =
-                s.character_preview_obstacle_failures.saturating_add(count(
-                    runtime
-                        .state
-                        .failed_moving_obstacle_casts
-                        .saturating_add(runtime.state.failed_moving_obstacle_contacts),
-                ));
-            s.character_preview_obstacle_casts = s
-                .character_preview_obstacle_casts
-                .saturating_add(count(runtime.state.moving_obstacle_casts));
-        }
     }
+
     pub(super) fn record_path_stop(&mut self) {
         self.statistics.step.kinematic_path_stops =
             self.statistics.step.kinematic_path_stops.saturating_add(1);
@@ -205,176 +155,10 @@ impl PhysicsWorld3d {
         );
     }
 
-    pub(super) fn step_backend(
-        &mut self,
-        controller_seconds: f32,
-        logical_domain: Option<Domain>,
-    ) -> bool {
-        let motion_proof = logical_domain.is_some();
-        self.events
-            .2
-            .get_mut()
-            .unwrap_or_else(|p| p.into_inner())
-            .reset(self.step_motion.enabled && motion_proof);
+    pub(super) fn step_backend(&mut self) {
         self.backend.ccd_solver.reset_diagnostics();
-        let mut approved = true;
-        if let Some(logical_domain) = logical_domain {
-            let mut scratch = std::mem::take(&mut self.character_motion.backend_motion);
-            let mut ran_backend = false;
-            let diagnostics_ready = (|| {
-                // These persistent output buffers retain their existing
-                // max_events bound, independent of geometry/timeline scratch.
-                self.config
-                    .max_events
-                    .checked_mul(
-                        std::mem::size_of::<rapier3d::dynamics::CcdClamp>()
-                            + std::mem::size_of::<CcdClamp>(),
-                    )
-                    .ok_or(super::solver_trajectory::TrajectoryError::WorkLimit)?;
-                let native = usize::from(
-                    self.backend.ccd_solver.diagnostics().clamps.capacity()
-                        < self.config.max_events,
-                );
-                let core = usize::from(self.statistics.clamps.capacity() < self.config.max_events);
-                let records = self
-                    .config
-                    .max_events
-                    .checked_mul(native + core)
-                    .ok_or(super::solver_trajectory::TrajectoryError::WorkLimit)?;
-                scratch.prepare_diagnostic_work(records)?;
-                self.backend
-                    .ccd_solver
-                    .try_reserve_diagnostics()
-                    .map_err(|_| super::solver_trajectory::TrajectoryError::WorkLimit)?;
-                self.statistics
-                    .clamps
-                    .try_reserve_exact(
-                        self.config
-                            .max_events
-                            .saturating_sub(self.statistics.clamps.len()),
-                    )
-                    .map_err(|_| super::solver_trajectory::TrajectoryError::WorkLimit)?;
-                Ok(())
-            })();
-            match diagnostics_ready
-                .and_then(|()| self.prepare_backend_motion(&mut scratch, controller_seconds))
-            {
-                Ok(max_scratch) => {
-                    let events = super::character_motion::backend::BackendEvents {
-                        collector: &self.events,
-                        characters: &self.characters,
-                        policies: &self.contact_policies,
-                        scratch: std::sync::Mutex::new(&mut scratch),
-                        max_scratch,
-                        restitution_threshold: self.config.solver.restitution_velocity_threshold,
-                        controller_seconds,
-                        logical_domain,
-                        continuous: self.config.solver.continuous,
-                        contact_error: self.backend.integration_parameters.allowed_linear_error(),
-                        path_clearance: 0.0001 * self.config.length_unit,
-                        has_sensors: self
-                            .backend
-                            .colliders
-                            .iter()
-                            .any(|(_, c)| c.is_enabled() && c.is_sensor()),
-                    };
-                    ran_backend = true;
-                    self.backend
-                        .step_with_events(&self.contact_policies, &events);
-                }
-                Err(error) => scratch.fail(error),
-            }
-            approved = ran_backend
-                && scratch.error().is_none()
-                && !scratch.needs_promotion()
-                && scratch.wake_join.is_none()
-                && self.backend.physics_pipeline.solver_motion_decision()
-                    == rapier3d::pipeline::SolverMotionDecision::Approved;
-            let committed = if ran_backend {
-                self.backend.physics_pipeline.solver_motion_committed_time()
-            } else {
-                0.
-            };
-            if !approved && ran_backend {
-                scratch.reject_current_pass();
-            }
-            #[cfg(test)]
-            if std::thread::current().name().is_some_and(|name| {
-                [
-                    "engine::unified_physics::platform_blocking_tests::external_squeeze_stops_the_engine_body_and_accumulates_work_across_ticks",
-                    "physics3d::character_squeeze_tests::squeeze_substeps_preserve_force_targets_and_original_motion_time",
-                    "physics3d::character_squeeze_tests::squeeze_events_preserve_unrelated_jump_input_and_full_tick_translation",
-                    "physics3d::character_dynamic_tests::finite_character_crate_and_fixed_wall_share_the_accepted_stop",
-                ]
-                .contains(&name)
-            }) {
-                eprintln!(
-                    "C34_NATIVE_CREDIT case={:?} tick_seconds={} controller_seconds={controller_seconds} native_dt={} before={} committed={committed} after={} ran={ran_backend} approved={approved} raw={:?} promote={} wake={:?} decision={:?} ccd_substeps={} recorded_backend_steps={}",
-                    std::thread::current().name(),
-                    self.config.step_seconds,
-                    self.backend.integration_parameters.dt,
-                    scratch.committed_seconds,
-                    if committed > 0. { committed } else { scratch.committed_seconds },
-                    scratch.error(),
-                    scratch.needs_promotion(),
-                    scratch.wake_join,
-                    self.backend.physics_pipeline.solver_motion_decision(),
-                    self.backend.physics_pipeline.counters.ccd.num_substeps,
-                    self.statistics.step.backend_steps,
-                );
-            }
-            // This is the same absolute domain end used by every accepted
-            // kernel/proof/impulse/trace, not a sum of rounded physical dt.
-            if committed > 0. {
-                scratch.committed_seconds = committed;
-            }
-            if let Err(error) = scratch.publish_impulses(&self.events) {
-                scratch.fail(error);
-                approved = false;
-            }
-            scratch.finish_trace(
-                &self.events,
-                &self.backend.bodies,
-                &self.backend.colliders,
-                committed,
-            );
-            match scratch.finish_feedback(&self.characters, &self.backend.bodies) {
-                Ok(()) => {
-                    if let Err(error) =
-                        self.publish_backend_motion_feedback(&scratch.feedback, controller_seconds)
-                    {
-                        scratch.fail(error);
-                        approved = false;
-                    } else {
-                        scratch.commit_feedback();
-                    }
-                }
-                Err(error) => {
-                    scratch.fail(error);
-                    approved = false;
-                }
-            }
-            let (casts, failures) = scratch.path_query_counts();
-            self.statistics.step.kinematic_path_casts = self
-                .statistics
-                .step
-                .kinematic_path_casts
-                .saturating_add(casts);
-            self.statistics.step.kinematic_path_failures = self
-                .statistics
-                .step
-                .kinematic_path_failures
-                .saturating_add(failures);
-            self.character_motion.backend_motion = scratch;
-            if !ran_backend {
-                return false;
-            }
-        } else {
-            self.backend
-                .step_with_events(&self.contact_policies, &self.events);
-            self.character_motion.backend_motion.committed_seconds +=
-                f64::from(self.backend.integration_parameters.dt);
-        }
+        self.backend
+            .step_with_events(&self.contact_policies, &self.events);
         let s = &mut self.statistics.step;
         let counters = &self.backend.physics_pipeline.counters;
         s.backend_steps = s.backend_steps.saturating_add(1);
@@ -421,7 +205,6 @@ impl PhysicsWorld3d {
                 normal: hit.normal.into(),
             });
         }
-        approved
     }
 
     pub(super) fn finish_statistics(&mut self) {

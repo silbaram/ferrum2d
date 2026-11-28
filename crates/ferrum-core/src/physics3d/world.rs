@@ -11,13 +11,11 @@ use std::collections::BTreeMap;
 use std::fmt;
 #[cfg(test)]
 pub(super) mod p1a_tests;
-pub(super) mod tick_outputs;
 
 /// Rust-owned simulation. Space selection changes constraints, not the solver backend.
 pub struct PhysicsWorld3d {
     pub(super) backend: rp::PhysicsWorld,
     pub(super) statistics: super::statistics::Statistics,
-    pub(super) tick_outputs: tick_outputs::TickOutputs,
     pub(super) config: WorldConfig,
     // Present only while an Engine interval uses an actual variable duration.
     // Both settings are restored before any public checkpoint boundary.
@@ -29,13 +27,10 @@ pub struct PhysicsWorld3d {
     /// Query snapshots store these values instead of process-local SharedShape pointers.
     pub(super) collider_shape_revisions: BTreeMap<super::ColliderId, u64>,
     pub(super) path_scratch: super::kinematic_paths::PathScratch,
+    pub(super) path_work: super::kinematic_paths::PathScratch,
     pub(super) step_motion: super::queries::StepMotion,
     pub(super) characters: BTreeMap<BodyId, CharacterRuntime>,
-    // Keep reusable solver scratch out of by-value Engine and checkpoint decode frames.
-    pub(super) character_motion: Box<super::character_motion::MotionScene>,
     pub(super) character_order: Vec<BodyId>,
-    pub(super) character_contacts: super::character_contacts::Scratch,
-    pub(super) character_dynamics: super::character_dynamics::Scratch,
     pub(super) joints: BTreeMap<super::JointId, JointRuntime>,
     pub(super) joint_events: Vec<super::JointEvent>,
     pub(super) dropped_joint_events: usize,
@@ -107,7 +102,6 @@ impl PhysicsWorld3d {
         Ok(Self {
             backend,
             statistics: super::statistics::Statistics::default(),
-            tick_outputs: Default::default(),
             events: EventCollector::new(config.max_events),
             contact_policies: super::contact_policy::ContactPolicies {
                 planar: config.space == Space::PlanarXy,
@@ -119,12 +113,10 @@ impl PhysicsWorld3d {
             query_updates: Vec::new(),
             collider_shape_revisions: BTreeMap::new(),
             path_scratch: Default::default(),
+            path_work: Default::default(),
             step_motion: super::queries::StepMotion::default(),
             characters: BTreeMap::new(),
             character_order: Vec::new(),
-            character_contacts: Default::default(),
-            character_dynamics: Default::default(),
-            character_motion: Box::default(),
             joints: BTreeMap::new(),
             dropped_joint_events: 0,
             broken_joints: Vec::new(),
@@ -333,53 +325,21 @@ impl PhysicsWorld3d {
         let _ = self.step_checked();
     }
 
-    /// Internal Engine execution must consume the checked outcome; a failed
-    /// actual-motion suffix is never an instruction to run a second solver.
+    /// Check tick admission before consuming any staged inputs.
     pub(crate) fn step_checked(&mut self) -> Result<(), PhysicsError> {
-        if !self.characters.is_empty() && !self.backend_motion_enabled() {
+        if !self.characters.is_empty() {
             return self.step_character_kcc();
         }
-        if self.backend_motion_enabled() {
-            self.step_kinematic_tick(&[]);
-            return self.actual_motion_result();
-        }
         self.begin_fixed_step()?;
-        self.step_characters();
-        self.step_with_joints(0.0, 1.0);
-        self.finish_characters();
+        self.step_with_joints();
         self.finish_fixed_step();
         Ok(())
     }
 
     pub(super) fn begin_fixed_step(&mut self) -> Result<(), PhysicsError> {
-        let proof = self.backend_motion_enabled();
-        if !proof {
-            self.validate_rapier_step_seconds(self.backend.integration_parameters.dt)?;
-            self.prepare_rapier_ratio_tick()?;
-        }
-        self.begin_backend_motion_tick();
-        if proof {
-            if let Err(error) = self
-                .begin_backend_step_rollback()
-                .and_then(|()| self.prepare_tick_output_storage())
-            {
-                // Nothing in the world was changed during admission.
-                self.finish_backend_step_rollback();
-                self.character_motion.backend_motion.fail(error);
-                self.end_backend_motion_tick();
-                return self.actual_motion_result();
-            }
-            self.stage_tick_outputs();
-        }
-        // Product admission finished before consuming inputs. The proof
-        // journal still protects the forced solver's zero-progress attempts.
+        self.validate_rapier_step_seconds(self.backend.integration_parameters.dt)?;
+        self.prepare_rapier_ratio_tick()?;
         self.apply_staged_tick_inputs();
-        self.contact_policies.character_dynamic_pairs.clear();
-        for runtime in self.characters.values_mut() {
-            runtime.contact_velocity = [0.; 3];
-            runtime.dynamic_iterations = 0;
-            runtime.dynamic_limited = false;
-        }
         if !self.characters.is_empty() {
             for (_, body) in self
                 .backend
@@ -404,34 +364,10 @@ impl PhysicsWorld3d {
     }
 
     pub(super) fn finish_fixed_step(&mut self) {
-        let proof = self.backend_motion_enabled();
-        if proof && std::mem::take(&mut self.tick_outputs.active) {
-            let rejected =
-                self.actual_motion_completed_time() == 0. && self.actual_motion_result().is_err();
-            self.events.finish_tick_events(rejected);
-            if rejected {
-                self.restore_tick_outputs();
-                self.finish_backend_step_rollback();
-                self.end_backend_motion_tick();
-                return;
-            }
-        }
         self.record_interpolated_step_motion();
-        if proof {
-            let mut work = self.saved_motion_proof_work();
-            self.finish_step_motion(&mut work);
-            if self.commit_saved_motion_proof_work(work).is_err() {
-                self.step_motion.invalidate_capture();
-            }
-        } else {
-            self.finish_interpolated_step_motion();
-        }
+        self.finish_interpolated_step_motion();
         self.query_updates.clear();
         self.finish_statistics();
-        if proof {
-            self.finish_backend_step_rollback();
-        }
-        self.end_backend_motion_tick();
     }
 
     /// Reads an owned state without retaining a borrowed backend buffer.

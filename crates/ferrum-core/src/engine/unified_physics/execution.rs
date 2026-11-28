@@ -71,7 +71,6 @@ impl Engine {
         }
         let saved_gravity = runtime.physics.config().gravity;
         let saved_solver = runtime.physics.config().solver;
-        self.reset_native_motion_attempt();
         let config = config.unwrap_or(self.auto_rigid_body_step_config);
         let succeeded = if self.has_native_breakout() {
             self.step_native_breakout(dt, config)

@@ -1,7 +1,7 @@
 //! Completed-step capture reserves work before publishing a query BVH.
 //! Failure keeps the existing unavailable-capture contract, never a no-hit.
 use super::*;
-use crate::physics3d::{motion_error::TrajectoryError, motion_work::Work};
+use crate::physics3d::{motion_work::Work, PhysicsError};
 
 impl StepMotion {
     pub(in crate::physics3d) fn invalidate_capture(&mut self) {
@@ -9,37 +9,49 @@ impl StepMotion {
         self.ready = false;
     }
 
-    fn prepay_finish(&self, work: &mut Work) -> Result<(), TrajectoryError> {
+    fn prepay_finish(&self, work: &mut Work) -> Result<(), PhysicsError> {
         // This scan only reads keys/counts, not shapes or motion bounds. Cold
         // admission already limits the same counts to 2^20; checked arithmetic
         // also protects a live owner before its first completed capture.
         let scanned = self.segments.len().max(self.leaves) as u64;
-        work.charge(scanned.checked_add(16).ok_or(TrajectoryError::WorkLimit)?)?;
+        work.charge(
+            scanned
+                .checked_add(16)
+                .ok_or(PhysicsError::CapacityExceeded)?,
+        )?;
         let mut leaves = u64::from(self.bvh.leaf_count());
         let mut visits = 1u64;
         for index in 0..self.segments.len() {
-            let key = u32::try_from(index).map_err(|_| TrajectoryError::WorkLimit)?;
+            let key = u32::try_from(index).map_err(|_| PhysicsError::CapacityExceeded)?;
             if self.bvh.leaf_node(key).is_some() {
                 // Existing-key partial updates are constant-time indexed writes.
-                visits = visits.checked_add(1).ok_or(TrajectoryError::WorkLimit)?;
+                visits = visits
+                    .checked_add(1)
+                    .ok_or(PhysicsError::CapacityExceeded)?;
             } else {
                 // A new insert descends at most the current leaf count; each
                 // descent has a fixed local SAH/rotation phase. No balanced
                 // tree or logarithmic worst-case assumption is made.
-                leaves = leaves.checked_add(1).ok_or(TrajectoryError::WorkLimit)?;
+                leaves = leaves
+                    .checked_add(1)
+                    .ok_or(PhysicsError::CapacityExceeded)?;
                 visits = visits
                     .checked_add(leaves)
-                    .ok_or(TrajectoryError::WorkLimit)?;
+                    .ok_or(PhysicsError::CapacityExceeded)?;
             }
         }
         for index in self.segments.len()..self.leaves {
-            let key = u32::try_from(index).map_err(|_| TrajectoryError::WorkLimit)?;
+            let key = u32::try_from(index).map_err(|_| PhysicsError::CapacityExceeded)?;
             if self.bvh.leaf_node(key).is_some() {
                 // Removal can traverse every remaining ancestor. Use the
                 // current leaf bound, independent of previous rotations.
                 visits = visits
-                    .checked_add(leaves.checked_add(1).ok_or(TrajectoryError::WorkLimit)?)
-                    .ok_or(TrajectoryError::WorkLimit)?;
+                    .checked_add(
+                        leaves
+                            .checked_add(1)
+                            .ok_or(PhysicsError::CapacityExceeded)?,
+                    )
+                    .ok_or(PhysicsError::CapacityExceeded)?;
                 leaves = leaves.saturating_sub(1);
             }
         }
@@ -55,7 +67,7 @@ impl StepMotion {
                         .checked_mul(128)?,
                 )
             })
-            .ok_or(TrajectoryError::WorkLimit)?;
+            .ok_or(PhysicsError::CapacityExceeded)?;
         // These are logical node/storage/phase units, not CPU instructions or
         // allocator/RSS guarantees. It covers the complete tree update.
         work.charge(topology)

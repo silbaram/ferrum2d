@@ -3,8 +3,6 @@ use super::events::collider_ref;
 use super::{ColliderRef, PhysicsWorld3d};
 use rapier3d::prelude as rp;
 
-pub(in crate::physics3d) mod actual;
-
 /// One solved contact's impulse over a native solve (including its internal substeps).
 /// A fixed tick can contain several solves due to CCD or joint substeps.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -46,17 +44,6 @@ pub(super) struct ImpulseBuffer {
 }
 
 impl ImpulseBuffer {
-    pub(super) fn stage_reports(&mut self, prior: &mut Self) {
-        prior.contacts.clear();
-        if self.contacts.is_empty() && self.contacts.capacity() > prior.contacts.capacity() {
-            std::mem::swap(&mut self.contacts, &mut prior.contacts);
-        }
-        self.swap_reports(prior);
-    }
-    pub(super) fn swap_reports(&mut self, other: &mut Self) {
-        std::mem::swap(&mut self.contacts, &mut other.contacts);
-        std::mem::swap(&mut self.diagnostics, &mut other.diagnostics);
-    }
     pub(super) fn new(limit: usize) -> Self {
         Self {
             contacts: Vec::with_capacity(limit),
@@ -70,34 +57,6 @@ impl ImpulseBuffer {
         self.diagnostics = ContactImpulseDiagnostics::default();
     }
 
-    pub(super) fn prepare_actual(
-        &mut self,
-        expected_limit: usize,
-        work: &mut super::solver_trajectory::Work,
-        max_output_bytes: usize,
-    ) -> Result<(), super::solver_trajectory::TrajectoryError> {
-        use super::solver_trajectory::TrajectoryError;
-        work.charge(1)?;
-        if self.limit != expected_limit || self.contacts.len() > self.limit {
-            return Err(TrajectoryError::InvalidReference);
-        }
-        // This is persistent output backing, bounded by existing max_events.
-        // It is independent of the body-count-based transient proof scratch.
-        let bytes = expected_limit
-            .checked_mul(std::mem::size_of::<ContactImpulse>())
-            .ok_or(TrajectoryError::WorkLimit)?;
-        if bytes > max_output_bytes {
-            return Err(TrajectoryError::WorkLimit);
-        }
-        if self.contacts.capacity() < expected_limit {
-            work.charge(u64::try_from(expected_limit).map_err(|_| TrajectoryError::WorkLimit)?)?;
-            self.contacts
-                .try_reserve_exact(expected_limit - self.contacts.len())
-                .map_err(|_| TrajectoryError::WorkLimit)?;
-        }
-        Ok(())
-    }
-
     fn admit(&mut self) -> bool {
         self.diagnostics.solved_contacts = self.diagnostics.solved_contacts.saturating_add(1);
         if self.contacts.len() == self.limit {
@@ -106,26 +65,6 @@ impl ImpulseBuffer {
         } else {
             true
         }
-    }
-
-    fn append(&mut self, contact: ContactImpulse) {
-        if self.admit() {
-            self.contacts.push(contact);
-        }
-    }
-
-    pub(super) fn record_actual(&mut self, contacts: &[ContactImpulse], solved: usize) {
-        // Staging retains the first max_events rows and counts every additional
-        // solved row without unbounded backing storage. Native force events may
-        // already occupy some of the same tick's bounded output capacity.
-        debug_assert!(solved >= contacts.len());
-        debug_assert!(self.contacts.capacity() >= self.limit);
-        for contact in contacts {
-            self.append(contact.clone());
-        }
-        let omitted = solved.saturating_sub(contacts.len());
-        self.diagnostics.solved_contacts = self.diagnostics.solved_contacts.saturating_add(omitted);
-        self.diagnostics.dropped = self.diagnostics.dropped.saturating_add(omitted);
     }
 
     pub(super) fn record(&mut self, colliders: &rp::ColliderSet, pair: &rp::ContactPair) {

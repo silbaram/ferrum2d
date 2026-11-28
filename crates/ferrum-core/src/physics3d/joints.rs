@@ -1,5 +1,3 @@
-use super::motion_error::TrajectoryError;
-use super::motion_time::{Domain, Time};
 use super::ratio_joints::ConstraintPass;
 use super::types::{valid_pose, valid_vector};
 use super::world::{native_id, native_pose};
@@ -147,33 +145,6 @@ impl PhysicsWorld3d {
         }
     }
 
-    /// Prediction uses its own parameters. The resolver's common internal
-    /// cadence can be expanded here without changing or double-counting the
-    /// execution schedule's per-body additional solver/PGS requests.
-    pub(super) fn kinematic_prediction_schedule(&self) -> (rp::IntegrationParameters, usize) {
-        let (mut params, passes) = self.backend_pass_schedule();
-        if self.backend_motion_enabled() {
-            // Match the opted-in common cadence for the current awake set.
-            // Pending island changes can still alter that set: these previews
-            // remain provisional, and the actual proposal barrier owns final
-            // geometry approval. Execution always uses backend_pass_schedule.
-            let (extra, pgs) = self
-                .backend
-                .bodies
-                .iter()
-                .filter(|(_, body)| body.is_enabled() && !body.is_fixed() && !body.is_sleeping())
-                .fold((0, 0), |(iterations, pgs), (_, body)| {
-                    (
-                        iterations.max(body.additional_solver_iterations()),
-                        pgs.max(body.additional_pgs_iterations()),
-                    )
-                });
-            params.num_solver_iterations += extra;
-            params.num_internal_pgs_iterations += pgs;
-        }
-        (params, passes)
-    }
-
     pub(super) fn validate_rapier_step_seconds(&self, seconds: f32) -> Result<(), PhysicsError> {
         let passes = self.backend_pass_schedule().1;
         let dt = seconds / passes as f32;
@@ -184,42 +155,9 @@ impl PhysicsWorld3d {
         }
     }
 
-    fn joint_motion_domain(
-        &self,
-        start_fraction: Time,
-        end_fraction: Time,
-    ) -> Result<Domain, TrajectoryError> {
-        let tick = Time::from(self.config.step_seconds);
-        let start = if self.backend_motion_enabled() {
-            // A previously committed CCD boundary already has authoritative
-            // tick-time bits. Dividing by tick and multiplying back can move
-            // that boundary by one F64 ULP and create a gap/overlap.
-            self.actual_motion_completed_time()
-        } else {
-            tick * start_fraction
-        };
-        Domain::new(start, tick * end_fraction)
-    }
-
-    pub(super) fn step_with_joints(&mut self, start_fraction: Time, end_fraction: Time) {
-        self.character_motion
-            .backend_motion
-            .begin_controller_interval();
-        let domain = if self.backend_motion_enabled() {
-            match self.joint_motion_domain(start_fraction, end_fraction) {
-                Ok(domain) if domain.duration() > 0. => Some(domain),
-                _ => {
-                    self.character_motion
-                        .backend_motion
-                        .fail(TrajectoryError::InvalidTime);
-                    return;
-                }
-            }
-        } else {
-            None
-        };
+    pub(super) fn step_with_joints(&mut self) {
         if self.joints.is_empty() {
-            self.step_backend(self.backend.integration_parameters.dt, domain);
+            self.step_backend();
             self.refresh_queries();
             return;
         }
@@ -262,20 +200,12 @@ impl PhysicsWorld3d {
         for pass in 1..=passes {
             let alpha = pass as f32 / passes as f32;
             for &(id, start, target) in &kinematics {
-                let (slot, generation) = id.into_raw_parts();
-                let stopped = self
-                    .actual_prescribed_stop(BodyId { slot, generation })
-                    .is_some();
                 if let Some(body) = self.backend.bodies.get_mut(id) {
-                    let pose = if stopped {
-                        *body.position()
-                    } else {
-                        super::kinematic_paths::interpolate_kinematic_pose(
-                            start,
-                            target,
-                            f64::from(alpha),
-                        )
-                    };
+                    let pose = super::kinematic_paths::interpolate_kinematic_pose(
+                        start,
+                        target,
+                        f64::from(alpha),
+                    );
                     body.set_next_kinematic_position(pose);
                 }
             }
@@ -284,33 +214,14 @@ impl PhysicsWorld3d {
             self.limit_hinge_motors();
             if has_ratios {
                 self.reset_ratio_impulses();
-                if !self.solve_ratio_joints(ConstraintPass::BeforeIntegration) {
-                    break;
-                }
+                self.solve_ratio_joints(ConstraintPass::BeforeIntegration);
             }
             self.prepare_joint_reactions();
-            let pass_domain = if let Some(domain) = domain {
-                match domain.partition(pass - 1, passes) {
-                    Ok(part) if part.duration() > 0. => Some(part),
-                    _ => {
-                        self.character_motion
-                            .backend_motion
-                            .fail(TrajectoryError::InvalidTime);
-                        break;
-                    }
-                }
-            } else {
-                None
-            };
-            if !self.step_backend(params.dt, pass_domain) {
-                break;
-            }
+            self.step_backend();
             self.advance_planar_angles(self.backend.integration_parameters.dt);
-            if has_ratios
-                && (!self.solve_ratio_joints(ConstraintPass::AfterIntegration)
-                    || !self.solve_ratio_joints(ConstraintPass::Positions))
-            {
-                break;
+            if has_ratios {
+                self.solve_ratio_joints(ConstraintPass::AfterIntegration);
+                self.solve_ratio_joints(ConstraintPass::Positions);
             }
             self.finish_joints();
         }

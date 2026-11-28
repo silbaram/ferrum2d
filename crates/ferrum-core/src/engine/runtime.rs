@@ -300,7 +300,6 @@ impl Engine {
             return Ok(plan.update.consumed_seconds);
         }
         let mut completed = 0;
-        let mut partial = 0.;
         let mut motion_error = None;
         for step_index in 0..plan.steps {
             let result = self
@@ -315,23 +314,14 @@ impl Engine {
                         engine.data_scene.gameplay.combat.begin_frame();
                     }
                     let elapsed_before = engine.elapsed_seconds;
-                    engine.reset_native_motion_attempt();
                     engine.elapsed_seconds += f64::from(plan.interval);
                     let input = engine.fixed_step_input(step_index == 0);
                     let (resumed, presses) =
                         engine.begin_native_gameplay_tick(plan.interval, step_index, input);
                     engine.step_auto_rigid_bodies(plan.interval);
                     if let Some(error) = engine.native_step_failure() {
-                        partial = engine
-                            .actual_native_committed_seconds()
-                            .clamp(0., plan.interval);
                         motion_error = Some(error);
-                        if step_index == 0 && partial > 0. && resumed != Some(false) {
-                            engine.fixed_timestep_input_latch.clear();
-                        }
-                        if partial == 0. {
-                            engine.suspend_native_gameplay_tick(resumed, step_index);
-                        }
+                        engine.suspend_native_gameplay_tick(resumed, step_index);
                         engine.elapsed_seconds = elapsed_before;
                         return Err(error);
                     }
@@ -363,14 +353,13 @@ impl Engine {
                 }
             }
         }
-        let consumed = plan.interval * completed as f32 + partial;
+        let consumed = plan.interval * completed as f32;
         let update = FixedTimestepUpdate {
-            steps: completed + u32::from(partial > 0.),
+            steps: completed,
             alpha: 0.0,
             consumed_seconds: consumed,
             dropped_seconds: plan.update.dropped_seconds
-                + plan.interval * (plan.steps - completed) as f32
-                - partial,
+                + plan.interval * (plan.steps - completed) as f32,
         };
         self.last_fixed_update = update;
         self.physics_counters.record_fixed_update(update);

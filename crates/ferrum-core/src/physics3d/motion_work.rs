@@ -1,6 +1,6 @@
 //! Checked work budget for captured motion and geometric queries.
 
-use super::motion_error::TrajectoryError;
+use super::PhysicsError;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Work {
@@ -8,21 +8,13 @@ pub(super) struct Work {
     pub limit: u64,
 }
 impl Work {
-    #[cfg_attr(test, track_caller)]
-    pub fn charge(&mut self, amount: u64) -> Result<(), TrajectoryError> {
-        let Some(next) = self.used.checked_add(amount) else {
-            #[cfg(test)]
-            if super::solver_trajectory::test_work_failure_selected() {
-                super::solver_trajectory::test_work_failure(amount, self.used, self.limit);
-            }
-            return Err(TrajectoryError::WorkLimit);
-        };
+    pub fn charge(&mut self, amount: u64) -> Result<(), PhysicsError> {
+        let next = self
+            .used
+            .checked_add(amount)
+            .ok_or(PhysicsError::CapacityExceeded)?;
         if next > self.limit {
-            #[cfg(test)]
-            if super::solver_trajectory::test_work_failure_selected() {
-                super::solver_trajectory::test_work_failure(amount, self.used, self.limit);
-            }
-            return Err(TrajectoryError::WorkLimit);
+            return Err(PhysicsError::CapacityExceeded);
         }
         self.used = next;
         Ok(())
