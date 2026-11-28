@@ -165,3 +165,11 @@ export async function withRenderer(
     restore();
   }
 }
+
+/** An ImageBitmap stand-in with the PNG's real size, for decoders that check image dimensions. */
+export async function pngImageBitmap(blob: Blob): Promise<{ width: number; height: number; close(): void }> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const png = bytes.length > 24 && view.getUint32(0) === 0x89504e47;
+  return { width: png ? view.getUint32(16) : 1, height: png ? view.getUint32(20) : 1, close() {} };
+}

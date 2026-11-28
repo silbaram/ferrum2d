@@ -2,7 +2,7 @@ import "./nativeRuntimeTestHelper.js";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { fakeWebGL2, ONE_PIXEL_PNG } from "./fakeWebGL2TestHelper.js";
+import { fakeWebGL2, ONE_PIXEL_PNG, pngImageBitmap } from "./fakeWebGL2TestHelper.js";
 
 // Logic half of smoke:hd2d-combat and smoke:village-game-quality. The browser fixtures run
 // unchanged under Node with a WebGL2 stand-in and a virtual clock, so the native combat, AI,
@@ -25,11 +25,6 @@ async function fixtureModule(file: string, imports: readonly [string, string][] 
     ...imports,
   ]) code = code.split(`"${from}"`).join(JSON.stringify(to)).split(`'${from}'`).join(JSON.stringify(to));
   return "data:text/javascript;charset=utf-8," + encodeURIComponent(code);
-}
-
-function pngSize(bytes: Uint8Array): { width: number; height: number } {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  return bytes.length > 24 && view.getUint32(0) === 0x89504e47 ? { width: view.getUint32(16), height: view.getUint32(20) } : { width: 1, height: 1 };
 }
 
 type Globals = Record<string, unknown>;
@@ -66,7 +61,7 @@ async function withBrowserStandIns(run: () => Promise<void>): Promise<void> {
     }),
   };
   globals.window = { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {} };
-  globals.createImageBitmap = async (blob: Blob) => ({ ...pngSize(new Uint8Array(await blob.arrayBuffer())), close() {} });
+  globals.createImageBitmap = pngImageBitmap;
   const nativeFetch = previous.fetch as typeof fetch;
   globals.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
