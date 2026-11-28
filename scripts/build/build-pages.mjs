@@ -17,7 +17,9 @@ const docsOutputDir = path.join(outputDir, "docs");
 // The example site is the Pages entry and Studio is published beside it. The previous example apps stay
 // in the repository as engine test fixtures and are not published (docs/planning/example-site-rebuild-plan.md).
 const site = { source: "examples/site/dist" };
-const apps = [{ id: "studio", source: "apps/studio/dist" }];
+// Pages publishes the web demo build of Studio, which keeps the bundled examples; the product
+// build in apps/studio/dist (installed desktop Studio) ships none.
+const apps = [{ id: "studio", source: "apps/studio/dist-demo", build: "pnpm --filter @ferrum2d/studio build:demo" }];
 /** Former example routes lead to the site entry, so links from outside keep working. */
 const formerRoutes = ["starter-runtime", "physics-sandbox", "breakout", "platformer", "topdown-shooter", "pixel-art"];
 const userGuideDocs = new Set([
@@ -44,9 +46,9 @@ const documentationGroups = [
 ];
 
 // Validate every build input before replacing the last successful local preview.
-for (const { source } of [site, ...apps]) {
+for (const { source, build = "pnpm build" } of [site, ...apps]) {
   const entry = path.join(source, "index.html");
-  if (!existsSync(entry)) throw new Error(`Missing ${entry}. Run pnpm build before pnpm build:pages.`);
+  if (!existsSync(entry)) throw new Error(`Missing ${entry}. Run ${build} before pnpm build:pages.`);
   if (!/<head(?:\s[^>]*)?>/iu.test(readFileSync(entry, "utf8"))) throw new Error(`Missing head in ${entry}. Rebuild it before pnpm build:pages.`);
 }
 
