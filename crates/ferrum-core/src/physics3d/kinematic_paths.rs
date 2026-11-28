@@ -295,8 +295,11 @@ impl PhysicsWorld3d {
                 })
                 .unwrap_or(rp::Vector::ZERO);
             let pushed = pushes.remove(&(body, *id)).unwrap_or(rp::Vector::ZERO);
-            total.carry_translation =
-                (rp::Vector::from(total.carry_translation) - carry).to_array();
+            total.carry_translation = if total.carried_by.is_some() {
+                (rp::Vector::from(total.carry_translation) - carry).to_array()
+            } else {
+                [0.; 3]
+            };
             let undone = carry + pushed;
             if undone == rp::Vector::ZERO {
                 continue;

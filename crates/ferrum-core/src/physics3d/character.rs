@@ -742,11 +742,8 @@ impl PhysicsWorld3d {
                 (translation / self.backend.integration_parameters.dt).to_array();
             runtime.state.carry_translation =
                 (rp::Vector::from(runtime.state.carry_translation) + accepted).to_array();
-            if rp::Vector::from(runtime.state.carry_translation).length_squared() > 1.0e-12 {
-                runtime.state.carried_by = Some(support);
-            } else {
-                runtime.state.carried_by = None;
-            }
+            runtime.state.carried_by =
+                (runtime.state.carry_translation != [0.; 3]).then_some(support);
         }
         self.refresh_queries();
     }

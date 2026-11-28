@@ -611,60 +611,62 @@ fn p2b_review_planar_mover_push_has_no_depth_translation() {
 
 #[test]
 fn dynamic_support_reports_only_the_partial_carry_that_fits() {
-    let mut w = world();
-    let support = w
-        .create_body(
+    for (wall_x, allowed_carry) in [(0.65, 0.27..0.30), (0.3601005, 0. ..1e-6)] {
+        let mut w = world();
+        let support = w
+            .create_body(
+                BodyDesc {
+                    kind: BodyKind::Dynamic,
+                    pose: Pose {
+                        position: [0., -0.1, 0.],
+                        ..Pose::default()
+                    },
+                    ..BodyDesc::default()
+                },
+                ColliderDesc::new(Shape::Box {
+                    half_extents: [5., 0.1, 5.],
+                }),
+            )
+            .unwrap();
+        let rider = actor(&mut w, 0.);
+        w.set_pose(
+            rider,
+            Pose {
+                position: [0., 0.51, 0.],
+                ..Pose::default()
+            },
+        )
+        .unwrap();
+        w.create_body(
             BodyDesc {
-                kind: BodyKind::Dynamic,
+                kind: BodyKind::Fixed,
                 pose: Pose {
-                    position: [0., -0.1, 0.],
+                    position: [wall_x, 1., 0.],
                     ..Pose::default()
                 },
                 ..BodyDesc::default()
             },
             ColliderDesc::new(Shape::Box {
-                half_extents: [5., 0.1, 5.],
+                half_extents: [0.1, 0.49, 1.],
             }),
         )
         .unwrap();
-    let rider = actor(&mut w, 0.);
-    w.set_pose(
-        rider,
-        Pose {
-            position: [0., 0.51, 0.],
-            ..Pose::default()
-        },
-    )
-    .unwrap();
-    w.create_body(
-        BodyDesc {
-            kind: BodyKind::Fixed,
-            pose: Pose {
-                position: [0.65, 1., 0.],
-                ..Pose::default()
-            },
-            ..BodyDesc::default()
-        },
-        ColliderDesc::new(Shape::Box {
-            half_extents: [0.1, 0.49, 1.],
-        }),
-    )
-    .unwrap();
-    w.step_checked().unwrap();
-    assert_eq!(
-        w.character_state(rider).unwrap().ground.unwrap().body,
-        support
-    );
-    w.set_velocity(support, [4., 0., 0.], [0.; 3]).unwrap();
-    w.step_checked().unwrap();
-    let state = w.character_state(rider).unwrap();
-    assert_eq!(state.carried_by, Some(support));
-    assert!(
-        (0.27..0.30).contains(&state.carry_translation[0]),
-        "{state:?}"
-    );
-    assert!(x(&w, support) - state.carry_translation[0] > 0.05);
-    assert!((state.carry_translation[0] - x(&w, rider)).abs() < 1e-6);
+        w.step_checked().unwrap();
+        assert_eq!(
+            w.character_state(rider).unwrap().ground.unwrap().body,
+            support
+        );
+        w.set_velocity(support, [4., 0., 0.], [0.; 3]).unwrap();
+        w.step_checked().unwrap();
+        let state = w.character_state(rider).unwrap();
+        assert_eq!(state.carried_by, Some(support), "{state:?}");
+        assert!(
+            allowed_carry.contains(&state.carry_translation[0]) && state.carry_translation[0] > 0.,
+            "{state:?}"
+        );
+        assert!(x(&w, support) - state.carry_translation[0] > 0.05);
+        assert!((state.carry_translation[0] - x(&w, rider)).abs() < 1e-6);
+    }
 }
 
 #[test]

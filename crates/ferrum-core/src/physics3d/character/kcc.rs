@@ -415,7 +415,7 @@ impl PhysicsWorld3d {
                         .kcc_move(&plan, simple, delta, Some(handle))
                         .translation;
                     plan.translation += carry;
-                    if carry.length_squared() > 1.0e-12 {
+                    if carry != rp::Vector::ZERO {
                         carried_by = Some(support.body);
                     }
                 }
