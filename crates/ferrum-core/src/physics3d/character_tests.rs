@@ -1006,13 +1006,12 @@ fn character_contact_limits_propagate_through_a_following_group() {
     for _ in 0..60 {
         checked_positive_steps(&mut world, 1);
         for pair in actors.windows(2) {
-            let gap = position(&world, pair[1])[0] - position(&world, pair[0])[0];
-            assert!(
-                gap >= 0.79,
-                "gap={gap}, a={:?}, b={:?}",
-                position(&world, pair[0]),
-                position(&world, pair[1])
-            );
+            let a = position(&world, pair[0]);
+            let b = position(&world, pair[1]);
+            // Ordinary KCC may slide a following capsule sideways. Check
+            // actual horizontal separation instead of the old shared X prefix.
+            let gap = (b[0] - a[0]).hypot(b[2] - a[2]);
+            assert!(gap >= 0.79, "gap={gap}, a={:?}, b={:?}", a, b);
             assert_eq!(world.character_state(pair[0]).unwrap().failed_pair_casts, 0);
         }
         assert!(position(&world, actors[7])[0] <= 7.51);

@@ -43,7 +43,8 @@ impl Engine {
     fn reject_unified_clock(&mut self) -> UnifiedPhysicsError {
         let error = UnifiedPhysicsError::ClockMismatch;
         if let Some(runtime) = &mut self.unified_physics {
-            runtime.last_error.record_step(error);
+            runtime.last_error.rejected_attempt = Some(error);
+            runtime.last_error.frame_step_failure.get_or_insert(error);
         }
         error
     }

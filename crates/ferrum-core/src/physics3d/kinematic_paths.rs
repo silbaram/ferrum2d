@@ -232,7 +232,7 @@ impl PhysicsWorld3d {
         }
         self.backend.integration_parameters.dt = native_dt;
         self.character_motion.backend_motion.committed_seconds = Time::from(native_dt);
-        self.publish_character_slices(&scratch, native_dt);
+        self.publish_character_slices(&scratch, native_dt, true);
         self.finish_fixed_step();
         std::mem::swap(&mut self.path_scratch, &mut scratch);
         self.tick_outputs.paths = scratch;
@@ -556,7 +556,7 @@ impl PhysicsWorld3d {
             }
         }
         self.backend.integration_parameters.dt = native_dt;
-        self.publish_character_slices(&scratch, native_dt);
+        self.publish_character_slices(&scratch, native_dt, false);
         self.finish_fixed_step();
         if self.actual_motion_completed_time() > 0. || self.actual_motion_result().is_ok() {
             std::mem::swap(&mut self.path_scratch, &mut scratch);
@@ -621,12 +621,26 @@ impl PhysicsWorld3d {
             }
         }
     }
-    fn publish_character_slices(&mut self, scratch: &PathScratch, native_dt: f32) {
+    fn publish_character_slices(
+        &mut self,
+        scratch: &PathScratch,
+        native_dt: f32,
+        retain_grounded_carrier: bool,
+    ) {
         for (id, total) in &scratch.characters {
             if let Some(runtime) = self.characters.get_mut(id) {
                 runtime.state.translation = total.translation;
                 runtime.state.velocity = total.translation.map(|v| v / native_dt);
-                runtime.state.carried_by = if total.carry_translation == [0.; 3] {
+                // A forward and return slice can cancel exactly while the
+                // rider remains grounded on the same platform.
+                runtime.state.carried_by = if retain_grounded_carrier {
+                    total.carried_by.filter(|&body| {
+                        runtime
+                            .state
+                            .ground
+                            .is_some_and(|ground| ground.body == body)
+                    })
+                } else if total.carry_translation == [0.; 3] {
                     None
                 } else {
                     total.carried_by

@@ -78,7 +78,7 @@ fn tick(e: &mut Engine) {
 }
 
 #[test]
-fn checked_manual_mesh_rejection_preserves_previous_tick_and_engine_checkpoint() {
+fn injected_native_tick_failure_preserves_diagnostics_checkpoint_and_native_file() {
     let dt = 0.01;
     let mut e = Engine::new();
     e.activate_data_scene();
@@ -94,36 +94,19 @@ fn checked_manual_mesh_rejection_preserves_previous_tick_and_engine_checkpoint()
     let last_step = e.unified_physics_step_statistics().unwrap();
     assert_eq!(last_step.ccd_clamps, 1);
     register_distant_character(&mut e);
-    e.unified_physics
-        .as_mut()
-        .unwrap()
-        .physics
-        .force_character_motion_proof();
-    let mesh = body(
+    let anchor = body(
         &mut e,
         BodyKind::Fixed,
+        [50., 0., 0.],
         [0.; 3],
-        [0.; 3],
-        Shape::TriangleMesh {
-            vertices: vec![[-8., -1., -8.], [8., 1., -8.], [0., 0., 8.]],
-            triangles: vec![[0, 2, 1]; 4096],
-        },
-    );
-    body(
-        &mut e,
-        BodyKind::Dynamic,
-        [0., 1.25, 0.],
-        [0., -100., 0.],
-        Shape::Box {
-            half_extents: [0.5; 3],
-        },
+        Shape::Sphere { radius: 0.5 },
     );
     let mut frames = [0.; 20];
     frames[6] = 1.;
     frames[13] = 1.;
     let joint = e
         .create_unified_physics_joint(
-            &[moving.id, moving.generation, mesh.id, mesh.generation],
+            &[moving.id, moving.generation, anchor.id, anchor.generation],
             &[0, 3],
             &frames,
         )
@@ -138,6 +121,17 @@ fn checked_manual_mesh_rejection_preserves_previous_tick_and_engine_checkpoint()
         1
     );
     let saved = crate::engine::persistence::encode(&e).unwrap();
+    let capture_file = |engine: &mut Engine| {
+        engine
+            .capture_native_file(b"{}{}{}{}{}{}", &[2; 6], 7, 9, &[])
+            .unwrap()
+    };
+    let file_before = capture_file(&mut e);
+    e.unified_physics
+        .as_mut()
+        .unwrap()
+        .physics
+        .reject_next_staged_tick_for_test();
     let error = e.step_rigid_bodies_checked(dt).unwrap_err();
     assert!(error.contains("after 0 committed seconds"), "{error}");
     assert_eq!(
@@ -152,7 +146,7 @@ fn checked_manual_mesh_rejection_preserves_previous_tick_and_engine_checkpoint()
         saved.len(),
         after.len()
     );
-    e.remove_unified_body(mesh).unwrap();
+    assert_eq!(capture_file(&mut e), file_before);
     e.step_rigid_bodies_checked(dt).unwrap();
 }
 
@@ -180,35 +174,16 @@ fn planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection() {
         e.world.set_rigid_body(a, RigidBody::dynamic_circle(1., 1.));
         e.step_rigid_bodies_checked(dt).unwrap();
         register_distant_character(&mut e);
-        e.unified_physics
-            .as_mut()
-            .unwrap()
-            .physics
-            .force_character_motion_proof();
-        let mesh = body(
-            &mut e,
-            BodyKind::Fixed,
-            [0.; 3],
-            [0.; 3],
-            Shape::TriangleMesh {
-                vertices: vec![[-8., -1., -8.], [8., 1., -8.], [0., 0., 8.]],
-                triangles: vec![[0, 2, 1]; 4096],
-            },
-        );
-        body(
-            &mut e,
-            BodyKind::Dynamic,
-            [0., 1.25, 0.],
-            [0., -100., 0.],
-            Shape::Box {
-                half_extents: [0.5; 3],
-            },
-        );
         let legacy = e.world.rigid_bodies[a.id as usize].as_mut().unwrap();
         legacy.force = Velocity { vx: 50., vy: 0. };
         legacy.impulse = Velocity { vx: 0., vy: 2. };
         for _ in 0..rejections {
             let saved = crate::engine::persistence::encode(&e).unwrap();
+            e.unified_physics
+                .as_mut()
+                .unwrap()
+                .physics
+                .reject_next_staged_tick_for_test();
             let error = e.step_rigid_bodies_checked(dt).unwrap_err();
             assert!(error.contains("after 0 committed seconds"), "{error}");
             assert!(
@@ -216,7 +191,6 @@ fn planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection() {
                 "rejected planar tick changed the checkpoint"
             );
         }
-        e.remove_unified_body(mesh).unwrap();
         e.step_rigid_bodies_checked(dt).unwrap();
         e.unified_body_state(a).unwrap()
     };

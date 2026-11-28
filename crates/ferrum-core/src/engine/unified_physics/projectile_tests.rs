@@ -278,7 +278,7 @@ fn native_projectile_hits_rotating_bar_outside_both_endpoint_bounds() {
 }
 
 #[test]
-fn native_projectile_hits_target_that_reverses_inside_the_solver_tick() {
+fn native_projectile_uses_endpoints_when_target_reverses_inside_the_solver_tick() {
     for space in [Space::PlanarXy, Space::Spatial] {
         let (mut e, _) = setup_scaled(space, 6000.0, 64, 100.0);
         let axis = if space == Space::PlanarXy { 1 } else { 2 };
@@ -318,8 +318,9 @@ fn native_projectile_hits_target_that_reverses_inside_the_solver_tick() {
         fire(&mut e);
         tick(&mut e);
         assert!(e.unified_body_state(target).unwrap().pose.position[axis] < p[axis]);
-        assert_eq!(health(&e, target), 7.0, "{space:?}");
-        assert!(shots(&e).is_empty());
+        // The intervening reversal is outside start/end interpolation.
+        assert_eq!(health(&e, target), 10.0, "{space:?}");
+        assert_eq!(shots(&e).len(), 1);
         assert!(e.take_unified_physics_error().is_none());
     }
 }
@@ -833,7 +834,7 @@ fn native_projectile_respects_authored_tile_projectile_flag_in_both_spaces() {
 }
 
 #[test]
-fn native_projectile_hits_platform_that_crosses_and_returns_inside_one_tick() {
+fn native_projectile_uses_endpoints_when_platform_crosses_and_returns_inside_one_tick() {
     let (mut e, _) = setup_clock(Space::Spatial, 1.0, 64, 1.0, 0.1);
     assert!(e.spatial_scene.configure_surfaces(
         &[130.0, 95.0, 10.0, 10.0, 8.0, 12.0, 12.0, 1.0, 1.0, 1.0, 1.0],
@@ -843,8 +844,9 @@ fn native_projectile_hits_platform_that_crosses_and_returns_inside_one_tick() {
     fire(&mut e);
     tick(&mut e);
     assert_eq!(e.unified_physics_error(), None);
-    assert!(shots(&e).is_empty());
-    assert!(e
+    // The platform occupies the same pose at both ends of the tick.
+    assert_eq!(shots(&e).len(), 1);
+    assert!(!e
         .frame_buffers
         .gameplay_events
         .iter()

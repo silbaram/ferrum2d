@@ -21,6 +21,13 @@ struct MovePlan {
     translation: rp::Vector,
 }
 
+#[derive(Clone, Copy)]
+enum KccQuery {
+    Terrain,
+    StaticTerrain,
+    Locomotion,
+}
+
 impl PhysicsWorld3d {
     pub(in crate::physics3d) fn step_character_kcc(&mut self) -> Result<(), PhysicsError> {
         if !self.begin_fixed_step() {
@@ -95,6 +102,10 @@ impl PhysicsWorld3d {
         let mut characters = std::mem::take(&mut self.characters);
         for plan in &mut plans {
             let runtime = characters.get_mut(&plan.id).unwrap();
+            let position = self.backend.bodies[native_id(plan.id)].translation();
+            let translation = position - plan.body_pose.translation;
+            runtime.state.translation = translation.to_array();
+            runtime.state.velocity = (translation / dt).to_array();
             plan.shape_pose = *self.backend.colliders[native_collider(runtime.collider)].position();
             let moved_up = rp::Vector::from(runtime.tick_velocity).dot(plan.controller.up) > 0.
                 && (rp::Vector::from(runtime.state.translation)
@@ -132,7 +143,7 @@ impl PhysicsWorld3d {
             plan.shape_pose,
             None,
             rp::QueryFilterFlags::empty(),
-            false,
+            KccQuery::Terrain,
             |queries| {
                 let (first, hit) = queries.cast_shape(&plan.shape_pose, -up, shape, options)?;
                 if hit.normal1.dot(up) >= min_up {
@@ -285,6 +296,7 @@ impl PhysicsWorld3d {
         runtime.collisions.clear();
         let mut external = rp::Vector::from(runtime.external_velocity);
         let mut dropped_contacts = 0;
+        let mut blocked_by_character = false;
         let pose = rp::Pose::from_translation(plan.translation) * plan.shape_pose;
         let movement = self.kcc_query(
             &plan,
@@ -295,7 +307,11 @@ impl PhysicsWorld3d {
             } else {
                 rp::QueryFilterFlags::empty()
             },
-            true,
+            if desired == rp::Vector::ZERO {
+                KccQuery::StaticTerrain
+            } else {
+                KccQuery::Locomotion
+            },
             |query| {
                 if use_clearance {
                     // Share the stationary clearance handling with traversal
@@ -316,6 +332,7 @@ impl PhysicsWorld3d {
                     .0;
                 }
                 controller.move_shape(0., &query, plan.shape.as_ref(), &pose, desired, |hit| {
+                    blocked_by_character |= self.kcc_peer(&self.backend.colliders[hit.handle]);
                     if runtime.config.push_mass == 0. {
                         return;
                     }
@@ -329,6 +346,7 @@ impl PhysicsWorld3d {
         );
         runtime.collisions.retain(|hit| {
             let target = &self.backend.colliders[hit.handle];
+            blocked_by_character |= self.kcc_peer(target);
             if runtime.config.push_mass == 0. {
                 return false;
             }
@@ -421,11 +439,21 @@ impl PhysicsWorld3d {
             sliding: movement.is_sliding_down_slope,
             hit_ceiling,
             dropped_contacts,
+            blocked_by_character,
             carried_by,
             carry_translation: carry.to_array(),
             ..CharacterState::default()
         };
         Some(plan)
+    }
+
+    fn kcc_peer(&self, collider: &rp::Collider) -> bool {
+        collider.parent().is_some_and(|parent| {
+            let (slot, generation) = parent.into_raw_parts();
+            self.character_order
+                .binary_search(&BodyId { slot, generation })
+                .is_ok()
+        })
     }
 
     fn kcc_query<T>(
@@ -434,20 +462,19 @@ impl PhysicsWorld3d {
         pose: rp::Pose,
         ignore: Option<rp::RigidBodyHandle>,
         excluded: rp::QueryFilterFlags,
-        exclude_moving_kinematics: bool,
+        kind: KccQuery,
         query: impl FnOnce(rp::QueryPipeline<'_>) -> T,
     ) -> T {
         let allowed = |handle, c: &rp::Collider| {
             c.is_enabled()
                 && c.parent().is_none_or(|parent| {
-                    let (slot, generation) = parent.into_raw_parts();
                     Some(parent) != ignore
-                        && (!exclude_moving_kinematics
-                            || !is_moving_kinematic(&self.backend.bodies[parent]))
-                        && self
-                            .character_order
-                            .binary_search(&BodyId { slot, generation })
-                            .is_err()
+                        && if self.kcc_peer(c) {
+                            matches!(kind, KccQuery::Locomotion)
+                        } else {
+                            matches!(kind, KccQuery::Terrain)
+                                || !is_moving_kinematic(&self.backend.bodies[parent])
+                        }
                 })
                 && self
                     .contact_policies
@@ -485,7 +512,11 @@ impl PhysicsWorld3d {
             pose,
             ignore,
             excluded,
-            desired == rp::Vector::ZERO,
+            if desired == rp::Vector::ZERO {
+                KccQuery::StaticTerrain
+            } else {
+                KccQuery::Terrain
+            },
             |q| controller.move_shape(0., &q, plan.shape.as_ref(), &pose, desired, |_| {}),
         )
     }

@@ -757,6 +757,105 @@ fn p2b_character_push_uses_virtual_mass_and_stores_the_opposite_impulse() {
 }
 
 #[test]
+fn p2b_fast_incoming_ccd_matches_an_ordinary_rapier_capsule() {
+    let mut recovery = Vec::new();
+    for space in [Space::PlanarXy, Space::Spatial] {
+        let measure = |controlled| {
+            let mut w = PhysicsWorld3d::new(WorldConfig {
+                space,
+                gravity: [0.; 3],
+                length_unit: 1.,
+                step_seconds: 0.01,
+                ..WorldConfig::default()
+            })
+            .unwrap();
+            let a = w
+                .create_body(
+                    BodyDesc {
+                        kind: BodyKind::KinematicPosition,
+                        ..BodyDesc::default()
+                    },
+                    ColliderDesc::new(Shape::Capsule {
+                        half_height: 0.5,
+                        radius: 0.25,
+                    }),
+                )
+                .unwrap();
+            if controlled {
+                w.enable_character(
+                    a,
+                    CharacterConfig {
+                        push_mass: 2.,
+                        step_height: 0.,
+                        snap_distance: 0.,
+                        ..CharacterConfig::default()
+                    },
+                )
+                .unwrap();
+            }
+            let b = w
+                .create_body(
+                    BodyDesc {
+                        pose: Pose {
+                            position: [1.5, 0., 0.],
+                            ..Pose::default()
+                        },
+                        linear_velocity: [-200., 0., 0.],
+                        ccd: true,
+                        can_sleep: false,
+                        ..BodyDesc::default()
+                    },
+                    ColliderDesc {
+                        density: 2.,
+                        friction: 0.,
+                        ..ColliderDesc::new(Shape::Box {
+                            half_extents: [0.5; 3],
+                        })
+                    },
+                )
+                .unwrap();
+            let mut depths = [0.; 32];
+            let mut collision = false;
+            let mut events = Vec::new();
+            for depth in &mut depths {
+                w.step_checked().unwrap();
+                *depth = w.p1a_max_overlap();
+                assert_eq!(w.body_state(a).unwrap().pose.position[0], 0.);
+                assert!(w.body_state(b).unwrap().pose.position[0] > 0.);
+                w.drain_collision_events(&mut events);
+                collision |= events.iter().any(|event| {
+                    event.phase == CollisionPhase::Enter
+                        && (event.first.body, event.second.body) == (a, b)
+                });
+            }
+            assert!(collision, "{space:?}, controlled={controlled}");
+            depths
+        };
+        let baseline = measure(false);
+        let character = measure(true);
+        let max = |depths: [f32; 32]| depths.into_iter().fold(0., f32::max);
+        assert!(max(character) <= max(baseline) + 0.005);
+        let first = character.iter().position(|&depth| depth > 0.005 + 1e-6);
+        let settled = first.and_then(|first| {
+            character[first..]
+                .iter()
+                .position(|&depth| depth <= 0.005 + 1e-6)
+        });
+        println!(
+            "{space:?}: baseline max={}, character max={}, first seven baseline={:?}, character={:?}, ticks to settle={settled:?}",
+            max(baseline), max(character), &baseline[..7], &character[..7]
+        );
+        if let Some(first) = first {
+            recovery.push((space, character[first + 5], settled));
+        }
+    }
+    assert!(
+        recovery.iter().all(|(_, depth, _)| *depth <= 0.005 + 1e-6),
+        "Capsule penetration did not recover in five ticks: {recovery:?}"
+    );
+}
+
+#[test]
 fn p2b_incoming_dynamic_impact_stops_at_the_actor_and_game_code_supplies_knockback() {
     let (mut w, a, b) = incoming_dynamic_impact_fixture();
     let mut events = Vec::new();
@@ -814,13 +913,10 @@ fn p2b_a_peer_blocks_the_capsule_without_pushing_the_box_behind_it() {
     .unwrap();
     w.step_checked().unwrap();
     let states = [a, b, d].map(|id| w.body_state(id).unwrap());
-    // This no longer transfers momentum through a chain of virtual masses.
-    // A proposed KCC push beyond the preceding peer must also be discarded.
+    // The peer is already one skin width away. KCC stops before it and
+    // cannot pass a push through it to the box.
     assert!(w.character_state(a).unwrap().blocked_by_character);
-    assert!(
-        (0.009..=0.011).contains(&states[0].pose.position[0]),
-        "{states:?}"
-    );
+    assert!(states[0].pose.position[0].abs() <= 0.005, "{states:?}");
     assert!(states[1].linear_velocity[0].abs() < 0.00001, "{states:?}");
     assert!(states[2].linear_velocity[0].abs() < 0.00001, "{states:?}");
     assert!(states[1].pose.position[0] - states[0].pose.position[0] >= 0.499);
@@ -849,7 +945,7 @@ fn p2b_dense_capsule_chain_blocks_without_transferring_momentum() {
         replay.step();
         // Peers constrain motion geometrically without sharing the lead actor's speed.
         assert!(w.character_state(actors[0]).unwrap().blocked_by_character);
-        assert!((0.009..=0.01001).contains(&w.body_state(actors[0]).unwrap().pose.position[0]));
+        assert!(w.body_state(actors[0]).unwrap().pose.position[0].abs() <= 0.005);
         for (i, &a) in actors.iter().enumerate() {
             let state = w.character_state(a).unwrap();
             assert!(

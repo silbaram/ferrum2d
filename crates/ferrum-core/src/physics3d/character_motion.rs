@@ -22,6 +22,8 @@ pub(super) struct MotionScene {
     #[cfg(test)]
     pub(super) experiment: super::character::experimental_tests::Experiment,
     #[cfg(test)]
+    pub(super) reject_staged_tick: bool,
+    #[cfg(test)]
     pub(super) p1b_ticks: Option<Vec<super::p1b_tests::TickSample>>,
     #[cfg(test)]
     pub(super) p1b_tick_started: bool,

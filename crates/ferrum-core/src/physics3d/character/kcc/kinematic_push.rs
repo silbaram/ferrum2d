@@ -109,12 +109,8 @@ impl PhysicsWorld3d {
                     continue;
                 }
                 runtime.state.moving_obstacle_casts += 1;
-                let hit = cast_kinematic_push(collider.shape(), &motion, plan, skin).map_err(
-                    |error| {
-                        runtime.state.failed_moving_obstacle_casts += 1;
-                        error
-                    },
-                )?;
+                let hit = cast_kinematic_push(collider.shape(), &motion, plan, skin)
+                    .inspect_err(|_| runtime.state.failed_moving_obstacle_casts += 1)?;
                 let Some(hit) = hit else { continue };
                 let at_hit = motion.position_at_time(hit.time_of_impact);
                 let direction = at_hit.rotation * hit.normal1;

@@ -207,6 +207,7 @@ fn native_snapshot_retains_path_stop_and_rotating_piecewise_motion_queries() {
     let progress = w.kinematic_path_progress(p);
     assert!(progress.1 && progress.0 > 0. && progress.0 < 1.);
     let mut restored = PhysicsWorld3d::from_snapshot(&w.capture_snapshot().unwrap()).unwrap();
+    restored.force_character_motion_proof();
     assert_eq!(restored.kinematic_path_progress(p), progress);
     same(&w, &restored, &[p, rotor]);
     let (mut a, mut b) = (Vec::new(), Vec::new());

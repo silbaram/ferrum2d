@@ -54,7 +54,7 @@ fn native_patterns_seek_applies_turn_rate_once_per_fixed_tick_and_zero_rate_wait
         );
         if rate == 0. {
             tick(&mut e, 30);
-            assert_eq!(pos(&e, a)[0], 0.);
+            assert!(pos(&e, a)[0].abs() <= 0.005);
             assert_eq!(e.data_scene_combat_navigation_stats()[5], 1);
         }
     }

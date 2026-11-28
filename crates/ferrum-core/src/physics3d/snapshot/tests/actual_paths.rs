@@ -57,6 +57,7 @@ fn completed_rotating_kernel_queries_survive_native_codec_and_six_tick_continuat
     let mut world = fixture();
     let saved = world.capture_snapshot().unwrap();
     let mut restored = PhysicsWorld3d::from_snapshot(&saved).unwrap();
+    restored.force_character_motion_proof();
     let query = Shape::Sphere { radius: 0.1 };
     let pose = Pose {
         position: [1.1, 0.8, 0.],

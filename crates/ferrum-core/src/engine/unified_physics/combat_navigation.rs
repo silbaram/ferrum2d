@@ -328,10 +328,13 @@ impl UnifiedPhysicsRuntime {
         // The existing roster admission covers this bounded peer collection;
         // each Chase separately admits its N+8 target comparisons below.
         let mut peer_targets = [None; 64];
-        if c.avoidance.is_some() {
-            for agent in &nav.agents {
-                if let Ok(body) = self.spatial_actor_body(agent.entity) {
-                    if let Ok(state) = self.physics.character_state(body) {
+        for agent in &nav.agents {
+            if let Ok(body) = self.spatial_actor_body(agent.entity) {
+                if let Ok(state) = self.physics.character_state(body) {
+                    // A shared waypoint can lead directly through a stopped
+                    // teammate. The normal route follower can reuse steering's
+                    // obstacle checks when KCC reports a physical block.
+                    if c.avoidance.is_some() || state.velocity == [0.; 3] {
                         if let Some(slot) = peer_targets.get_mut(nav.peers.len()) {
                             *slot =
                                 crowd::cohort_target(agent, world.movement_pattern(agent.entity));
@@ -701,6 +704,24 @@ impl UnifiedPhysicsRuntime {
                                     .then_some((position, radius)),
                             )
                         }
+                    } else if self
+                        .physics
+                        .character_state(body)
+                        .is_ok_and(|state| state.blocked_by_character)
+                        || nav.agents[i].detour.is_some()
+                    {
+                        crowd::steer(
+                            self,
+                            nav,
+                            scene,
+                            i,
+                            desired,
+                            c.cell,
+                            Some(0.),
+                            true,
+                            (grounded && surface.is_some_and(|s| s.1 == floor))
+                                .then_some((position, radius)),
+                        )
                     } else {
                         crowd::Motion {
                             velocity: desired,

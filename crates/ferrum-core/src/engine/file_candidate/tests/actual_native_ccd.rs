@@ -5,7 +5,7 @@ use crate::engine::file_shared_arcs as arcs;
 use crate::physics3d::{BodyId, BodyKind, PhysicsSnapshot};
 use crate::Entity;
 
-fn native_ccd_source(ccd: bool) -> (Engine, Entity, BodyId) {
+fn native_ccd_source(ccd: bool, exact: bool) -> (Engine, Entity, BodyId) {
     let mut engine = Engine::new();
     engine.use_data_scene();
     engine.configure_data_scene_camera(400., 240., u32::MAX, 0, false, 0., 0., 0., 0., 0.);
@@ -18,6 +18,9 @@ fn native_ccd_source(ccd: bool) -> (Engine, Entity, BodyId) {
             ..WorldConfig::default()
         })
         .unwrap();
+    if exact {
+        force_exact_motion_fixture(&mut engine);
+    }
     engine.configure_fixed_timestep(true, 0.1, 0.1, 1);
     // A real generated projectile enables completed-step motion capture. Keep
     // its owner/trajectory far from the original bar/sphere pair, rather than
@@ -130,6 +133,14 @@ fn native_ccd_source(ccd: bool) -> (Engine, Entity, BodyId) {
     assert!(engine.unified_body_state(bar).unwrap().pose.rotation[2] < 0.);
     (engine, bar, body)
 }
+fn force_exact_motion_fixture(engine: &mut Engine) {
+    engine
+        .unified_physics
+        .as_mut()
+        .unwrap()
+        .force_exact_motion_fixture();
+}
+
 fn native_bytes(engine: &Engine) -> Vec<u8> {
     engine.unified_physics.as_ref().unwrap().checkpoint_bytes()
 }
@@ -137,7 +148,7 @@ fn native_bytes(engine: &Engine) -> Vec<u8> {
 #[test]
 fn file_candidate_actual_native_ccd_saved_queries_and_six_tick_runtime_are_identical() {
     for ccd in [false, true] {
-        let (mut source, bar, body) = native_ccd_source(ccd);
+        let (mut source, bar, body) = native_ccd_source(ccd, true);
         let native = native_bytes(&source);
         let (shape, pose, query) =
             PhysicsSnapshot::test_assert_native_ccd_saved_query(&native, body);
@@ -145,6 +156,7 @@ fn file_candidate_actual_native_ccd_saved_queries_and_six_tick_runtime_are_ident
         let file = wire(&source);
         let file_before = file.clone();
         let mut candidate = prepare(&file, SDK_BUILD, &Limits::default()).unwrap();
+        force_exact_motion_fixture(&mut candidate.engine);
         assert_eq!(persistence::encode(&candidate.engine).unwrap(), memory);
         assert_eq!(native_bytes(&candidate.engine), native);
         assert_eq!(
@@ -196,7 +208,7 @@ fn file_candidate_actual_native_ccd_saved_queries_and_six_tick_runtime_are_ident
 #[test]
 fn file_candidate_actual_native_ccd_original_end_damage_rejects_valid_crcs_and_keeps_source() {
     for ccd in [false, true] {
-        let (source, _, body) = native_ccd_source(ccd);
+        let (source, _, body) = native_ccd_source(ccd, true);
         let native = native_bytes(&source);
         let bad_native = PhysicsSnapshot::test_native_ccd_bad_original_end(&native, body);
         let memory = persistence::encode(&source).unwrap();
@@ -223,7 +235,7 @@ fn file_candidate_actual_native_ccd_original_end_damage_rejects_valid_crcs_and_k
 #[test]
 fn file_candidate_actual_native_ccd_uses_exact_decode_and_common_post_decode_quotas() {
     for ccd in [false, true] {
-        let (source, _, _) = native_ccd_source(ccd);
+        let (source, _, _) = native_ccd_source(ccd, false);
         let memory = persistence::encode(&source).unwrap();
         let file = wire(&source);
         let original = file.clone();

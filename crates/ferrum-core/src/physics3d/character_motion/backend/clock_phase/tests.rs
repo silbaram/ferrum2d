@@ -781,6 +781,7 @@ fn engine_event_prefix_keeps_full_credit_real_contact_stop_and_snapshot_continua
     );
     let accepted = w.capture_snapshot().unwrap();
     w.restore_snapshot(&initial).unwrap();
+    w.force_character_motion_proof();
     w.step_checked().unwrap();
     assert_eq!(
         w.capture_snapshot().unwrap().encoded_bytes(),

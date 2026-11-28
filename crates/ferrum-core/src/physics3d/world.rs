@@ -372,6 +372,8 @@ impl PhysicsWorld3d {
     }
 
     pub(super) fn begin_fixed_step_with_paths(&mut self, prescribed_paths: bool) -> bool {
+        #[cfg(test)]
+        let prescribed_paths = prescribed_paths || self.character_motion.reject_staged_tick;
         self.begin_backend_motion_tick();
         if prescribed_paths || self.backend_motion_enabled() {
             if let Err(error) = self
@@ -414,7 +416,20 @@ impl PhysicsWorld3d {
         for runtime in self.joints.values_mut() {
             runtime.state = super::JointState::default();
         }
+        #[cfg(test)]
+        if std::mem::take(&mut self.character_motion.reject_staged_tick) {
+            self.character_motion
+                .backend_motion
+                .fail(super::solver_trajectory::TrajectoryError::WorkLimit);
+            self.finish_fixed_step();
+            return false;
+        }
         true
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reject_next_staged_tick_for_test(&mut self) {
+        self.character_motion.reject_staged_tick = true;
     }
     pub(super) fn finish_fixed_step(&mut self) {
         let rejected =

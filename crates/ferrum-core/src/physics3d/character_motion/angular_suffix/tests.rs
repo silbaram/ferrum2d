@@ -424,6 +424,7 @@ fn angular_suffix_actual_solver_curve_and_second_character_control_keep_clearanc
             continuation.push(w.capture_snapshot().unwrap());
         }
         w.restore_snapshot(&saved).unwrap();
+        w.force_character_motion_proof();
         w.step_checked().unwrap();
         assert_eq!(w.actual_motion_completed_time(), tick);
         assert_eq!(
