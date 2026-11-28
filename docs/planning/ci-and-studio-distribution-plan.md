@@ -425,8 +425,17 @@ CI에서 완전히 사라지는 것은 실제 렌더링·GPU 확인이다. 픽�
 
 처음 Studio 표준·저장 활성 빌드는 동작을 분리하기 전에 만들었으며, 분리 후 Studio 표준 빌드도
 확인했다. Aseprite 재개 대기와 픽셀 노멀 생성 실패는 이 기준 빌드에서 재현됐다. indexed는 6초 걸린
-재실행에서도 같은 `Asset unavailable`이 나왔다. 원인은 확정하지 않았다. 로컬 스크립트와 원래
-단언을 그대로 두었으며 실패 이후의 브라우저 단언은 확인되지 않았다.
+재실행에서도 같은 `Asset unavailable`이 나왔다. 로컬 스크립트와 원래 단언을 그대로 두었으며
+실패 이후의 브라우저 단언은 확인되지 않았다.
+
+- **픽셀 노멀 생성 실패의 원인은 환경이다.** 이 smoke는 `placementNormalGeneratorPlugin()`으로 실제
+  노멀 생성 도구를 제공한다. 실행한 PC에 도구 번들(`artifacts/tools/sprite-normals/<revision>/wasm-web`)이
+  없어 경로가 503을 돌려줬고, Studio가 `Asset unavailable`을 표시했다. 다시 확인하려면 먼저
+  `pnpm normals:install && pnpm normals:wasm:build`로 도구를 준비한다. 외부 소스를 받아 빌드한다.
+  노멀을 거치지 않는 opacity·blend 변형은 통과했다.
+- **Aseprite HD-2D 재개 대기 초과의 원인은 확인하지 못했다.** 동작 분리 전 빌드에서도 재현되므로
+  S2b-1 변경과는 무관하다. 브라우저 검사가 CI에서 끝까지 돌지 않은 기간에 생긴 회귀일 수 있어
+  별도로 조사한다.
 
 ## S3: Studio 배포 분리 (설치판에서 예제 제외)
 
