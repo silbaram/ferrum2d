@@ -1,6 +1,6 @@
 # PR CI 정리와 Studio 배포 분리
 
-상태: S1·S1b·S1c 완료(PR #113, 2026-11-27 main 머지). 결정 5(2026-11-28)로 S2 범위를 `browser-smoke` job 전체로 넓혔다. S2 분류표 완료, S2a 로컬 검증 완료. S2b-1 보강 6개와 확장 20단계 분류를 기록했다. S2b-2에서 새 테스트의 남은 부분을 옮긴다.
+상태: S1·S1b·S1c 완료(PR #113, 2026-11-27 main 머지). 결정 5(2026-11-28)로 S2 범위를 `browser-smoke` job 전체로 넓혔다. S2 분류표 완료, S2a 로컬 검증 완료. S2b-1 보강 6개와 확장 20단계 분류를 기록했다. S2b-2에서 새 테스트 12개와 확장 "보강" 4단계를 옮겼다. 확장 5단계(탑다운 3·물리 실험실 2)는 예제 앱 분리가 필요해 남겼다. 다음은 S3.
 
 ## 배경
 
@@ -436,6 +436,63 @@ CI에서 완전히 사라지는 것은 실제 렌더링·GPU 확인이다. 픽�
 - **Aseprite HD-2D 재개 대기 초과의 원인은 확인하지 못했다.** 동작 분리 전 빌드에서도 재현되므로
   S2b-1 변경과는 무관하다. 브라우저 검사가 CI에서 끝까지 돌지 않은 기간에 생긴 회귀일 수 있어
   별도로 조사한다.
+
+### S2b-2 결과 (2026-11-29)
+
+기준은 S2b-1 브랜치(`7d8e2372`)다. 새 테스트 12개를 모두 옮겼고, 확장 "보강" 9단계 중 4단계를
+옮겼다. 원래 smoke와 단언은 로컬 스크립트에 그대로 두었다. Rust/Wasm·vendor·의존성은 바꾸지 않았다.
+
+**브라우저 없이 렌더러를 돌리는 방법.** `packages/ferrum-web/test/fakeWebGL2TestHelper.ts`가 WebGL2
+컨텍스트를 흉내 낸다. 렌더러가 저장·복원하는 상태(프레임버퍼, viewport, clear 색, mask, scissor)와 GPU
+자원 생성·해제를 기록하고, 래스터화는 하지 않는다. 그래서 실제 `WebGL2Renderer`의 검증·상태 복원·통계·
+자원 수명을 Node에서 확인할 수 있고, 픽셀 결과는 계속 브라우저 smoke가 본다. 게임 시나리오는 실제
+네이티브 Wasm 엔진과 RAF를 손으로 돌리는 가상 시계로 실행한다.
+
+| # | 원래 smoke | 단위 테스트 | 브라우저에 남는 확인 |
+| --- | --- | --- | --- |
+| 11 | `flat-lighting-contract-smoke.mjs` | S2a의 `test:browser-smoke-node-checks`(sRGB 기준 벡터) | 셰이더 합성, GL↔GPU 일치 |
+| 13 | `engine-playground-smoke.mjs` | `enginePlaygroundScenario.test.ts`: 실제 놀이터 장면에서 키 1회 이동·걷기 클립, 일시정지 정지, 전지 3개 수집, 고무공 벽 충돌 뒤 계속 이동, 공 정지·재개, 점토가 고무보다 빨리 감속, 다시 시작 | 픽셀 변화(노멀·조명·효과), 화면→카메라 좌표, 좁은 화면 |
+| 14 | `feature-examples-smoke.mjs` | `featureExamplesScenario.test.ts`: Data Scene 기능 장면 28개 모두 검증 통과, 네이티브 Playing 시작, 저작 인스턴스 수, 명령 400개 이하, 스프라이트 명령 또는 공간 패킷, 같은 프레임을 준 두 엔진의 결과 동일 | 예제 부팅·렌더, 탭·사이드바, 오디오, 복구, 기능별 조작(`featureExtras.ts`)과 Game Spec 슈터 3개 |
+| 15 | `example-site-smoke.mjs` | `examples/site/src/listing.ts`로 목록·검색 분리, `test:example-site`: 그룹 순서·개수, 첫 화면 구역, 두 언어 검색, 카탈로그 데이터(문구·관찰 항목·소스·썸네일) | 레이아웃, 폰트, 포커스, 드래그, WebGL 해제 |
+| 19 | `pixel-showcase-smoke.mjs` | `pixelShowcaseScenario.test.ts`: 실제 정원 장면에서 걷기 클립으로 씨앗 3개 수집(250→247), 다시 시작, 일시정지 정지 | 조명·팔레트·효과 픽셀, letterbox 포인터, 레이아웃 |
+| 23 | `aseprite-project-smoke.mjs --cleanup` | `placementAssetCleanupGuard.ts`로 차단 사유 분리, `placement-asset-cleanup.test.mjs`: 사유 5개의 우선순위, 읽기 전용 분석의 조건, 차단 뒤 나머지 상태를 읽지 않음 | 대화상자 흐름, 모달 레이아웃 |
+| 26 | `tile-animation-smoke.mjs` | 미리보기 프레임 계산을 `placementTileAnimation.ts`로 옮김, `tile-assets.test.mjs`: 실제 맵 패치의 클립으로 프레임·주기 경계(1001 ms 포함), 반복 없는 클립 유지, 잘못된 시간 거절 | 게임 루프 타이밍 픽셀 |
+| 27 | `village-game-quality-browser-smoke.mjs` | `hd2dCombatScenario.test.ts`: 브라우저 픽스처를 그대로 Node에서 실행. 적 32명 AI·발사·입자, 경사로를 오르는 입력, 멈춘 프레임의 체크포인트 복원과 재개, 자원 증가 없음 | 공간 오디오 2보이스, GPU 시간, 느린 프레임 창, 예산 |
+| 28 | `hd2d-combat-browser-smoke.mjs`(전투 구간) | 같은 파일: 모델 216개와 적 0·32명에서 AI·반복 발사·명중·처치·입자·투사체 빌보드, 일시정지, v9 체크포인트, 재설정 | 입력 좌표 변환(레터박스·DPR), GPU 예산, 프레임버퍼 동일성, 적 128명 |
+| 31 | `render-texture-browser-smoke.mjs` | `webgl2RenderToTexture.test.ts`: 입력 거절 뒤 통계·이미지·바인딩 불변, 호출자 상태 복원(그리기 실패 포함), 업로드 경로, 샘플링 방향 플래그, ID 소유, 크기 변경·해제·재사용과 누수 없음 | FBO 방향, alpha 합성, 실제 픽셀 |
+| 32 | `color-management-browser-smoke.mjs` | `colorManagementRuntime.test.ts`: 설정 경로 4가지의 Data Scene 작업 색(적용·reapply·transition), 모드 충돌 거부 뒤에도 재생 유지, 모드별 draw 예산과 프레임 중 할당 없음, WebGPU 실패 시 관리형 WebGL2 대체 | GPU 셰이더 sRGB 정확도, 투명 캔버스 출력 |
+| 33 | `flat-pixel-perfect-smoke.mjs`, `flat-pixel-perfect-viewer-smoke.mjs` | `webgl2PixelPerfect.test.ts`: 정수 배율 표시 1회, 프레임 중 변경 거절, 캡처 격리, CSS 크기와 무관한 가상 메모리, 잘못된 설정·작은 화면. `placement-scene-presentation.test.mjs`: Game Preview 진입 시 게임 카메라, 문서별 편집 카메라 복원, fit 확대와 크기 변경, letterbox 포인터 거절 | 백엔드 간 픽셀 일치, 실제 마우스·DPR, WebGPU 장치 복구 |
+
+**확장 "보강" 9단계 중 옮긴 것.**
+
+| # | 검사 | 처리 |
+| --- | --- | --- |
+| 8 | `smoke:particle-vfx` | `exampleGameEffectsScenario.test.ts`: 네이티브 엔진의 motion-trail 이미터가 거리마다 터지고 입자가 렌더 명령에 들어간다 |
+| 13 | `smoke:destructible-terrain-browser` | 근거로 적었던 `smoke:destructible-terrain`이 옮겨진 Rust 테스트 이름 때문에 0개를 돌며 늘 실패하고 있었다. 경로를 고쳐 3개가 다시 돈다. 이 Rust 테스트는 CI의 `cargo test`에서 이미 실행된다 |
+| 14 | `smoke:breakout-effects` | 같은 파일: 시드를 고정한 재시작 뒤 내장 Breakout이 벽돌 충돌 입자를 렌더 명령에 낸다. 같은 시드면 같은 프레임 |
+| 16 | `smoke:platformer-effects` | 같은 파일: 내장 Platformer가 착지 먼지 입자를 낸다 |
+
+**남은 확장 5단계.** `smoke:topdown`·`smoke:topdown-save-load`·`smoke:topdown-hd2d`는
+`examples/topdown-shooter/src/main.ts`(2,011줄), `smoke:physics-sandbox`·`smoke:physics-demo-suite`는
+`examples/physics-sandbox/src/main.ts`(1,695줄)의 화면 코드가 시나리오를 구동한다. 로직을 떼어 내려면
+예제 앱을 크게 나눠야 해서 이번에는 옮기지 않았다. 게임 규칙 자체는 Rust 회귀(`shooter_snapshots.rs`,
+`sandbox_scene_tests.rs`)와 CI의 gameplay replay 검사가 본다. 브라우저 smoke는 예제와 SDK의 연결을 본다.
+
+**제품 코드 변경.** 모두 동작을 바꾸지 않는 분리다.
+
+- `apps/studio/src/placementAssetCleanupGuard.ts`: `main.ts`의 정리 차단 검사. 문구·순서·지연 읽기 동일.
+- `apps/studio/src/placementTileAnimation.ts`: 미리보기 프레임 계산과 시간 범위 검사. 도구와 미리보기가 같은 함수를 쓴다.
+- `examples/site/src/listing.ts`: 목록 그룹·첫 화면 구역·검색. `main.ts`는 렌더링만 한다.
+
+**CI 연결.** 새 SDK 테스트 8개 파일은 `pnpm test:web`, 타일·정리 테스트는 기존 `test:tile-assets`·
+`test:placement-asset-cleanup`, Game Preview 테스트는 `test:placement-camera`에 들어간다. 예제 사이트
+테스트는 새 스크립트 `test:example-site`로 만들어 `validate`의 예제 카탈로그 단계에 추가했다.
+
+**검증.** `pnpm test:web`(SDK 테스트 300개 파일), `test:tile-assets`, `test:placement-asset-cleanup`,
+`test:placement-camera`, `test:example-site`, Studio·예제 사이트 타입 검사와 빌드, 문서 링크 검사가
+통과했다. 주요 새 테스트는 제품 코드를 일부러 바꿨을 때 실패하는 것을 확인했다(RenderTexture 상태 복원·
+feedback 거절, 색 모드 전달, 타일 프레임 경계). 새 SDK 테스트는 병렬로 돌며 가장 긴 HD-2D 전투가 약 3초다.
+`pnpm test:web` 전체는 로컬에서 약 22초였다. PR `validate` 증가량은 약 5~10초로 추정한다.
 
 ## S3: Studio 배포 분리 (설치판에서 예제 제외)
 
