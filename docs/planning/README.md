@@ -16,7 +16,7 @@
 | 문서 | 상태 | 다음 작업 또는 판단 |
 | --- | --- | --- |
 | [런타임 시작·화면 맞춤](runtime-startup-view-plan.md) | 사용자 승인·R1~R3, F1~F5·F5b, E1, C1(C1b·C1c·C1d 포함) 로컬 검증 완료(엔진 개선 1순위) | 남은 일은 PR CI 정리이며 [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md)로 넘겼다. |
-| [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md) | S1 완료·S1b와 S1c 로컬 검증 완료 | PR 기본 검사와 수동 브라우저 job을 각각 통합 검증한다. S2는 Studio 검사 단언을 분류하는 일부터 시작한다. |
+| [PR CI 정리와 Studio 배포 분리](ci-and-studio-distribution-plan.md) | S1·S1b·S1c 완료(PR #113 머지)·결정 5(2026-11-28): CI는 단위 테스트로만·S2a 로컬 검증 완료 | S2b: 분류표의 보강 6·새 테스트 12와 `extended-browser-smoke` 20개 분류. 브라우저 검사는 `pnpm smoke:browser-local`로 로컬 실행. 그 뒤 S3 |
 | [통합 3D 물리](unified-3d-physics-plan.md) | 사용자 승인·개발 진행 중 | Rust/Wasm 3D 백엔드, 2D 평면·HD-2D 통합 및 수용 검증. 회전 상자 접촉에서의 물리 정지는 [운동 증명 방식 검토](physics-motion-proof-review.md)의 B 결정으로 해결 |
 | [3D 물리 운동 증명 방식 검토](physics-motion-proof-review.md) | B 확정·P2a 강체 전환 완료(PR #114 main 머지)·P2b 제품 경로 확정(작업 브랜치) | P3에서 테스트에 남은 운동 증명 코드와 전용 훅을 정리한다 |
 | [게임 개발 편의성](game-development-convenience-review.md) | 설계 후보·미착수 / 제품 결정 대기 | 외부 맵·실행 진단·reload의 실제 필요와 저장 경계 확정 |

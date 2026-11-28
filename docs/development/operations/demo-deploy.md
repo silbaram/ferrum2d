@@ -103,5 +103,5 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/studio/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/pixel-art/` route를 `curl --fail`로 확인한다.
 
 이 workflow는 build·artifact 검증·배포·공개 route 확인을 담당한다.
-PR 자동 검증은 `CI`의 `validate`와 `Language boundaries`가 담당한다.
+PR 자동 검증은 `CI`의 기본 gate(`validate`, `validate-rust`, `validate-wasi`, `validate-studio-desktop`)와 `Language boundaries`가 담당한다.
 선택형 브라우저·패키지 검사는 [Smoke Check](../quality/smoke-check.md)의 수동 입력과 태그 ref 조건을 따른다.

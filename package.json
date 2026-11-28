@@ -75,6 +75,8 @@
     "smoke:placement-asset-usage": "pnpm --filter @ferrum2d/studio build && node tests/smoke/placement-asset-usage-runner.mjs",
     "test:placement-point-shadows": "node --test tests/smoke/placement-point-shadows.test.mjs",
     "test:placement-flat-lighting": "node --test tests/smoke/placement-flat-lighting.test.mjs",
+    "test:browser-smoke-node-checks": "node --test tests/smoke/browser-smoke-node-checks.test.mjs tests/smoke/run-browser-smokes.test.mjs",
+    "smoke:browser-local": "node scripts/validate/run-browser-smokes.mjs",
     "test:placement-scenes": "node --test tests/smoke/placement-scene-catalog.test.mjs tests/smoke/placement-project-assets.test.mjs tests/smoke/placement-asset-loading.test.mjs",
     "test:updates": "node --test tests/smoke/engine-updates.test.mjs tests/smoke/placement-updates.test.mjs",
     "smoke:placement-locale": "pnpm --filter @ferrum2d/studio build && node tests/smoke/placement-locale-smoke.mjs",
