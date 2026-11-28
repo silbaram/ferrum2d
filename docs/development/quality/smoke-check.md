@@ -64,12 +64,14 @@ byteLength를 `custom.nativeRuntime`에 보존한다. capture는 pause/resume �
 `gameLoop.test.ts`와 `engineFrameLifecycle.test.ts`는 update 경계의 예외가 audio/render/public frame으로
 진행하지 않고 RAF·busy 상태를 정리하는지, 원래 오류 전달과 checkpoint·재시작·해제가 가능한지 검사한다.
 frame pipeline/manual step 회귀는 checked entry를 한 번만 호출하고 거부 시 output/stat 읽기를 하지 않는지
-검사한다. Packed `native-checked-error-probe.mjs`는 공개 SDK로 빠른 CCD 상자를 유효한 경사 mesh 쪽으로
-보내 실제 충돌 검사에서 논리 작업량 한도를 초과시킨다. automatic/default manual/configured manual
-세 경로의 실제 Wasm 거부와 첫 구간의 pose·속도·시간 보존, public frame 미발행,
-새 Rust query·checkpoint 복원·장애물 제거 후
-RAF 재시작·중복 destroy를 확인한다. `smoke:unified-physics-web`에 연결하며 실제 실행 결과는
-새 공통 build의 package/Wasm 해시와 함께 판정한다. JS 오류 주입 결과나 RSS 한도 검증으로 대체하지 않는다.
+검사한다. Packed `native-checked-error-probe.mjs`는 고정 간격과 다른 값을 기본·설정 지정
+수동 스텝에 넘겨 Wasm 사전 거절을 검사한다. 자세·시간·직전 CCD 진단·Native 저장 바이트 보존,
+새 Rust 질의, 체크포인트 복원, RAF 재시작과 중복 destroy를 확인한다. 실행은
+`smoke:unified-physics-web`에 연결한다. 틱 안의 롤백은 Core의
+`injected_native_tick_failure_preserves_diagnostics_checkpoint_and_native_file`과
+`planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection`에서 검사한다.
+테스트 빌드의 실패 주입으로 이미 준비한 입력과 관측값을 되돌리고, 체크포인트·저장 바이트와
+재시도 뒤 힘·충격 적용 횟수를 비교한다.
 `nativeGameFile.test.ts`는 동기 Wasm 컴파일이 거절되는 환경에서도 공개 파일 저장과 복원이 성공하는지 검사한다.
 Native 기본 생성 회귀는 raw/Web의 backend 생략·가변 시간·씬 전환과 저장된 legacy 정책 보존을 검사한다.
 `planar_navigation::default_tests`와 `combat_navigation::dense_tests`는 Native-only shape·local offset·render anchor 분리,

@@ -1,6 +1,6 @@
 # 3D 물리 운동 증명 방식 검토
 
-상태: 사용자 결정 B(허용 오차 방식 전환)·P1a·P1b 비교 완료·P2a 강체 경로 전환 완료(PR #114, 2026-11-27 main 머지)·P2b 키네마틱 밀어내기 검증 완료, 빠른 동적 물체의 겹침과 경로 탐색 회귀로 제품 전환 보류.
+상태: 사용자 결정 B(허용 오차 방식 전환)·P1a·P1b 비교 완료·P2a 강체 경로 전환 완료(PR #114, 2026-11-27 main 머지)·P2b 후보를 작업 브랜치에서 재개, 5틱 겹침 회복 기준 판정 보류.
 
 관련 문서: [통합 3D 물리](unified-3d-physics-plan.md)의 "미해결: 회전 상자 접촉의 운동 증명", [PR CI 정리](ci-and-studio-distribution-plan.md)(빌드 시간 조사의 출발점).
 
@@ -151,6 +151,9 @@ vendor에 추가한 콜백 `resolve_solver_motion`이 각 물체의 실제 적�
    - `p1a_compare_*`의 강체 증명 대조군. 일반 CCD·관통·겹침 검사와 공개 오류 복구 회귀는 해당 시점의 제품 경로로 유지한다.
    - `force_character_motion_proof`와 P1b 증명 비교. 분류 표의 정확 suffix·handoff·zero-time credit,
      `event_prefix`의 정밀 재생, exact step-motion trace·file admission 시험도 지운다.
+   - 정확한 CCD prefix를 요구하는 `file_candidate_actual_native_ccd_saved_queries_and_six_tick_runtime_are_identical`,
+     `file_candidate_actual_native_ccd_original_end_damage_rejects_valid_crcs_and_keeps_source`.
+     제품 경로의 저장 바이트, 일반 보간 질의, atomic admission 시험은 유지한다.
    - `step_motion::exact`와 내부 callback의 Native trajectory trace. 프로젝트 파일의 호환 범위를
      검토한 뒤 snapshot의 기존 exact 레코드를 정리한다. 일반 보간·BVH와 공개 체크포인트 검사는 유지한다.
 4. 그 뒤 기존 2D 물리(`physics`·`collision`) 정리와 크레이트 분리를 검토한다(빌드 시간 조사의 2·3번 항목).
@@ -800,3 +803,83 @@ HD-2D 전투 최소 프레임 실패는 다시 실행하지 않았다.
 스텝을 거절했다. 이 실행의 Wasm SHA-256은 재개 전 제품과 같은
 `14d0b988db53d1debcb0427904a33bbe8fdeea605cedfde15887cf5a9d4ec980`이다.
 같은 Wasm으로 마을 전투를 단독 재실행해 8개 조합 모두 통과했다.
+
+#### 2026-11-28 사용자 결정 3차
+
+- `bf728fb6`의 제품 경로 복원을 되돌리고 작업 브랜치에서 캐릭터 KCC·지정 경로·투사체 보간
+  후보를 이어간다. 위 기록은 이전 실행 결과다. 작업 브랜치에서 기준을 충족하지 못한 항목은
+  측정해 보고하고 후보 경로는 유지한다.
+- 빠른 동적 물체는 같은 입력의 일반 Rapier 키네마틱 캡슐과 비교한다. 최대 겹침은 대조군 값
+  +0.005 이내, 관통 없음, 5틱 안에 겹침 0.005 이하 회복, 충돌 이벤트 발생을 검사한다.
+- KCC가 동료 캡슐을 장애물로 받아 표면을 따라 미끄러지게 한다. 경로가 멈춘 동료를 가로지르면
+  기존 길찾기의 장애물 처리를 쓴다. 경사면 투영으로 달라진 도착 시간은 진행·접지 결과로 검증한다.
+- 한 틱의 여러 구간에서 탑승 상태를 합친다. 저장·복원 다음 틱부터 원래 실행과 바이트가 같아야 한다.
+  제품 사전 거절은 상태 불변을, 테스트 전용 틱 실패 주입은 실제 틱의 되돌리기를 검사한다.
+- 정지 좌표 세 검사는 접촉 오차를 적용한다. 투사체의 틱 안 반전·왕복 두 장면은 시작·끝 자세의
+  보간으로 판정한다. 제품 전환을 확정한 뒤 기준 파일과 공개 변경 기록을 갱신한다.
+
+#### 3차 비교 및 수정
+
+다음 수치는 고정 간격 0.01초, CCD 상자 X=1.5·속도 −200, 키네마틱 캡슐 X=0인 장면을 Parry
+형상 접촉으로 측정한 값이다. 회복 시간은 최초 허용치 초과 틱부터 센다.
+
+| 공간 | 일반 캡슐 최대 겹침 | 캐릭터 최대 겹침 | 허용치 초과 5틱 뒤 | 0.005 이하 회복 |
+| --- | ---: | ---: | ---: | ---: |
+| 평면 XY | 0.058997154 | 0.058997154 | 0.038406283 | 20틱 |
+| 공간 XYZ | 0.058749318 | 0.058749318 | 0.036364615 | 17틱 |
+
+두 경로의 겹침이 관측한 32틱 동안 같은 흐름이었고 상자는 캡슐 반대쪽으로 통과하지 않았다.
+양쪽 모두 고체 충돌 이벤트를 받았다. 회복 속도는 일반 Rapier에서도 5틱 기준에 미달한다.
+기본 Rapier 해석을 유지하며 이 기준을 검사하는 Rust 시험을 남겼다.
+
+길막힘은 캐시의 공유 경로가 먼저 도착한 정지 캡슐을 가로지르는 경우였다. KCC 이동 질의가
+동료의 표면을 받아도 같은 경로로 다시 전진하면 막혔다. KCC가 동료에 막힌 뒤에는 기존
+길찾기의 장애물 처리로 정지 동료를 돌아가게 했다. 저장 파일을 복원한 추종자와 두 에이전트의
+목표 도달이 기존 거리 한도 1.02·1.52에서 통과했다.
+
+경사로에서 Rapier는 이동을 경사면에 투영했다. 이동 한 틱당 평균 수평 거리는 평지 0.03232,
+경사로 0.03034였다. 진입·출구와 경사로에서 정지나 0.005를 넘는 하강 떨림이 없었고,
+목표 층에 265틱에 도착했다. 도착 한도를 300틱으로 갱신하고 기존 목표 좌표와 층 단언을 유지했다.
+
+왕복 발판은 구간별 운반을 합쳐 최종 접지한 운반체를 보고한다. 캐릭터 이동 관측값은 실제
+저장된 끝점과 시작점의 차이를 사용한다. 진행 중인 연결 경로에서 원본과 복원본이 같은 바이트를
+유지하는 검사와, 외부 힘을 한 번만 소비하는 검사를 유지했다. 구간 분할 직후 저장한 지지체
+기록과 대기 점프가 6틱 동안 그대로 재생되는 일반 경로 시험도 추가했다. 기존 체크포인트가
+입력·접지·미리보기를 보존하고 있어 필드를 추가할 필요는 없었다. 정확 경로를 쓰는 테스트는
+복원한 world에 테스트 전용 경로를 다시 설정했다.
+
+제품의 고정 틱 사전 거절은 호출자에게 오류를 반환하면서 포즈·시간·마지막 틱 진단·파일을
+보존한다. 틱 안의 실패는 Rust 테스트에서 입력과 관측값을 준비한 직후 주입한다. Native 파일과
+체크포인트가 그대로이고 재시도 때 힘·충격이 한 번만 적용되는지 검사한다.
+
+```bash
+cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib p2b_fast_incoming_ccd -- --show-output
+cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib native_cached_actual_connector
+cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib native_combat_navigation_multiple_agents
+cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib native_navigation_reaches_raised_floor -- --show-output
+cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib rapier_path_checkpoint
+cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offline --lib injected_native_tick_failure
+```
+
+#### 3차 검증 결과
+
+- Core 전체 단위 실행은 3,805건 통과, 1건 실패, 수동 비교 16건 제외였다. 실패는 위
+  5틱 겹침 회복 시험이다. API 통합 시험 1건, Rust 포맷, Clippy, 테스트 구조와 문서 링크
+  검사를 통과했다. SDK 테스트 2,075건과 공개 API 표면 검사도 통과했다.
+- 로컬 브라우저의 동일 초기 상태 비교는 평면 최대 0.058997143, 공간 최대 0.058750612로
+  일반 캡슐과 캐릭터의 값이 같았다. 두 경로에서 고체 충돌 이벤트가 발생했고, 게임이 준
+  충격으로만 캐릭터가 X 방향으로 이동했다. 고정 간격을 다르게 호출한 기본·설정 지정
+  수동 API에서는 저장 파일을 포함해 관찰한 상태가 같았다.
+- 공식 통합 물리 Web은 64명·405스텝의 기존 해시 비교에서 실패했다. 후보 해시는
+  `486c58c1e2a2fec256d42c63fc567da28d89576a5305d3c6be24ec8d96f9a301`이다.
+  로컬 진단 실행은 기존 해시 단언을 출력으로 바꿔 나머지 검사를 모두 통과했다.
+  같은 입력에서 위 해시가 다시 나왔고, 최소 간격 0.5499997, 체크포인트 뒤 6스텝 일치,
+  스텝당 Rust 비용 p95 2.22ms였다. 기준 해시는 저장소에 그대로 두었다.
+- 최종 후보의 마을 전투 8개 조합, Platformer, Top-down HD-2D, 물리 실험실 단일 장면과
+  전체 7개 장면이 통과했다. 마을 전투의 측정 구간에서는 조합마다 발사 140회, 명중 4~8회를 확인했다.
+- 후보 Wasm 내장 지문과 작업 브랜치 소스 지문은 `e174f8267b2e182b`이며,
+  `origin/main`(`c931e948`) 소스 지문은 `11069d5bf39a8803`이다.
+  HD-2D 전투 최소 프레임 실패는 재실행하지 않았다.
+
+후보는 작업 브랜치에 유지한다. 5틱 회복 기준이 남아 64명 해시와 리플레이 fixture 재생성,
+결정 B의 공개 문서·CHANGELOG 반영, 두 빌드의 정식 성능 비교는 보류한다.
