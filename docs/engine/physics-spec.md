@@ -326,11 +326,12 @@ const scene = applyPhysicsSceneProfile(runtime.engine, {
 
 반환값은 body id -> `PhysicsEntityHandle`, joint id -> `PhysicsJointHandle`, body/joint count, warning, `stepOptions`, `clear()`를 포함한다. 같은 fixture를 다시 적용할 때는 `createPhysicsWorldFromSpec(engine, next, { replace: previousWorld })`를 사용한다.
 
-`stepOptions.continuous`는 해석을 마친 CCD 설정이다. 통합 물리 world에서 `true`이면 Rapier가 빠른
-동적 물체와 고정 콜라이더의 충돌을 검사한다. 동적 물체에서 `ccd: true`를 사용하면
+`stepOptions.continuous`는 해석을 마친 CCD 설정이다. 캐릭터·지정 경로·step-motion이 없는 통합 물리 world에서
+`true`이면 Rapier가 빠른 동적 물체와 고정 콜라이더의 충돌을 검사한다. 동적 물체에서 `ccd: true`를 사용하면
 운동학적 물체와 `ccd`를 켜지 않은 동적 물체도 검사 대상에 들어간다. 첫 접촉 틱에 일시적으로 겹칠 수 있고,
 이후 접촉 solver가 겹침을 보정한다.
-`false`는 CCD를 끈다. 캐릭터 이동, 지정 경로의 매듭 분할, 투사체의 시작·끝 자세 보간은 별도로 처리한다.
+`false`는 CCD를 끈다. 캐릭터 또는 지정 경로·step-motion이 운동 증명 경로를 쓰는 장면에서는 해당 경로의
+`CapacityExceeded`와 `UnresolvedMotion`이 계속 보고될 수 있다.
 
 Imperative API에서 `despawnPhysicsEntity(bodyHandle)`이 성공하면 해당 body를 참조하는 모든 joint도 함께 제거된다. 이 cascade는 8종 joint의 양쪽 endpoint에 동일하게 적용되며, 기존 `PhysicsJointHandle`은 즉시 무효화된다. 따라서 body를 먼저 제거한 consumer가 연결 joint마다 `clearPhysicsJoint(...)`를 다시 호출할 필요는 없다. 이미 무효화된 body handle을 전달해 `false`가 반환되는 경우에는 joint 상태도 변경하지 않는다.
 

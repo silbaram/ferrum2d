@@ -141,7 +141,6 @@ fn fixture(speed: f32, wall: bool, spin: f32) -> (PhysicsWorld3d, BodyId) {
         .unwrap();
     }
     w.backend.integration_parameters.max_ccd_substeps = 4;
-    w.force_character_motion_proof();
     w.set_step_motion_enabled(true);
     w.refresh_queries();
     w.begin_fixed_step();

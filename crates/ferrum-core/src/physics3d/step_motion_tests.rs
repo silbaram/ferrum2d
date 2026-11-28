@@ -125,7 +125,8 @@ fn captured_motion_filters_generations_and_rebuilds_after_empty_ticks() {
 #[test]
 fn rotating_offset_fixture_uses_body_pivot_and_intermediate_bounds() {
     let mut world = world();
-    // Use the ordinary captured start/end arc for an offset target.
+    // Request a 90-degree target. The timed path keeps the native angular cap
+    // and four normalized Euler integrations, rather than a target-pose slerp.
     let half_angle = std::f32::consts::FRAC_PI_8;
     let body = world
         .create_body(
@@ -185,15 +186,29 @@ fn rotating_offset_fixture_uses_body_pivot_and_intermediate_bounds() {
         )
         .unwrap();
     assert_eq!(hits.len(), 1, "offset fixture must follow the body arc");
-    // At first contact the arc center is one combined radius from the query.
-    let start_angle = 2. * half_angle;
-    let contact_angle = 2. * (0.4_f32 / 6.).asin();
-    let end = world.body_state(body).unwrap().pose;
-    let rotation = super::world::native_pose(end).rotation.to_scaled_axis().z;
-    let expected = (start_angle - contact_angle) / (start_angle + rotation);
+    // A center on radius3 contacts the stationary sphere at angular distance
+    // 2*asin((r_query+r_target)/(2*3)). Each full native kernel rotates through
+    // beta=2*atan(omega_cap*h/2); invert that same Euler law inside the hit kernel.
+    let parameters = &world.backend.integration_parameters;
+    let kernels = parameters.num_solver_iterations;
+    assert_eq!(kernels, 4);
+    let h = parameters.dt / kernels as f32;
+    let omega_cap = std::f32::consts::FRAC_PI_4 * parameters.inv_dt();
+    let half_advance = f64::from(omega_cap * (h * 0.5));
+    let beta = 2.0 * half_advance.atan();
+    let start_angle = 2.0 * f64::from(half_angle.sin()).atan2(f64::from(half_angle.cos()));
+    let contact_angle = 2.0 * ((2.0 * f64::from(0.2_f32)) / (2.0 * 3.0)).asin();
+    let travel = start_angle - contact_angle;
+    let kernel = (travel / beta).floor();
+    assert_eq!(
+        kernel, 3.0,
+        "contact must occur in the fourth native kernel"
+    );
+    let within = ((travel - kernel * beta) * 0.5).tan() / half_advance;
+    let expected = (kernel + within) / kernels as f64;
     assert!(
-        (hits[0].fraction - expected).abs() < 0.0005,
-        "{hits:?}; expected {expected}"
+        (f64::from(hits[0].fraction) - expected).abs() < 1e-5,
+        "{hits:?}, native kernel expected={expected}"
     );
     let point = hits[0].point;
     assert!(
@@ -385,7 +400,6 @@ fn motion_capture_preserves_solver_state_forces_and_pending_kinematic_targets() 
 #[test]
 fn solver_motion_records_a_full_turn_instead_of_only_equivalent_end_rotations() {
     let mut world = world();
-    world.force_character_motion_proof();
     let body = world
         .create_body(
             BodyDesc {
@@ -431,7 +445,6 @@ fn solver_motion_records_a_full_turn_instead_of_only_equivalent_end_rotations() 
 #[test]
 fn solver_motion_records_reversal_within_one_backend_pass() {
     let mut world = world();
-    world.force_character_motion_proof();
     world
         .set_runtime_settings(
             [-14400.0, 0.0, 0.0],
@@ -483,7 +496,6 @@ fn solver_motion_uses_accepted_ccd_path_even_when_diagnostics_overflow() {
             ..WorldConfig::default()
         })
         .unwrap();
-        world.force_character_motion_proof();
         world.set_step_motion_enabled(true);
         world.backend.integration_parameters.max_ccd_substeps = ccd_passes;
         world

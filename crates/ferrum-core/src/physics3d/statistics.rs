@@ -209,15 +209,14 @@ impl PhysicsWorld3d {
         controller_seconds: f32,
         logical_domain: super::solver_trajectory::Domain,
     ) -> bool {
-        let motion_proof = self.backend_motion_enabled();
         self.events
             .2
             .get_mut()
             .unwrap_or_else(|p| p.into_inner())
-            .reset(self.step_motion.enabled && motion_proof);
+            .reset(self.step_motion.enabled);
         self.backend.ccd_solver.reset_diagnostics();
         let mut approved = true;
-        if motion_proof {
+        if self.backend_motion_enabled() {
             let mut scratch = std::mem::take(&mut self.character_motion.backend_motion);
             let mut ran_backend = false;
             let diagnostics_ready = (|| {

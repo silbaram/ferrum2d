@@ -1169,20 +1169,19 @@ fn forty_independent_moving_entries_keep_all_twenty_real_stops_and_checked_full_
         f64::from(w.config.step_seconds)
     );
     assert_eq!(w.step_statistics().kinematic_character_stops, 20);
-    assert_eq!(w.step_statistics().kinematic_path_stops, 20);
-    for (i, (a, m)) in movers.into_iter().enumerate() {
-        // Each blocked move is atomic. Check the full-tick result and replay.
-        assert_eq!(
-            w.body_state(m).unwrap().pose.position[0],
-            3. + i as f32 * 0.1
-        );
-        assert_eq!(w.body_state(a).unwrap().pose.position[0], 0.);
+    for (a, m) in movers {
+        assert!((w.body_state(m).unwrap().pose.position[0] - 0.02).abs() < 0.02);
+        assert!((w.body_state(a).unwrap().pose.position[0] + 0.49).abs() < 0.02);
         assert!(
             !w.character_state(a)
                 .unwrap()
                 .moving_obstacle_iteration_limit
         );
     }
+    assert!(
+        w.saved_motion_proof_work().used
+            <= crate::physics3d::character_motion::trajectory::MAX_PROOF_WORK
+    );
     let accepted = w.capture_snapshot().unwrap();
     w.restore_snapshot(&original).unwrap();
     w.step_checked().unwrap();

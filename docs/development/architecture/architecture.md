@@ -821,10 +821,6 @@ native contact의 접선 속도로 전달한다. 평면 height/floor는 contact�
 위치 보정은 적분 후 속도에 남기지 않고, 속도 편향은 split 설정에 따라 relaxation에도 유지한다.
 실행 중 contact 설정 변경은 fixture cache를 갱신하며 입력 전체 검증을 먼저 수행한다.
 중력·반복 횟수·반발 속도 임계값·전체 CCD는 `SolverSettings`와 공통 native 적분 경로에 연결한다.
-제품의 통합 물리는 Rapier 일반 step을 사용한다. 캐릭터는 KCC, 키네마틱 장애물의 경로 cast,
-지지점 운반으로 이동한다. 지정 경로의 매듭 시간은 스텝을 나누는 기준이다. 투사체는 게시된
-틱 시작·끝 자세를 보간해 명중을 계산한다. 아래의 actual curve·정밀 승인 설명은 P3에서
-정리할 테스트 대조군과 저장 호환 경로의 기록이다.
 중력 변경의 native wake를 과거 World sleep projection으로 덮어쓰지 않는다. 기존 자동 실행 off는
 native step도 멈추며, 수동 step은 같은 world·고정 tick을 사용한다. one-shot 설정은 자동 설정과
 Engine accumulator를 바꾸지 않는다. spatial legacy component의 전체 이전은 남아 있다.

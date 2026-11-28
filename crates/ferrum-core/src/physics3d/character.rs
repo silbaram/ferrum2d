@@ -4,7 +4,6 @@ use super::colliders::native_collider;
 pub(super) mod experimental_tests;
 mod file_admission;
 pub(super) mod interval_credit;
-mod kcc;
 use super::events::{collider_id, collider_ref};
 use super::types::{valid_pose, valid_vector};
 use super::world::{native_id, native_pose};
@@ -36,9 +35,8 @@ pub struct CharacterConfig {
     pub snap_distance: f32,
     /// Maximum vertical speed in engine units per second.
     pub max_vertical_speed: f32,
-    /// Virtual mass when pushing dynamic bodies or integrating external forces.
-    /// Incoming dynamic contacts see the character as kinematic.
-    /// Zero disables KCC push impulses and the external force/impulse APIs.
+    /// Virtual translational mass for coupled dynamic contacts and external forces.
+    /// Zero disables finite-mass coupling and the external force/impulse APIs.
     pub push_mass: f32,
 }
 

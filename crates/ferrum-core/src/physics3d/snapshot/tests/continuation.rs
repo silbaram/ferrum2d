@@ -174,7 +174,6 @@ fn native_snapshot_retains_path_stop_and_rotating_piecewise_motion_queries() {
         position: [0., 10., 0.],
         rotation: rp::Rotation::from_rotation_z(std::f32::consts::FRAC_PI_2).to_array(),
     };
-    w.force_character_motion_proof();
     w.set_step_motion_enabled(true);
     w.step_with_kinematic_paths(&[
         KinematicPath {

@@ -73,7 +73,6 @@ fn actual_character_trajectory_automatically_shares_clock_with_admitted_extra32_
     w.set_step_motion_enabled(true);
     let saved = w.capture_snapshot().unwrap();
     w.restore_snapshot(&saved).unwrap();
-    w.force_character_motion_proof();
     assert_eq!(
         w.backend.bodies[native_id(tuned)].additional_solver_iterations(),
         32
@@ -184,7 +183,6 @@ fn actual_character_trajectory_automatically_shares_clock_with_admitted_extra32_
         expected.push(w.capture_snapshot().unwrap());
     }
     w.restore_snapshot(&saved).unwrap();
-    w.force_character_motion_proof();
     for expected in expected {
         w.step_checked().unwrap();
         assert_eq!(w.actual_motion_completed_time(), tick_seconds);
@@ -217,7 +215,6 @@ fn actual_backend_curve_query_is_readonly_and_retains_full_shape_pose_kernel() {
             }),
         )
         .unwrap();
-    w.force_character_motion_proof();
     w.set_step_motion_enabled(true);
     w.step_checked().unwrap();
     let accepted = *w

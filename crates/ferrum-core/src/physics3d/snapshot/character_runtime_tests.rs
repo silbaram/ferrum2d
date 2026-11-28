@@ -393,7 +393,6 @@ fn path_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
             }),
         )
         .unwrap();
-    world.force_character_motion_proof();
     world.step();
     assert!(world.character_state(actor).unwrap().grounded);
     world
@@ -1541,7 +1540,6 @@ fn precise_completed_query_payload_valid_crc_damage_keeps_native_source_unchange
         ..WorldConfig::default()
     })
     .unwrap();
-    world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
     world
         .create_body(

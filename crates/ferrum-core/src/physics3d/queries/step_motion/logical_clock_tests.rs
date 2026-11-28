@@ -54,7 +54,6 @@ fn exact_split_tick_and_saved_queries_preserve_each_original_native_physical_fra
     world.refresh_queries();
     let mut original: rp::PhysicsWorld =
         postcard::from_bytes(&postcard::to_allocvec(&world.backend).unwrap()).unwrap();
-    world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
     world.begin_fixed_step();
     let tick = Time::from(world.config.step_seconds);
@@ -174,7 +173,6 @@ fn actual_ccd_subpasses_share_nonzero_tick_origin_with_prepared_clamps_and_saved
         .unwrap();
     world.backend.integration_parameters.max_ccd_substeps = 4;
     world.refresh_queries();
-    world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
     world.begin_fixed_step();
     let tick = Time::from(world.config.step_seconds);

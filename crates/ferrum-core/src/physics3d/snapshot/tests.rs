@@ -499,7 +499,6 @@ fn preapply_capacity_rejection_preserves_last_tick_and_pending_world_bytes() {
         ..WorldConfig::default()
     })
     .unwrap();
-    w.force_character_motion_proof();
     let half_angle = -std::f64::consts::FRAC_PI_8 * 0.5;
     let mover = w
         .create_body(

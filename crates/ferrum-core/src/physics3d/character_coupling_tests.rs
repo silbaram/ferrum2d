@@ -115,11 +115,9 @@ fn capsule_chain_transmits_fixed_wall_obstruction_back_to_the_prescribed_pusher(
             assert!(pair[0] - pair[1] >= 0.499, "{positions:?}");
         }
         assert!(positions[count - 1] >= left + 0.499, "{positions:?}");
-        // A squeeze cancels the proposed push and wall motion for this tick.
-        assert_eq!(x(&w, p), 3.);
-        assert_eq!(
-            positions,
-            (0..count).map(|i| -(i as f32)).collect::<Vec<_>>()
+        assert!(
+            (positions[count - 1] - left - 0.51).abs() < 0.02,
+            "{positions:?}"
         );
         assert!(
             x(&w, p) - positions[0] >= 0.499,
@@ -268,7 +266,7 @@ fn a_distant_fast_obstacle_does_not_loosen_local_capsule_contact_tolerance() {
         .unwrap();
     for _ in 0..20 {
         w.step();
-        assert!(x(&w, b) - x(&w, a) >= 0.495, "{} {}", x(&w, a), x(&w, b));
+        assert!(x(&w, b) - x(&w, a) >= 0.499, "{} {}", x(&w, a), x(&w, b));
     }
 }
 
@@ -318,12 +316,19 @@ fn pair_contacts_reduce_reported_carry_to_the_accepted_motion() {
     )
     .unwrap();
     step_report_checked(&mut w, "accepted carry pair move");
-    // The conservative stop keeps the platform and both riders at their starts.
-    assert_eq!(w.step_statistics().kinematic_path_stops, 1);
-    assert_eq!([x(&w, p), x(&w, a), x(&w, b)], [0., -1., 0.]);
+    assert!((x(&w, p) - 2.0).abs() < 0.001);
+    assert!(
+        (x(&w, a) + 0.02).abs() < 0.02 && (x(&w, b) - 0.49).abs() < 0.02,
+        "{} {}",
+        x(&w, a),
+        x(&w, b)
+    );
     for id in [a, b] {
         let s = w.character_state(id).unwrap();
-        assert_eq!(s.carry_translation, [0.; 3]);
+        assert!(
+            s.carry_translation[0] > 0.0 && s.carry_translation[0] <= s.translation[0] + 0.001,
+            "{s:?}"
+        );
         assert!(s.grounded);
     }
     let snapshot = w.capture_snapshot().unwrap();

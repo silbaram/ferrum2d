@@ -335,7 +335,6 @@ mod tests {
             ..WorldConfig::default()
         })
         .unwrap();
-        world.force_character_motion_proof();
         world.set_step_motion_enabled(true);
         world
             .create_body(

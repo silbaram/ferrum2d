@@ -81,7 +81,6 @@ fn distance(w: &PhysicsWorld3d, bar: BodyId, actor: BodyId) -> f32 {
 #[test]
 fn event_prefix_public_squeeze_rejects_overrunning_cap_at_actual_contact() {
     let (mut w, bar, actor) = fixture();
-    w.force_character_motion_proof();
     assert!(distance(&w, bar, actor) > 0.7);
     let saved = w.capture_snapshot().unwrap();
     w.step();
@@ -101,7 +100,6 @@ fn event_prefix_public_squeeze_rejects_overrunning_cap_at_actual_contact() {
     assert!(w.step_statistics().character_preview_passes > 2);
     let accepted = w.capture_snapshot().unwrap();
     w.restore_snapshot(&saved).unwrap();
-    w.force_character_motion_proof();
     w.step();
     assert_eq!(
         w.capture_snapshot().unwrap().encoded_bytes(),

@@ -262,7 +262,6 @@ fn rigid_step_respects_continuous_ccd_without_motion_proof() {
             assert!(x > 0.55, "the control must pass through the wall, x={x}");
         }
         world.set_step_motion_enabled(true);
-        assert!(!world.backend_motion_enabled());
-        world.step_checked().unwrap();
+        assert!(world.backend_motion_enabled());
     }
 }

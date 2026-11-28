@@ -12,7 +12,6 @@ fn zero_progress_rejection_restores_staged_tick_inputs() {
         ..WorldConfig::default()
     })
     .unwrap();
-    w.force_character_motion_proof();
     let a = body(
         &mut w,
         BodyKind::Dynamic,

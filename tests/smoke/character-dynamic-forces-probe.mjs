@@ -8,8 +8,7 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
   const report = { format: "ferrum2d.character-dynamic-forces.browser", version: 1, status: "running", packageEvidence };
   try {
     const results = await page.evaluate(async () => {
-      const { createEngine, UNIFIED_PHYSICS_STATE_LAYOUT: B, UNIFIED_PHYSICS_CHARACTER_LAYOUT: C,
-        UNIFIED_PHYSICS_COLLISION_LAYOUT: E } = await import("@ferrum2d/ferrum-web/core");
+      const { createEngine, UNIFIED_PHYSICS_STATE_LAYOUT: B, UNIFIED_PHYSICS_CHARACTER_LAYOUT: C } = await import("@ferrum2d/ferrum-web/core");
       const raf = window.requestAnimationFrame, cancel = window.cancelAnimationFrame, pending = new Map();
       let serial = 0, time = 0;
       window.requestAnimationFrame = callback => { pending.set(++serial, callback); return serial; };
@@ -32,7 +31,7 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
             e.useDataScene(); e.configureUnifiedPhysics({ space, gravity: [0, 0, 0], lengthUnit: 1, stepSeconds: 0.01 });
             const actor = e.spawnUnifiedPhysicsBody({ kind: "kinematic-position",
               collider: { shape: { type: "capsule", halfHeight: 0.5, radius: 0.25 } } });
-            const box = e.spawnUnifiedPhysicsBody({ pose: { position: [100, 0, 0] }, canSleep: false, ccd: true,
+            const box = e.spawnUnifiedPhysicsBody({ pose: { position: [100, 0, 0] }, canSleep: false,
               collider: { shape: { type: "box", halfExtents: [0.5, 0.5, 0.5] }, density: 2, friction: 0 } });
             const handles = new Uint32Array([actor.entityId, actor.entityGeneration]);
             const all = new Uint32Array([actor.entityId, actor.entityGeneration, box.entityId, box.entityGeneration]);
@@ -73,35 +72,10 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
             }
             const replayed = trace();
             const last = replayed.at(-1), av = last.characterFloats[C.velocity], bv = last.floats[B.stride + B.linearVelocity];
-            // Decision B leaves an incoming contact kinematic. Game code subscribes
-            // to the solid enter event and supplies the knockback explicitly.
-            e.configureUnifiedPhysicsCharacter(actor, config);
-            e.setUnifiedPhysicsPoses(all, new Float32Array([0, 0, 0, 0, 0, 0, 1, 1.5, 0, 0, 0, 0, 0, 1]));
-            e.setUnifiedPhysicsVelocities(new Uint32Array(all.subarray(2)), new Float32Array([-200, 0, 0, 0, 0, 0]));
-            e.setUnifiedPhysicsCollisionEventsEnabled(true);
-            let impactEvent = false;
-            const impact = Array.from({ length: 3 }, () => {
-              const body = step();
-              const events = e.drainUnifiedPhysicsCollisionEvents();
-              for (let i = 0; i < events.count; i++) {
-                const row = i * E.stride;
-                const first = events.words[row + E.first + E.entity];
-                const second = events.words[row + E.second + E.entity];
-                impactEvent ||= events.words[row + E.phase] === E.enter
-                  && !(events.words[row + E.flags] & E.sensorFlag)
-                  && ((first === actor.entityId && second === box.entityId)
-                    || (first === box.entityId && second === actor.entityId));
-              }
-              return { actorX: body.floats[B.position], boxX: body.floats[B.stride + B.position],
-                boxVelocity: body.floats[B.stride + B.linearVelocity] };
-            });
-            if (impactEvent) e.applyUnifiedPhysicsCharacterImpulses(handles, new Float32Array([-10, 0, 0]));
-            const knockbackX = step().floats[B.position];
             results.push({ space, first, second, cleared,
               forceVelocities: [first, second, cleared].map(s => s.characterFloats[C.velocity]),
               expected, replayed, errors, actorVelocity: av, boxVelocity: bv,
-              boxX: last.floats[B.stride + B.position], totalMomentum: 2 * av + 2 * bv,
-              impact, impactEvent, knockbackX, cost });
+              boxX: last.floats[B.stride + B.position], totalMomentum: 2 * av + 2 * bv, cost });
           } finally { checkpoint?.dispose(); e.destroy(); }
         }
         return results;
@@ -112,16 +86,9 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
       assert(r.forceVelocities[1] > r.forceVelocities[0]);
       assert.equal(r.forceVelocities[2], r.forceVelocities[1], "Force clear must retain velocity without replaying impulse");
       assert(r.errors.every(Boolean)); assert.deepEqual(r.replayed, r.expected, "Rejected force batches must not alter pending input or replay");
-      // The KCC push and its reaction conserve passive momentum without enforcing
-      // the old solver's shared post-contact velocity.
-      assert(r.boxX > 0.3 && r.boxVelocity > 2 && r.boxVelocity < 4, "The real dynamic body must receive a finite reaction");
-      assert(r.actorVelocity > 0 && r.actorVelocity < 5);
+      assert(r.boxX > 0.3 && r.boxVelocity > 2 && r.boxVelocity < 3, "The real dynamic body must receive a finite reaction");
+      assert(Math.abs(r.actorVelocity - r.boxVelocity) < 0.1);
       assert(Math.abs(r.totalMomentum - 10) < 0.1, "No duplicate backend impulse or infinite-mass push");
-      assert(r.impactEvent, "Game code must receive a solid collision between the actor and box");
-      assert(r.impact.every(({ actorX, boxX }) => Math.abs(actorX) < 1e-5 && boxX >= 0.745 - 1e-6),
-        "Incoming CCD must not move the actor or pass through it");
-      assert(r.impact.at(-1).boxVelocity > -0.1, "The kinematic contact must stop or deflect the box");
-      assert(r.knockbackX < -0.049, "The game-authored impulse must move the actor");
       assert(r.cost.frames > 0 && r.cost.nativeFrames === r.cost.frames);
       assert(Number.isFinite(r.cost.maxRustMs) && r.cost.maxRustMs < 500);
     }
