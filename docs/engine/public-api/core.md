@@ -886,11 +886,13 @@ World 이동을 유지한다.
 `UnifiedPhysicsOptions`의 `space`는 `planar-xy` 또는 `spatial`이다. `gravity` XYZ와 `lengthUnit`을 명시한다.
 Planar는 Z 이동 및 X/Y 회전을 허용하지 않는다. Spatial은 Y-up이며 상태 좌표는 화면 투영과 별개다.
 `stepSeconds` 기본값은 1/60, solver 반복 수는 각각 1, `continuous`는 `true`다.
-캐릭터·지정 경로·step-motion이 없는 world에서 `continuous`는 Rapier CCD를 켠다. 빠른 동적 물체는 고정
+통합 물리 world에서 `continuous`는 Rapier CCD를 켠다. 빠른 동적 물체는 고정
 콜라이더를 대상으로 검사한다. 동적 물체의 `ccd: true`는 운동학적 물체와 `ccd`를 켜지 않은 동적 물체도 검사한다.
-첫 접촉을 처리한 틱에 형상이 잠시 겹칠 수 있으며, 이후 접촉 solver가 겹침을 보정한다. `continuous: false`는
-CCD를 끄고 틱 단위 접촉은 계속 처리한다. 운동 증명에서 발생하는 `CapacityExceeded`와 `UnresolvedMotion`은
-캐릭터 또는 지정 경로·step-motion이 증명 경로를 사용하는 경우에 남아 있다.
+CCD 대상의 매우 빠른 물체는 통과를 막는 과정에서 부딪힌 직후 잠시 겹칠 수 있다. Rapier의 접촉
+풀이가 이후 여러 틱에 걸쳐 분리한다. `lengthUnit: 1`과 0.01초 간격으로 초속 200 월드 단위의
+CCD 상자가 캡슐에 부딪힌 장면에서는 허용 겹침 0.005까지 돌아오는 데 약 0.2초가 걸렸다.
+`continuous: false`는 CCD를 끄고 틱 단위 접촉은 계속 처리한다. 지정 경로는 매듭에서 틱을 나눈다. 투사체는
+틱 시작·끝 타깃 자세의 보간으로 충돌을 검사하므로 한 틱 안에 방향을 바꿔 돌아온 타깃을 놓칠 수 있다.
 선택 capacity 기본값은 bodies 8192, colliders 16384, events 4096, characters 128, joints 16384다.
 설정 오류·controller의 직접 속도 변경·잠긴 회전·stale 핸들은 예외로 보고하고 기존 상태를 유지한다.
 
@@ -1192,8 +1194,12 @@ capsule 장축은 `up`과 나란해야 한다. 재설정은 이전 입력/상태
 `UnifiedPhysicsCharacterOptions` 기본값은 up `[0,1,0]`, skinWidth 0.01, maxSlopeAngle π/4,
 slideAngle은 maxSlopeAngle, stepHeight 0.3, stepMinWidth 0.2, snapDistance 0.2, maxVerticalSpeed 50, pushMass 0이다.
 stepHeight/snapDistance 0은 해당 기능을 끈다. pushMass는 0 또는 0.0001..10,000이다.
-0은 prescribed controller, 양수는 동적 물체와 힘을 주고받는 가상 질량이다.
-질량0의 충돌·carry 이동은 상태에 반영되며, 기하 보정이 다음 tick의 외부 운동량으로 누적되지는 않는다.
+0은 prescribed controller다. 양수는 캐릭터가 동적 물체를 밀 때의 가상 질량이다. 동적 물체에
+준 충격의 반작용을 캐릭터의 외부 속도에 반영하며, 외부 힘과 충격도 이 질량으로 적분한다.
+들어오는 동적 물체에는 캐릭터가 키네마틱 바디로 작동하며 접촉만으로 자동 밀리지 않는다.
+캐릭터는 Rapier KCC로 이동한다. 캐릭터끼리는 서로 막고 표면을 따라 미끄러지며, 운동량을 주고받지 않는다.
+벽이 가로막은 외부 속도 성분은 소거된다. 지지체나 키네마틱 장애물에 의해 이동한 거리는
+캐릭터 상태에 반영된다.
 
 ```ts
 const actor = engine.spawnUnifiedPhysicsBody({
@@ -1219,6 +1225,17 @@ Force는 `clearUnifiedPhysicsCharacterForces(handles)`까지 유지한다. Impul
 한 번 소비한다. Clear는 누적 외부 속도와 대기 impulse를 없애지 않는다. Preview·cold admission은 예약 입력을 소비하지 않는다.
 별도 character-force capability v1을 사용하며 기존 4-f32 입력과 28-word 상태 layout은 유지한다.
 양수 `pushMass` 구성도 이 capability를 요구해 구형 코어의 다른 밀기 동작으로 조용히 실행하지 않는다.
+
+피격 넉백은 게임에서 적용한다. `setUnifiedPhysicsCollisionEventsEnabled(true)`로 이벤트를 켜고,
+`drainUnifiedPhysicsCollisionEvents()`의 고체 접촉 진입에서 대상 캐릭터를 찾는다. 게임이 정한
+XYZ 충격을 그 캐릭터의 entity 핸들과 함께 `applyUnifiedPhysicsCharacterImpulses`에 전달한다.
+충돌 버퍼는 다음 읽기 전에 사용한다.
+
+움직이는 위치·속도 키네마틱과 지정 경로는 이번 틱의 이동으로 주변 캡슐을 검사하고 남은 이동으로 밀어낸다.
+회전 경로는 Parry의 비선형 cast로 검사한다.
+밀림이 다른 물체에 막히면 해당 키네마틱을 틱 시작 자세에서 정지시키고 `kinematicPathStops`에
+기록한다. 탑승자 운반은 동적·키네마틱 지지체의 실제 이동과 회전을 따른다. 발판이 한 틱 안에
+왕복해도 계속 실려 있었고 틱 끝에 접지라면 `carriedBy`에 그 발판이 남는다.
 
 `queryUnifiedPhysicsCharacterStates`는 마지막 fixed tick의 28-word/112-byte 상태를 반환한다.
 `UNIFIED_PHYSICS_CHARACTER_LAYOUT`에 id/generation, flags, ground collider/body, carriedBy,

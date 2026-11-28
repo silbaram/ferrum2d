@@ -1,8 +1,8 @@
 # 3D 물리 운동 증명 방식 검토
 
-상태: 사용자 결정 B(허용 오차 방식 전환)·P1a·P1b 비교 완료·P2a 강체 경로 전환 완료(PR #114, 2026-11-27 main 머지)·P2b 후보를 작업 브랜치에서 재개, 5틱 겹침 회복 기준 판정 보류.
+상태: 사용자 결정 B(허용 오차 방식 전환)·P1a·P1b 비교 완료·P2a 강체 경로 전환 완료(PR #114, 2026-11-27 main 머지)·P2b 제품 경로 확정(작업 브랜치).
 
-관련 문서: [통합 3D 물리](unified-3d-physics-plan.md)의 "미해결: 회전 상자 접촉의 운동 증명", [PR CI 정리](ci-and-studio-distribution-plan.md)(빌드 시간 조사의 출발점).
+관련 문서: [통합 3D 물리의 회전 상자 접촉 기록](unified-3d-physics-plan.md#해결-회전-상자-접촉의-운동-증명-2026-11-22), [PR CI 정리](ci-and-studio-distribution-plan.md)(빌드 시간 조사의 출발점).
 
 ## 왜 조사했나
 
@@ -121,7 +121,7 @@ vendor에 추가한 콜백 `resolve_solver_motion`이 각 물체의 실제 적�
 | `physics3d/broad_phase_nonreuse_golden.postcard` | 접촉·위치가 바뀌면 다시 만든다 |
 | `tight_clearance_tests.rs`의 `FULL_MARGIN_QUERY_GOLDEN` | `character_query`가 바뀔 때만 |
 | `solver_trajectory/` 테스트 약 331개, `character_motion/` 테스트 약 198개 | 증명 전용은 삭제, 동작 테스트는 새 방식 기준으로 다시 쓴다 |
-| `tests/smoke/native-checked-error-probe.mjs:147`(실제 `CapacityExceeded` 필요) | 실패 사례를 새로 정하거나 바꾼다 |
+| `tests/smoke/native-checked-error-probe.mjs` | 제품 고정 틱의 사전 거절을 검사한다. 틱 중 롤백은 저장 바이트를 비교하는 Rust 실패 주입 시험으로 검증한다. |
 | `engine/unified_physics/sandbox_scene_tests.rs`의 ignored 3건, `examples/shared/physicsExamples.json`의 `knownIssue` | 통과하면 ignore와 예외 목록을 지운다 |
 | `tests/fixtures/gameplay-golden/*.json`, vendor 저장 형식 golden | 영향 없음(legacy backend 강제 또는 형식 고정) |
 
@@ -156,6 +156,10 @@ vendor에 추가한 콜백 `resolve_solver_motion`이 각 물체의 실제 적�
      제품 경로의 저장 바이트, 일반 보간 질의, atomic admission 시험은 유지한다.
    - `step_motion::exact`와 내부 callback의 Native trajectory trace. 프로젝트 파일의 호환 범위를
      검토한 뒤 snapshot의 기존 exact 레코드를 정리한다. 일반 보간·BVH와 공개 체크포인트 검사는 유지한다.
+   - `step_kinematic_tick`의 승인·prefix 재시도와 제품에서 false인 `backend_motion_enabled`의 테스트
+     분기를 제거한다. `step_rapier_kinematic_tick`의 매듭 분할, KCC sweep과 발판 운반은 유지한다.
+   - 증명 경로와 일반 스텝이 함께 쓰는 시간 변환·저장 검사·틱 되돌리기 코드를 먼저 구분한다.
+     사전 거절 상태 불변과 테스트 전용 틱 실패 주입은 증명 대조군을 삭제한 뒤에도 유지한다.
 4. 그 뒤 기존 2D 물리(`physics`·`collision`) 정리와 크레이트 분리를 검토한다(빌드 시간 조사의 2·3번 항목).
 
 ## 사용자 결정 (2026-11-27)
@@ -883,3 +887,67 @@ cargo +stable test --manifest-path crates/ferrum-core/Cargo.toml --locked --offl
 
 후보는 작업 브랜치에 유지한다. 5틱 회복 기준이 남아 64명 해시와 리플레이 fixture 재생성,
 결정 B의 공개 문서·CHANGELOG 반영, 두 빌드의 정식 성능 비교는 보류한다.
+
+#### 2026-11-28 회복 기준 정정 및 제품 경로 확정
+
+5틱 회복 조건을 일반 Rapier와의 비교로 정정했다. 32틱 동안 각 틱의 캐릭터 겹침은 일반
+키네마틱 캡슐의 값 +0.000001 이내여야 한다. 일반 캡슐이 그 구간 내에 0.005 이하로 회복하고,
+상자 통과가 없으며 충돌 이벤트가 도착해야 한다. Rapier 접촉 설정은 유지했다.
+
+Rust와 브라우저에서 32틱 비교가 통과했다. Rust에서 일반 캡슐은 허용치를 처음 넘은 뒤 평면
+20틱, 공간 17틱에 0.005 이하로 돌아왔다. 실제 알려진 동작으로
+[Physics Spec](../engine/physics-spec.md)과 [Core API](../engine/public-api/core.md)에 기록했다.
+
+제품은 Rapier 일반 스텝, 캐릭터 KCC, 키네마틱 매듭 분할과 투사체 시작·끝 자세 보간을 사용한다.
+운동 증명 진입은 테스트 전용이다. 64명·405스텝 저장 기준은
+`da6e9fd49d89addd7d87e6a7b296f1a82bca7ff2ff7542c890c4544aace6776d` →
+`486c58c1e2a2fec256d42c63fc567da28d89576a5305d3c6be24ec8d96f9a301`로 갱신했다.
+같은 빌드에서 체크포인트 뒤 6스텝 재생과 반복 실행의 결정성은 유지한다.
+
+Minimal·Topdown·Breakout·Platformer를 생성한 뒤 각 프로젝트의
+`node scripts/ferrum-runtime-replay.mjs update-fixture`로 재생성했다. Native 파일 SHA-256
+18개, snapshot hash 18개, replay hash 22개가 바뀌었다. 다른 JSON 값은 같았다.
+
+Core 단위 3,806건과 통합 1건, Rust 포맷과 Clippy를 통과했다. 수동 비교 16건은 기본
+테스트 실행에서 제외했다. `FULL_MARGIN_QUERY_GOLDEN`과 broad-phase 저장 순서·바이트
+시험은 기존 기준으로 통과했다. SDK 테스트 292건, Wasm 소스 지문, 런타임 패키지와 공개 타입,
+생성기 패키지와 템플릿 리포트, 공개 API·문서 링크·Rust 테스트 구조 검사도 통과했다.
+
+최종 실행에서 통합 물리 Web은 정정한 겹침 기준, 새 64명 해시와 6스텝 체크포인트 재생을
+통과했다. 마을 전투 8개 조합, Platformer, Top-down HD-2D와 물리 실험실 단일·전체 스모크도
+통과했다. 마을 전투 측정에서 조합당 140회 발사와 3~7회 명중을 확인했다.
+HD-2D 전투의 최소 프레임 검사는 별도로 실행하지 않았다.
+
+#### 성능 비교
+
+`origin/main`(`c931e948`)에서 Rust 1.97.1과 같은 Wasm 도구로 최적화 빌드를 만들었다.
+P2b의 테스트 변경은 제품 소스 지문을 바꾸지 않아 같은 도구로 만든 기존 최적화 Wasm을
+재사용했다. Wasm 소스 지문은 `11069d5bf39a8803` → `e174f8267b2e182b`, 크기는
+10,550,797 → 10,017,492 바이트다. 두 빌드는 같은 SDK JS와 로컬 Chromium 153.0.8010.12에서
+측정했다.
+
+64명 군중은 `probeNativeGameplayNavigation`에 50ms RAF 입력을 주어 81프레임·405스텝을
+각 빌드에서 세 번씩 번갈아 실행했다. 같은 빌드의 세 해시와 체크포인트 뒤 6스텝은 일치했고,
+두 빌드의 최소 캡슐 간격은 각각 0.5499997이었다.
+
+| 64명 군중 지표 | main | P2b |
+| --- | ---: | ---: |
+| 첫 Rust 업데이트 시간 중앙값 (ms) | 38.90 | 23.70 |
+| 예열 후 프레임당 Rust p95의 중앙값 (ms) | 32.10 | 12.30 |
+| 예열 후 스텝당 Rust p95의 중앙값 (ms) | 6.42 | 2.46 |
+| Wasm 선형 메모리 최댓값 (바이트) | 7,405,568 | 6,422,528 |
+
+`main`의 전체 마을 전투 스모크는 시뮬레이션 5.6502초에서 기존 운동 증명 오류로 중단됐다.
+P2b의 전체 스모크는 8개 조합을 통과했다. 비교에는 같은 마을 전투 fixture의 적 32명·효과와
+LOD 끔 상태를 사용했다. 두 빌드에서 같은 예열 절차와 경사로 입력을 적용하고, 정지 지점 전의
+1.8초 구간을 세 번씩 측정했다. 실행마다 37프레임과 84회 발사를 확인했다. 짧은 구간까지는
+양쪽 모두 명중이 없어 전체 전투 비용의 비교에는 한계가 있다.
+
+| 마을 전투 1.8초 구간 지표 | main | P2b |
+| --- | ---: | ---: |
+| 프레임당 Rust p95의 중앙값 (ms) | 30.20 | 4.10 |
+| 시뮬레이션 1초당 Rust 시간 중앙값 (ms) | 342.83 | 48.22 |
+| Wasm 선형 메모리 최댓값 (바이트) | 9,895,936 | 6,619,136 |
+
+시뮬레이션 1초당 시간은 각 실행의 첫 프레임 이후 Rust 시간 합계를 그 구간의 실제
+시뮬레이션 시간으로 나눴다. 브라우저는 각 측정을 순차 실행했다.

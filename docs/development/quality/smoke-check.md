@@ -72,6 +72,10 @@ frame pipeline/manual step 회귀는 checked entry를 한 번만 호출하고 �
 `planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection`에서 검사한다.
 테스트 빌드의 실패 주입으로 이미 준비한 입력과 관측값을 되돌리고, 체크포인트·저장 바이트와
 재시도 뒤 힘·충격 적용 횟수를 비교한다.
+같은 통합 물리 스모크의 캐릭터 충격 검사는 초속 200 단위의 CCD 상자가 부딪힐 때 일반 Rapier
+캡슐과 캐릭터의 겹침을 32틱 동안 매 틱 비교한다. 일반 캡슐의 겹침이 그 구간 안에 0.005 이하로
+회복하는지, 캐릭터의 겹침이 일반 캡슐보다 0.000001 넘게 크지 않은지, 통과 방지와 고체 충돌
+이벤트 발생을 확인한다.
 `nativeGameFile.test.ts`는 동기 Wasm 컴파일이 거절되는 환경에서도 공개 파일 저장과 복원이 성공하는지 검사한다.
 Native 기본 생성 회귀는 raw/Web의 backend 생략·가변 시간·씬 전환과 저장된 legacy 정책 보존을 검사한다.
 `planar_navigation::default_tests`와 `combat_navigation::dense_tests`는 Native-only shape·local offset·render anchor 분리,

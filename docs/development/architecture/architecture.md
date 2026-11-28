@@ -821,6 +821,9 @@ native contact의 접선 속도로 전달한다. 평면 height/floor는 contact�
 위치 보정은 적분 후 속도에 남기지 않고, 속도 편향은 split 설정에 따라 relaxation에도 유지한다.
 실행 중 contact 설정 변경은 fixture cache를 갱신하며 입력 전체 검증을 먼저 수행한다.
 중력·반복 횟수·반발 속도 임계값·전체 CCD는 `SolverSettings`와 공통 native 적분 경로에 연결한다.
+제품의 통합 물리는 Rapier 일반 스텝과 CCD를 사용한다. 캐릭터는 Rapier KCC로 이동하며,
+지정 경로의 매듭 시간에 스텝을 나눈다. 투사체는 틱 시작·끝 대상 자세를 보간해 명중을 계산한다.
+정확 운동 증명 경로는 P3에서 정리할 테스트 대조군에 남아 있다.
 중력 변경의 native wake를 과거 World sleep projection으로 덮어쓰지 않는다. 기존 자동 실행 off는
 native step도 멈추며, 수동 step은 같은 world·고정 tick을 사용한다. one-shot 설정은 자동 설정과
 Engine accumulator를 바꾸지 않는다. spatial legacy component의 전체 이전은 남아 있다.
@@ -897,11 +900,9 @@ waypoint까지 실제 지지면/높이를 검증한 shortcut과 skin 여유를 �
 동시 비 controller 경로의16개 한도는 발판과 공유하며 초과 요청은 실행 전에 거절한다.
 Data Scene 생성 투사체는 spawn 시 native velocity-kinematic sensor에 연결하고 이전 World collider는 제거한다.
 기존 velocity 적분과 중복하지 않으며 실제 고정 tick의 시작/종료 pose를 sweep해 첫 충돌 지점에서 정지한다.
-수동 step의 hit도 gameplay phase까지 보관한다. dynamic/velocity-kinematic 대상은 실제 solver 적분 구간별
-질량 중심 pose를 기록하고 상대 운동 sweep으로 검사한다. 실제 경로를 수집하는 CCD는 원래 kernel의 승인된
-prefix와 이후 정지 구간을 기록한다. position-kinematic은 지정된 pass별 target 보간을 사용한다.
-회전 중간 영역까지 포함하는 별도 BVH를 사용하며 앞선 투사체의 위치 보정이 뒤의 판정 경로를 바꾸지 않는다.
-고속 회전에서 native CCD 자체의 정확성과 position target의 내부 solver 근사는 추가 검증 대상이다.
+수동 스텝의 명중도 gameplay phase까지 보관한다. 대상의 틱 시작·끝 자세를 보간하고 Parry의 상대
+운동 cast로 검사한다. 중간 회전으로 넓어지는 영역은 별도 BVH에 포함한다. 두 끝점 사이에 드러나지
+않는 내부 반전이나 왕복은 관측에 포함되지 않는다. 앞선 투사체의 위치 보정은 뒤의 판정 경로를 바꾸지 않는다.
 
 예측 분할기와 기본 vendor Dynamic CCD의 local candidate 검색은 회전 tip이 두 endpoint AABB 밖을 지나는 경우도 포함한다. 실제 collider-local
 COM과 bounding sphere의 pivot envelope, endpoint union에 nlerp curvature를 반영한 bound의 보수적 교집합을 쓴다.
@@ -921,28 +922,14 @@ walkable HD tile은 authored elevation을 지지면으로 사용하고, 높이�
 왕복 경로가 틱 중간에 반전하면 그 시점에서 모든 body의 물리 구간을 나누고, 다른 position target도 같은 시간으로 보간한다.
 캐릭터 carry·접지는 각 구간의 실제 위치를 사용하고, 한 틱의 translation·운반·충격량·관절 peak·작업량을 합산한다.
 query·pause·자동 물리 OFF·거절된 틱은 phase를 진행시키지 않는다. 이동만으로 shape를 다시 만들거나 지지면을 teleport하지 않는다.
-발판과 탑승자의 swept geometry로 가장 이른 차단 시점을 구해 그때까지만 물리를 진행하고 해당 발판의 phase를 멈춘다.
-두 authored 발판이 서로 접근하거나 탑승자가 움직이는 천장에 끼면 관련 경로를 함께 제한한다.
-나머지 world는 승인 구간의 남은 시간도 계속 진행하며 projectile trace는 실제 충돌 시점을 보존한다.
-캐릭터 preview는 입력/상태를 복구하고 dynamic push를 적용하지 않는다. path cast/실패/정지와 preview 비용은
-backend CCD와 별도의 native 지표이며 frame 작업량에 합산한다. 동적 물체 자체는 solver로 밀 수 있다.
-별도 경로 명령과 이동 장애물이 없고 모든 캐릭터의 `push_mass`가 0이면 미리보기 충돌 계산 두 번을 생략한다.
-체크포인트에 필요한 틱 시작 상태를 저장하고, 실제 이동에는 정적 지형과 캐릭터 사이의 접촉을 검사한다.
-미리보기 진단은 실제로 실행한 검사만 집계한다.
-일반 capsule도 다른 prescribed kinematic 장애물을 이전 pose의 고정 벽으로 취급하지 않고 swept bounds와
-상대 운동으로 검사한다. 접촉 시점부터 장애물의 법선 속도를 반영해 밀림과 접선 이동을 계산하고, 다가오는
-승강기도 받침으로 수용한다. 자신의 지지체 위 보행과 기존 static 경사/계단 처리는 유지한다.
-상대 response는 최대 12회이며 query 실패/반복 한도는 `CharacterState`에 보고한다. preview 비용은 실제 이동과 구분한다.
-외부 position/velocity kinematic 명령도 capsule이 고정 벽이나 다른 이동체 사이에 끼는 시점에서 관련 body를 정지시킨다.
-동시에 유지할 접촉면의 법선 속도 조건이 양립할 수 없으면 같은 물리 구간을 충돌 시점에서 분할한다.
-정지한 명령은 소비되며 target/속도를 새로 주어야 재개한다. 수평 발판이 막힌 탑승자 아래로 미끄러지는 접선 운동은 허용한다.
-접촉 경계에서는 이동 검사 전에 실제 근접 접촉을 갱신하고, 거의 평행한 법선 오차가 과도한 탈출 속도로 증폭되지 않게 한다.
-`kinematic_character_stops`와 preview contact 검사/실패 수를 native tick/frame에 별도 집계한다.
-여러 capsule은 공통 접촉 시점에서 속도 제약을 함께 풀어 외부 벽의 밀림을 다른 캐릭터로 전달한다.
-고정 벽에 막힌 연쇄 접촉은 prescribed 이동체에 정지를 전달한다. 단일 controller는 기존 상대 sweep 경로를 유지한다.
-반복 풀이와 행렬을 만들지 않는 가속 풀이 모두 상한이 있으며, 한도 도달에 따른 보수적 정지는 해의 부재를 증명하지 않는다.
-pair 접촉 검사·참여자별 제약 방문 수·한도 도달은 native 상태와 preview/frame 진단에 기록한다.
-dynamic impulse의 결합 응답·dynamic 지지체 carry·character 외력은 별도 물리 경로에 연결되어 있다.
+발판과 탑승자의 이동은 한 묶음으로 cast한다. 막히면 묶음의 자세와 지정 경로 phase를 틱 시작으로
+돌리고 나머지 월드는 계속 진행한다. 왕복 후 같은 발판에 접지하면 운반 변위 합이 0이어도 운반체를
+보고한다. 동적·키네마틱 지지체의 운반은 해당 스텝의 실제 자세 변화로 지지점을 이동한다.
+키네마틱 장애물은 주변 캡슐에 선형 또는 비선형 cast를 수행하고, 접촉 이후의 남은 이동을 KCC에
+전달한다. 끼임으로 밀 수 없으면 장애물이 틱 시작 자세로 돌아가며 정지 통계에 기록된다.
+캐릭터끼리는 KCC 이동 질의에 참여해 서로 막고 표면을 따라 미끄러진다. 상대 이동 검사로 한 틱 안에
+자리가 뒤바뀌는 것을 막는다. 캐릭터가 동적 물체를 밀 때의 반작용은 외부 속도에 기록하고,
+들어오는 동적 물체에 대한 피격 밀림은 게임이 충돌 이벤트를 받은 뒤 적용한다.
 위의 terrain 표시 보간·chunk quota·시야 flag·typed impact와 Native 지지면 길찾기를 사용한다.
 HD actor의 Y-up capsule 이동은 native controller를 사용하며, 전체 solver 궤적·회전 CCD 수용은 아래 미완 범위를 따른다.
 Rapier의 선형 속도 상한은 dynamic/soft-frame에 유지하고 지정된 kinematic 선형 운동에는 적용하지 않는다.
@@ -981,7 +968,10 @@ Preview와 cold probe는 이를 소비하지 않으며, 가상 질량 `pushMass`
 질량0 controller의 승인된 기하 이동은 translation·carry·차단 상태에 기록하지만 external/contact 운동량을 만들지 않는다.
 이 구분은 저장 상태 검증에도 적용하며, 기하 반응 때문에 질량0의 외부 속도를 허용하도록 validator를 완화하지 않는다.
 
-실제 solver 경로의 private 시각은 tick-local f64 domain으로 관리한다. Controller·joint pass·Native CCD slice와
+아래의 정밀 시각·운동 승인 설명은 P3에서 삭제할 테스트 전용 비교 경로의 기록이다.
+제품의 저장 파일과 체크포인트는 Rapier 경로의 상태를 보존한다.
+
+테스트 전용 solver 경로의 private 시각은 tick-local f64 domain으로 관리한다. Controller·joint pass·Native CCD slice와
 내부 solver interval이 하나의 정확한 tick 시간선을 나눈다. 각 구간의 첫·마지막 원비트와 공유 경계를 보존하며,
 Native의 물리 F32 dt·force·적분 수식·observer label은 유지한다. Pose는 해당 논리 구간 fraction을 원래 physical h에
 매핑해 평가한다. 변경된 Native 응답 suffix도 원 Kernel의 h/D에서 잔여 물리 시간을 가져오며 논리 길이를 물리 dt로
@@ -1604,7 +1594,7 @@ zero angular velocity와 실제 Native start/end/interior 분기의 회전 작�
 Cold restore 뒤에도 게시 중 추가 할당이 필요하지 않도록 기존 `max_events`로 제한된 출력 backing을 commit 전에
 fallible reserve한다. 이 persistent 출력 한도는 body 수 기반 transient scratch와 별도이며 전역 RSS 한도는 아니다.
 출력 length·진단·저장 bytes를 보존한 채 준비하고, 임시 plan 실패도 소비한 논리 작업량을 환불하지 않는다.
-Step-motion 관측을 명시적으로 요청하면 캐릭터나 민감한 dynamic body가 없는 kinematic-only world도 실제 curve 경로를 사용한다.
+정확한 curve를 요구하는 step-motion 회귀만 테스트 전용 증명 경로를 명시적으로 켠다.
 
 완료한 step의 exact motion capture도 같은 tick에서 이미 소비한 Work를 이어받는다. 새 예산을 만들거나
 소비량을 환불하지 않고, BVH key 순회·삽입·삭제·refit의 보수적 논리 비용을 첫 topology 변경 전에 청구한다.

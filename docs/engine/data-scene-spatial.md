@@ -2076,14 +2076,14 @@ Panner 미지원 fallback은 [공간 오디오 사용 계약](public-api/core.md
 connection에 연결된 이동면은 지원하지 않는다. 보행면의 수평 이동·승강을
 위한 기능이며 범용 3D rigid solver가 아니다.
 
-현재 generation의 enabled kinematic AABB body가 collider 중심·floor·발 높이로
-보행면 위에 있으면 함께 운반한다. support 밖으로 걸어나가면 다음 step부터
-운반하지 않는다. 동승자는 상대 위치를 유지하는 하나의 이동 묶음으로 검사한다.
-외부 collider 또는 같은 층의 다른 surface가 막으면 해당 발판과 탑승자를
-그 step 이전 상태로 되돌린다. 관통을 피하는 보수적인 swept AABB 검사이므로
-모서리 부근에서는 정지할 수 있다. 층 변경은 자동 추론하지 않는다.
+접지한 캐릭터는 지지점에서 발판의 이동을 따르고, 보행면을 벗어나면 운반이 끝난다.
+경로의 매듭마다 물리 스텝을 나누며, 한 틱 안에 왕복하고 같은 발판에 접지하면 운반을 기록한다.
+발판과 탑승자의 이동을 하나의 묶음으로 검사한다. 외부 콜라이더가 막으면 묶음을 그 틱의
+시작 자세로 돌린다. 이동 구간 검사에서 모서리 부근은 보수적으로 정지할 수 있다.
+층 변경은 자동 추론하지 않는다.
 
-발판당 탑승자 최대 256명, 이동 분할 최대 64회이며 초과하면 안전하게 정지한다.
+레거시 물리에서는 활성 운동학적 AABB 바디의 중심·층·발 높이로 탑승자를 판정한다. 이 경로의
+한도는 발판당 탑승자 256명과 이동 분할 64회이며, 한도를 넘으면 정지한다.
 `dataSceneMovingPlatformStats()`는 마지막 step의 `carriedBodies`,
 `blockedPlatforms`를 돌려준다. pause 시 발판도 멈춘다. 지형 GPU mesh와
 navigation revision은 이동이 있는 step에 한 번 갱신하고, collision layer는

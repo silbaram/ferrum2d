@@ -2255,6 +2255,10 @@ native 캐릭터 컨트롤러를 설치한다. `kind: "kinematic-position"`과 c
 `character: {}`는 native 기본 설정을 사용하며 필드를 생략하면 컨트롤러를 만들지 않는다.
 `up`, `skinWidth`, `maxSlopeAngle`, `slideAngle`, `stepHeight`, `stepMinWidth`, `snapDistance`,
 `maxVerticalSpeed`, `pushMass`는 직접 구성 API와 같다. 길이·속도는 instance scale과 무관한 월드 단위다.
+양수 `pushMass`는 캐릭터가 동적 물체를 밀 때의 가상 질량이다. 들어오는 동적 물체를 캐릭터가
+막아도 접촉만으로 캐릭터가 밀리지는 않는다. `setUnifiedPhysicsCollisionEventsEnabled(true)`로 이벤트를 켜고
+`drainUnifiedPhysicsCollisionEvents()`에서 대상 캐릭터의 접촉 진입을 읽어
+`applyUnifiedPhysicsCharacterImpulses`로 충격을 전달한다.
 이동·점프는 반환된 entity handle을 모아 `setUnifiedPhysicsCharacterInputs`로 전달한다.
 `spatial.actor`로 같은 billboard 인스턴스를 지정하면 WASD와 `moveDataSceneSpatialActorTo`를
 native 컨트롤러가 처리한다. `actor.speed`는 0–1,000,000 월드 단위/초이며 대각선 입력은 정규화한다.
