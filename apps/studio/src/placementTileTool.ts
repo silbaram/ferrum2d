@@ -25,6 +25,7 @@ import type {
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementToolActions, createPlacementToolSteps, placementActionReason } from "./placementToolPanel";
 import { canUsePlacementAsset } from "./placementAssetScope";
+import { tileAnimationPreviewTimeError } from "./placementTileAnimation";
 import {
   createPlacementTileAssets,
   readPlacementTileProject,
@@ -264,7 +265,7 @@ export function createPlacementTileTool(options: {
     let mapError="Inspect a map", mapPatch: ScenePlacementPatch | undefined;
     if(valid)try{mapPatch=planMap(d.candidate!);mapError="";}catch(error){mapError=String(error);}
     const time = previewTime.valueAsNumber;
-    const timeError = !Number.isInteger(time) || time < 0 || time > 3600000 ? "Preview time must be 0..3600000 ms" : "";
+    const timeError = tileAnimationPreviewTimeError(time);
     mapPreview.invalidate(JSON.stringify([key, context.mode, options.viewer.state().fragment, d.candidate?.id, d.mapOptions, mapError, mapPatch, previewTime.value]));
     previewMap.disabled=busy||mapPreview.isLoading()||!valid||!!mapError||!!timeError;
     setUiAttribute(previewMap,"title",mapError||timeError||(mapPreview.isLoading()?"Preparing map preview…":"Preview without editing the scene"));

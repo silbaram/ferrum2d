@@ -906,7 +906,7 @@ const paletteSource=await source('placementTileRulePalette.ts',[['./placementTil
 const rulesSource=await source('placementTileRules.ts',[['./placementTileRulePalette',paletteSource]]);
 const {bakeTileMapRules:bakeRules}=await import(rulesSource);
 const animationSource=await source('placementTileAnimation.ts',[['./placementTileDependencies',dependenciesSource],['./placementTileSelection',selectionSource],['./placementTileRulePalette',paletteSource]]);
-const {compileTileMapAnimations:compileAnimations}=await import(animationSource);
+const {compileTileMapAnimations:compileAnimations,tileAnimationPreviewFrame:previewFrame,tileAnimationPreviewTimeError:previewTimeError}=await import(animationSource);
 const {tileMapPlacementPatch:mapPatch}=await import(await source("placementTileMap.ts", [['./placementTileRules',rulesSource],['./placementTileAnimation',animationSource]]));
 for(const kind of ["tiled","ldtk"])test(kind+" whole-map patch preserves coordinates, source, layers and replaces only its group",async()=>{
   const asset=await check(kind),next=await check(kind,true),document=doc(asset.id,asset.frames[0].uv);
@@ -1252,6 +1252,40 @@ for(const kind of ['tiled','ldtk'])test(kind+' named tile animation retains timi
   const viewer=createScenePlacementViewer({document:saved,viewport:{cssWidth:320,cssHeight:240}});
   applyMapEdit(viewer,nextPatch);const after=viewer.exportPatch();assert.equal(viewer.historyState().undoCount,1);
   viewer.undo();assert.equal(viewer.exportPatch(),undefined);viewer.redo();assert.deepEqual(viewer.exportPatch(),after);
+});
+
+// Logic half of smoke:tile-animation: still map preview frame selection at integer ms boundaries.
+test('map preview picks generated clip frames exactly at frame and cycle boundaries', async () => {
+  const asset = await check('tiled', false, tileMapFixture('tiled'));
+  const document = doc(asset.id, asset.frames[0].uv);
+  const uv = id => asset.frames.find(frame => frame.id === id).uv;
+  assert.notDeepEqual(uv('terrain.0'), uv('terrain.1'));
+  const clipFor = animations => {
+    const patchResult = mapPatch(document, state, asset, { animations });
+    const cell = mapCells(mergeScenePlacementPatch(document, patchResult).document)
+      .find(instance => instance.props.components.visual.animationSet);
+    return cell.props.components.visual.animationSet.clips[0];
+  };
+  const step = (first, second, durationMs, loop) => ({
+    'terrain.0': { frames: [{ frame: first, durationMs }, { frame: second, durationMs }], loop },
+  });
+  const quick = clipFor({ 'terrain.0': { frames: [{ frame: 'terrain.0', durationMs: 90 }, { frame: 'terrain.1', durationMs: 180 }], loop: true } });
+  assert.deepEqual(previewFrame(quick, 0), uv('terrain.0'));
+  assert.deepEqual(previewFrame(quick, 89), uv('terrain.0'));
+  assert.deepEqual(previewFrame(quick, 90), uv('terrain.1'));
+  assert.deepEqual(previewFrame(quick, 100), uv('terrain.1'));
+  assert.deepEqual(previewFrame(quick, 280), uv('terrain.0'), 'looping clips wrap after their total duration');
+  // 1001 / 1000 * 1000 is below 1001 in floating point; the lookup must stay in integer ms.
+  const looping = clipFor(step('terrain.0', 'terrain.1', 1001, true));
+  assert.deepEqual(previewFrame(looping, 1000), uv('terrain.0'));
+  assert.deepEqual(previewFrame(looping, 1001), uv('terrain.1'), 'an exact frame boundary shows the next frame');
+  assert.deepEqual(previewFrame(looping, 2002), uv('terrain.0'), 'an exact cycle boundary wraps to frame zero');
+  const once = clipFor(step('terrain.0', 'terrain.1', 1001, false));
+  assert.deepEqual(previewFrame(once, 1001), uv('terrain.1'));
+  assert.deepEqual(previewFrame(once, 2002), uv('terrain.1'), 'a non-loop clip holds its last frame at completion');
+  assert.deepEqual(previewFrame(once, 3_600_000), uv('terrain.1'));
+  for (const time of [Number.NaN, -1, 0.5, 3_600_001]) assert.match(previewTimeError(time), /0\.\.3600000/);
+  for (const time of [0, 1001, 3_600_000]) assert.equal(previewTimeError(time), '');
 });
 
 test('Tiled source animation resolves tileset-local IDs and unused external TSJ frames without changing source bytes',async()=>{
