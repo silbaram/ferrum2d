@@ -42,6 +42,7 @@ pub struct PhysicsWorld3d {
     pub(super) broken_joints: Vec<(super::JointId, super::JointEventReason)>,
     pub(super) planar_angles: BTreeMap<BodyId, super::planar_angle::PlanarAngle>,
     pub(super) joint_kinematics: Vec<(rp::RigidBodyHandle, rp::Pose, rp::Pose)>,
+    pub(super) ratio_tick: super::ratio_joints::RatioTick,
     /// Inputs for the next tick begin; never present at a checkpoint boundary.
     pub(super) staged_tick_inputs: Vec<(BodyId, super::tick_inputs::TickInput)>,
 }
@@ -129,6 +130,7 @@ impl PhysicsWorld3d {
             broken_joints: Vec::new(),
             joint_kinematics: Vec::new(),
             planar_angles: BTreeMap::new(),
+            ratio_tick: Default::default(),
             staged_tick_inputs: Vec::new(),
         })
     }
@@ -341,41 +343,22 @@ impl PhysicsWorld3d {
             self.step_kinematic_tick(&[]);
             return self.actual_motion_result();
         }
-        if !self.begin_fixed_step() {
-            return self.actual_motion_result();
-        }
-        if let Err(error) = self.capture_actual_interval_credit() {
-            self.finish_fixed_step();
-            return Err(error);
-        }
-        let before = self.actual_motion_completed_time();
+        self.begin_fixed_step()?;
         self.step_characters();
         self.step_with_joints(0.0, 1.0);
-        let result = self.finish_actual_interval_credit(before);
-        if result.is_ok() {
-            self.finish_characters();
-        } else {
-            self.refresh_queries();
-            let elapsed = self.actual_motion_completed_time();
-            if elapsed > 0. {
-                self.record_step_motion_segment(
-                    (elapsed / f64::from(self.backend.integration_parameters.dt)).clamp(0., 1.),
-                );
-            }
-        }
+        self.finish_characters();
         self.finish_fixed_step();
-        result
+        Ok(())
     }
 
-    pub(super) fn begin_fixed_step(&mut self) -> bool {
-        self.begin_fixed_step_with_paths(false)
-    }
-
-    pub(super) fn begin_fixed_step_with_paths(&mut self, prescribed_paths: bool) -> bool {
-        #[cfg(test)]
-        let prescribed_paths = prescribed_paths || self.character_motion.reject_staged_tick;
+    pub(super) fn begin_fixed_step(&mut self) -> Result<(), PhysicsError> {
+        let proof = self.backend_motion_enabled();
+        if !proof {
+            self.validate_rapier_step_seconds(self.backend.integration_parameters.dt)?;
+            self.prepare_rapier_ratio_tick()?;
+        }
         self.begin_backend_motion_tick();
-        if prescribed_paths || self.backend_motion_enabled() {
+        if proof {
             if let Err(error) = self
                 .begin_backend_step_rollback()
                 .and_then(|()| self.prepare_tick_output_storage())
@@ -384,11 +367,12 @@ impl PhysicsWorld3d {
                 self.finish_backend_step_rollback();
                 self.character_motion.backend_motion.fail(error);
                 self.end_backend_motion_tick();
-                return false;
+                return self.actual_motion_result();
             }
             self.stage_tick_outputs();
         }
-        // After the journal: a zero-progress rejection also undoes these.
+        // Product admission finished before consuming inputs. The proof
+        // journal still protects the forced solver's zero-progress attempts.
         self.apply_staged_tick_inputs();
         self.contact_policies.character_dynamic_pairs.clear();
         for runtime in self.characters.values_mut() {
@@ -416,25 +400,14 @@ impl PhysicsWorld3d {
         for runtime in self.joints.values_mut() {
             runtime.state = super::JointState::default();
         }
-        #[cfg(test)]
-        if std::mem::take(&mut self.character_motion.reject_staged_tick) {
-            self.character_motion
-                .backend_motion
-                .fail(super::solver_trajectory::TrajectoryError::WorkLimit);
-            self.finish_fixed_step();
-            return false;
-        }
-        true
+        Ok(())
     }
 
-    #[cfg(test)]
-    pub(crate) fn reject_next_staged_tick_for_test(&mut self) {
-        self.character_motion.reject_staged_tick = true;
-    }
     pub(super) fn finish_fixed_step(&mut self) {
-        let rejected =
-            self.actual_motion_completed_time() == 0. && self.actual_motion_result().is_err();
-        if std::mem::take(&mut self.tick_outputs.active) {
+        let proof = self.backend_motion_enabled();
+        if proof && std::mem::take(&mut self.tick_outputs.active) {
+            let rejected =
+                self.actual_motion_completed_time() == 0. && self.actual_motion_result().is_err();
             self.events.finish_tick_events(rejected);
             if rejected {
                 self.restore_tick_outputs();
@@ -443,18 +416,21 @@ impl PhysicsWorld3d {
                 return;
             }
         }
-        if !self.backend_motion_enabled() {
+        if proof {
+            let mut work = self.saved_motion_proof_work();
+            self.finish_step_motion(&mut work);
+            if self.commit_saved_motion_proof_work(work).is_err() {
+                self.step_motion.invalidate_capture();
+            }
+        } else {
             self.record_interpolated_step_motion();
-        }
-        // Capture keeps the tick's existing memory/work allowance.
-        let mut work = self.saved_motion_proof_work();
-        self.finish_step_motion(&mut work);
-        if self.commit_saved_motion_proof_work(work).is_err() {
-            self.step_motion.invalidate_capture();
+            self.finish_interpolated_step_motion();
         }
         self.query_updates.clear();
         self.finish_statistics();
-        self.finish_backend_step_rollback();
+        if proof {
+            self.finish_backend_step_rollback();
+        }
         self.end_backend_motion_tick();
     }
 

@@ -5791,7 +5791,7 @@ impl PhysicsWorld3d {
     pub(in crate::physics3d) fn begin_backend_motion_tick(&mut self) {
         self.character_motion.backend_motion.begin_tick();
     }
-    pub(in crate::physics3d) fn backend_motion_enabled(&self) -> bool {
+    pub(crate) fn backend_motion_enabled(&self) -> bool {
         #[cfg(test)]
         if self.experimental_character_kcc_enabled() {
             return false;

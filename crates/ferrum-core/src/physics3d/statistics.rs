@@ -205,8 +205,12 @@ impl PhysicsWorld3d {
         );
     }
 
-    pub(super) fn step_backend(&mut self, controller_seconds: f32, logical_domain: Domain) -> bool {
-        let motion_proof = self.backend_motion_enabled();
+    pub(super) fn step_backend(
+        &mut self,
+        controller_seconds: f32,
+        logical_domain: Option<Domain>,
+    ) -> bool {
+        let motion_proof = logical_domain.is_some();
         self.events
             .2
             .get_mut()
@@ -214,7 +218,7 @@ impl PhysicsWorld3d {
             .reset(self.step_motion.enabled && motion_proof);
         self.backend.ccd_solver.reset_diagnostics();
         let mut approved = true;
-        if motion_proof {
+        if let Some(logical_domain) = logical_domain {
             let mut scratch = std::mem::take(&mut self.character_motion.backend_motion);
             let mut ran_backend = false;
             let diagnostics_ready = (|| {

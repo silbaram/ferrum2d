@@ -1,6 +1,6 @@
 use super::*;
 use crate::collision::PHYSICS_DEBUG_CCD;
-use crate::physics3d::{BodyKind, CharacterConfig, Shape};
+use crate::physics3d::{BodyKind, Shape};
 
 fn engine(space: Space, limit: usize) -> Engine {
     let mut e = Engine::new();
@@ -40,21 +40,6 @@ fn body(e: &mut Engine, kind: BodyKind, p: [f32; 3], v: [f32; 3], shape: Shape) 
     )
     .unwrap()
 }
-fn register_distant_character(e: &mut Engine) {
-    let character = body(
-        e,
-        BodyKind::KinematicPosition,
-        [60., 2., 0.],
-        [0.; 3],
-        Shape::Capsule {
-            half_height: 0.5,
-            radius: 0.25,
-        },
-    );
-    e.enable_unified_character(character, CharacterConfig::default())
-        .unwrap();
-}
-
 fn wall_and_fast(e: &mut Engine, y: f32) -> Entity {
     body(
         e,
@@ -77,23 +62,66 @@ fn tick(e: &mut Engine) {
     e.update(f64::from(e.fixed_timestep.config().step_seconds));
 }
 
+fn configure_platform_slots(e: &mut Engine, count: u32) {
+    let mut terrain = Vec::new();
+    let mut metadata = Vec::new();
+    let mut platforms = Vec::new();
+    for id in 1..=16 {
+        terrain.extend_from_slice(&[
+            100. + id as f32 * 4.,
+            30.,
+            1.,
+            1.,
+            -0.2,
+            0.,
+            0.,
+            1.,
+            1.,
+            1.,
+            1.,
+        ]);
+        metadata.extend_from_slice(&[id, 0, 0, 1]);
+        if id <= count {
+            platforms.extend_from_slice(&[2., f64::from(id), 1., 0., 0., 1., 0., 0.]);
+        }
+    }
+    if e.spatial_scene.surfaces.is_empty() {
+        assert!(e.configure_spatial_terrain(&terrain, &metadata));
+    }
+    assert!(e.configure_spatial_moving_platforms(&platforms));
+}
+
+fn capture_bytes(e: &mut Engine) -> Vec<u8> {
+    e.capture_native_file(b"{}{}{}{}{}{}", &[2; 6], 7, 9, &[])
+        .unwrap()
+}
+
+fn queue_dash_before_last_platform(e: &mut Engine) {
+    use crate::components::Velocity;
+    let dash = body(
+        e,
+        BodyKind::KinematicVelocity,
+        [0., 40., 0.],
+        [0.; 3],
+        Shape::Sphere { radius: 0.25 },
+    );
+    e.unified_physics
+        .as_mut()
+        .unwrap()
+        .queue_native_dash(&e.world, dash, Velocity { vx: 1., vy: 0. }, 15)
+        .unwrap();
+    configure_platform_slots(e, 16);
+}
+
 #[test]
-fn injected_native_tick_failure_preserves_diagnostics_checkpoint_and_native_file() {
-    let dt = 0.01;
-    let mut e = Engine::new();
-    e.activate_data_scene();
-    e.configure_unified_physics(WorldConfig {
-        space: Space::Spatial,
-        gravity: [0.; 3],
-        step_seconds: dt,
-        ..WorldConfig::default()
-    })
-    .unwrap();
+fn path_and_dash_preflight_preserves_diagnostics_checkpoint_and_native_file() {
+    let mut e = engine(Space::Spatial, 128);
+    let dt = e.fixed_timestep.config().step_seconds;
+    configure_platform_slots(&mut e, 15);
     let moving = wall_and_fast(&mut e, 20.);
     e.step_rigid_bodies_checked(dt).unwrap();
-    let last_step = e.unified_physics_step_statistics().unwrap();
-    assert_eq!(last_step.ccd_clamps, 1);
-    register_distant_character(&mut e);
+    let stats = e.unified_physics_step_statistics().unwrap();
+    assert_eq!(stats.ccd_clamps, 1);
     let anchor = body(
         &mut e,
         BodyKind::Fixed,
@@ -120,41 +148,28 @@ fn injected_native_tick_failure_preserves_diagnostics_checkpoint_and_native_file
             .len(),
         1
     );
+    queue_dash_before_last_platform(&mut e);
     let saved = crate::engine::persistence::encode(&e).unwrap();
-    let capture_file = |engine: &mut Engine| {
-        engine
-            .capture_native_file(b"{}{}{}{}{}{}", &[2; 6], 7, 9, &[])
-            .unwrap()
-    };
-    let file_before = capture_file(&mut e);
-    e.unified_physics
-        .as_mut()
-        .unwrap()
-        .physics
-        .reject_next_staged_tick_for_test();
-    let error = e.step_rigid_bodies_checked(dt).unwrap_err();
-    assert!(error.contains("after 0 committed seconds"), "{error}");
-    assert_eq!(
-        e.unified_physics_error(),
-        Some(UnifiedPhysicsError::Physics(PhysicsError::CapacityExceeded))
-    );
-    assert_eq!(e.unified_physics_step_statistics().unwrap(), last_step);
-    let after = crate::engine::persistence::encode(&e).unwrap();
-    assert!(
-        saved == after,
-        "checkpoint size before={}, after={}",
-        saved.len(),
-        after.len()
-    );
-    assert_eq!(capture_file(&mut e), file_before);
+    let native = capture_bytes(&mut e);
+    let state = e.unified_body_state(moving).unwrap();
+    for _ in 0..2 {
+        let error = e.step_rigid_bodies_checked(dt).unwrap_err();
+        assert!(error.contains("physics capacity exceeded"), "{error}");
+        assert_eq!(
+            e.unified_physics_error(),
+            Some(UnifiedPhysicsError::Physics(PhysicsError::CapacityExceeded))
+        );
+        assert_eq!(e.unified_physics_step_statistics().unwrap(), stats);
+        assert_eq!(e.unified_body_state(moving).unwrap(), state);
+        assert!(crate::engine::persistence::encode(&e).unwrap() == saved);
+        assert!(capture_bytes(&mut e) == native);
+    }
+    configure_platform_slots(&mut e, 15);
     e.step_rigid_bodies_checked(dt).unwrap();
 }
 
-/// A legacy planar force/impulse is staged inside the native rollback journal:
-/// a zero-progress rejection restores pre-input bytes, and N rejected retries
-/// do not integrate (N + 1) copies of the same component input.
 #[test]
-fn planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection() {
+fn clock_preflight_preserves_legacy_planar_inputs_for_the_next_tick() {
     use crate::components::{CircleCollider, CollisionLayer, RigidBody, Velocity};
     let dt = 0.01;
     let run = |rejections: usize| {
@@ -173,23 +188,17 @@ fn planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection() {
             .set_circle_collider(a, CircleCollider::new(1., false, CollisionLayer::Enemy));
         e.world.set_rigid_body(a, RigidBody::dynamic_circle(1., 1.));
         e.step_rigid_bodies_checked(dt).unwrap();
-        register_distant_character(&mut e);
         let legacy = e.world.rigid_bodies[a.id as usize].as_mut().unwrap();
         legacy.force = Velocity { vx: 50., vy: 0. };
         legacy.impulse = Velocity { vx: 0., vy: 2. };
+        let saved = capture_bytes(&mut e);
         for _ in 0..rejections {
-            let saved = crate::engine::persistence::encode(&e).unwrap();
-            e.unified_physics
-                .as_mut()
-                .unwrap()
-                .physics
-                .reject_next_staged_tick_for_test();
-            let error = e.step_rigid_bodies_checked(dt).unwrap_err();
-            assert!(error.contains("after 0 committed seconds"), "{error}");
-            assert!(
-                crate::engine::persistence::encode(&e).unwrap() == saved,
-                "rejected planar tick changed the checkpoint"
+            assert!(e.step_rigid_bodies_checked(dt / 2.).is_err());
+            assert_eq!(
+                e.unified_physics_error(),
+                Some(UnifiedPhysicsError::ClockMismatch)
             );
+            assert!(capture_bytes(&mut e) == saved);
         }
         e.step_rigid_bodies_checked(dt).unwrap();
         e.unified_body_state(a).unwrap()
@@ -199,23 +208,25 @@ fn planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection() {
     assert_eq!(run(2), once);
 }
 
-/// Pre-physics gameplay of a zero-progress rejected Data tick is not repeated:
-/// the retry resumes at physics, so tweens and timers advance once per tick.
 #[test]
-fn rejected_frame_retry_does_not_repeat_pre_physics_gameplay() {
+fn rejected_path_frame_retry_advances_tween_and_physics_once() {
     use crate::tweens::{SpriteTint, TweenEasing};
-    let dt = 0.01;
     let run = |rejections: usize| {
-        let mut e = Engine::new();
-        e.activate_data_scene();
-        e.configure_unified_physics(WorldConfig {
-            space: Space::Spatial,
-            gravity: [0.; 3],
-            step_seconds: dt,
-            ..WorldConfig::default()
-        })
-        .unwrap();
+        let mut e = engine(Space::Spatial, 128);
+        let dt = e.fixed_timestep.config().step_seconds;
+        configure_platform_slots(&mut e, 15);
         let sprite = e.world.spawn_enemy(10., 10., 1);
+        let site = e.world.spawn_enemy(12., 10., 1);
+        assert!(e.set_gameplay_interaction(site.id, site.generation, 17, 30., false));
+        assert!(e.configure_data_scene_gameplay(true, sprite.id, sprite.generation, 91));
+        assert!(e.set_input_action_binding(
+            91,
+            0,
+            crate::input::INPUT_ACTION_CONTROL_SPACE,
+            crate::input::INPUT_ACTION_ACTIVATION_PRESSED,
+        ));
+        e.set_input(false, false, false, false, true, false, false, 0., 0.);
+
         assert!(e.tweens.start_sprite_tint(
             &mut e.world,
             sprite,
@@ -224,44 +235,47 @@ fn rejected_frame_retry_does_not_repeat_pre_physics_gameplay() {
             1.,
             TweenEasing::Linear,
         ));
-        register_distant_character(&mut e);
+        let dynamic = body(
+            &mut e,
+            BodyKind::Dynamic,
+            [40., 20., 0.],
+            [0.; 3],
+            Shape::Sphere { radius: 0.25 },
+        );
+        let id = e.unified_body_id(dynamic).unwrap();
         e.unified_physics
             .as_mut()
             .unwrap()
             .physics
-            .force_character_motion_proof();
-        let mesh = body(
-            &mut e,
-            BodyKind::Fixed,
-            [0.; 3],
-            [0.; 3],
-            Shape::TriangleMesh {
-                vertices: vec![[-8., -1., -8.], [8., 1., -8.], [0., 0., 8.]],
-                triangles: vec![[0, 2, 1]; 4096],
-            },
-        );
-        body(
-            &mut e,
-            BodyKind::Dynamic,
-            [0., 1.25, 0.],
-            [0., -100., 0.],
-            Shape::Box {
-                half_extents: [0.5; 3],
-            },
-        );
+            .add_force(id, [10., 0., 0.], [0.; 3])
+            .unwrap();
+        queue_dash_before_last_platform(&mut e);
+        let before = capture_bytes(&mut e);
         for _ in 0..rejections {
             let error = e
                 .update_frame_checked(f64::from(dt), false, false, false)
                 .unwrap_err();
-            assert!(error.contains("after 0 committed seconds"), "{error}");
+            assert!(error.contains("physics capacity exceeded"), "{error}");
+            assert!(capture_bytes(&mut e) == before);
         }
-        e.remove_unified_body(mesh).unwrap();
+        configure_platform_slots(&mut e, 15);
         e.update_frame_checked(f64::from(dt), false, false, false)
             .unwrap();
-        e.world.sprite_at_index(sprite.id as usize).unwrap().r
+        assert_eq!(
+            e.frame_buffers
+                .gameplay_events
+                .iter()
+                .filter(|event| event.kind == crate::gameplay_event::GAMEPLAY_EVENT_INTERACTION)
+                .count(),
+            1
+        );
+        (
+            e.world.sprite_at_index(sprite.id as usize).unwrap().r,
+            e.unified_body_state(dynamic).unwrap().linear_velocity[0],
+        )
     };
     let once = run(0);
-    assert!(once < 1.);
+    assert!(once.0 < 1. && once.1 > 0.);
     assert_eq!(run(3), once);
 }
 

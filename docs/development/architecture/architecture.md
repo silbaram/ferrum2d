@@ -98,13 +98,17 @@ Rust update 실패 뒤에는 audio/render/`onFrame`을 실행하지 않으며, f
 새 Core의 frame/manual step 오류는 checked entry의 `Result` 반환으로 전달한다. `&mut self` export 내부에서
 직접 JS 예외를 던져 Wasm borrow guard의 해제를 건너뛰지 않는다. SDK는 해당 entry가 있으면 기존 호출을
 대체해 한 번만 실행하며, 이전 Core에는 기존 void entry를 사용한다.
-checked entry는 실제 운동 거부뿐 아니라 clock·준비·commit 실패로 native step을 건너뛴 frame도 `Err`로 반환한다.
-조회·gameplay 보조 진단은 `Err`로 올리지 않는다. 진행 0초로 거부된 Data Scene tick은 legacy 입력을 native
-rollback journal 안에서 적용해 되돌리고, 이미 실행한 tween·scene update를 다시 실행하지 않도록 다음 시도를
-물리 단계부터 재개한다.
-유효한 운동 구간을 수치적으로 인증하지 못한 경우는 `UnresolvedMotion`으로 구분한다.
-작업 한도 초과는 기존 `CapacityExceeded`, 지원하지 않는 형상은 `UnsupportedShape`로 유지하며
-이 오류들을 잘못된 body로 소거하지 않는다. 기존 Rust 오류 ordinal은 유지하고 새 variant만 끝에 추가한다.
+checked entry는 clock·입력·지형/관절 준비·경로 한도 검사에서 native step이 거절된 경우
+`Err`를 반환한다. 제품 물리 틱은 시작 전에 모든 실패 가능한 검사를 끝낸다. 승인한 틱은
+입력과 힘을 소비하고 Rapier 적분을 완료한다. 새 실패 가능 단계는 사전 검사에 둔다.
+강체·캐릭터·지정 경로 모두 이 경계를 사용한다. 실패한 조회·gameplay 보조 값은 별도
+진단으로 남긴다.
+
+비율 관절의 위치 보정은 적분 뒤 자세에서 Parry 접촉 질의로 검사한다. 센서, 그룹, 무시 쌍을
+따르며 새 겹침이나 더 깊어지는 겹침이 허용 오차를 넘으면 해당 보정만 건너뛴다. 관절 쌍
+버퍼는 틱 시작 전에 확보한다. 지정 경로의 구간 분할과 경로·대시 슬롯도 입력 소비 전에
+검사한다. 증명 경로의 저널, 부분 완료와 `UnresolvedMotion` latch는 테스트 전용 강제
+경로에서 사용하며 공개 오류 ordinal과 ABI는 유지한다.
 
 ## Renderer와 자원 경계
 

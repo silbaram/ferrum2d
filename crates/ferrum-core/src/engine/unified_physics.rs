@@ -178,6 +178,11 @@ impl PendingPhysicsError {
         self.frame_step_failure.get_or_insert(error);
     }
 
+    fn reject_preflight(&mut self, error: UnifiedPhysicsError) {
+        self.rejected_attempt = Some(error);
+        self.frame_step_failure.get_or_insert(error);
+    }
+
     fn get(&self) -> Option<UnifiedPhysicsError> {
         self.rejected_attempt.or(self.saved)
     }
@@ -612,6 +617,17 @@ impl Engine {
         )
     }
 
+    pub(in crate::engine) fn preflight_native_path_capacity(
+        &mut self,
+    ) -> Result<(), UnifiedPhysicsError> {
+        let Some(runtime) = &mut self.unified_physics else {
+            return Ok(());
+        };
+        runtime
+            .validate_native_dash_slots(&self.world, self.spatial_scene.moving_platforms.len())
+            .inspect_err(|&error| runtime.last_error.reject_preflight(error))
+    }
+
     fn step_unified_with_config_interval(
         &mut self,
         dt: f32,
@@ -636,6 +652,12 @@ impl Engine {
         if let Some(error) = error {
             runtime.last_error.record_step(error);
             return false; // Never fall back to another rigid solver in this world.
+        }
+        if let Err(error) = runtime
+            .validate_native_dash_slots(&self.world, self.spatial_scene.moving_platforms.len())
+        {
+            runtime.last_error.reject_preflight(error);
+            return false;
         }
         let config = config.sanitized();
         let gravity = execution::gravity(&runtime.physics, config);
@@ -712,12 +734,12 @@ impl Engine {
                 }
                 runtime.finish_spatial_actor(&self.spatial_scene, &mut self.world);
             }
-            if !advanced && runtime.actual_motion_result().is_err() {
+            if !advanced {
                 runtime.restore_projectile_starts();
                 runtime
                     .physics
                     .restore_step_motion_capture_state(capture_state);
-                runtime.last_error.rejected_attempt = Some(error);
+                runtime.last_error.reject_preflight(error);
             } else {
                 runtime.last_error.record_step(error);
             }

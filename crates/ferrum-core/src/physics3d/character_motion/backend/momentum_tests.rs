@@ -1162,7 +1162,7 @@ fn counter_carry_response(relative: f32) {
     world.step_checked().unwrap();
     assert!(world.character_state(actor).unwrap().grounded);
     world.set_velocity(support, [10., 0., 0.], [0.; 3]).unwrap();
-    world.begin_fixed_step();
+    world.begin_fixed_step().unwrap();
     world.capture_actual_interval_credit().unwrap();
     if relative != 0. {
         world
@@ -1486,7 +1486,7 @@ fn carry_transferred_to_an_unsupported_peer_is_replanned_when_its_driver_stops()
     assert!(world.character_state(actors[0]).unwrap().grounded);
     assert!(!world.character_state(actors[1]).unwrap().grounded);
     world.set_velocity(support, [10., 0., 0.], [0.; 3]).unwrap();
-    world.begin_fixed_step();
+    world.begin_fixed_step().unwrap();
     world.capture_actual_interval_credit().unwrap();
     world.step_characters();
     let end = Time::from(seconds);

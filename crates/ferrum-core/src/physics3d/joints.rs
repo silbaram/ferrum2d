@@ -174,6 +174,16 @@ impl PhysicsWorld3d {
         (params, passes)
     }
 
+    pub(super) fn validate_rapier_step_seconds(&self, seconds: f32) -> Result<(), PhysicsError> {
+        let passes = self.backend_pass_schedule().1;
+        let dt = seconds / passes as f32;
+        if dt.is_finite() && dt > 0. && dt.recip().is_finite() {
+            Ok(())
+        } else {
+            Err(PhysicsError::InvalidBody)
+        }
+    }
+
     fn joint_motion_domain(
         &self,
         start_fraction: Time,
@@ -210,14 +220,18 @@ impl PhysicsWorld3d {
         self.character_motion
             .backend_motion
             .begin_controller_interval();
-        let domain = match self.joint_motion_domain(start_fraction, end_fraction) {
-            Ok(domain) if domain.duration() > 0. => domain,
-            _ => {
-                self.character_motion
-                    .backend_motion
-                    .fail(TrajectoryError::InvalidTime);
-                return;
+        let domain = if self.backend_motion_enabled() {
+            match self.joint_motion_domain(start_fraction, end_fraction) {
+                Ok(domain) if domain.duration() > 0. => Some(domain),
+                _ => {
+                    self.character_motion
+                        .backend_motion
+                        .fail(TrajectoryError::InvalidTime);
+                    return;
+                }
             }
+        } else {
+            None
         };
         if self.joints.is_empty() {
             let before = self.actual_motion_completed_time();
@@ -266,12 +280,7 @@ impl PhysicsWorld3d {
                 *body.next_position(),
             ))
         }));
-        let has_ratios = self.joints.values().any(|r| {
-            matches!(
-                r.desc.kind,
-                JointKind::Gear { .. } | JointKind::Pulley { .. } | JointKind::ElasticRope { .. }
-            )
-        });
+        let has_ratios = self.has_ratio_joints();
         for pass in 1..=passes {
             let alpha = pass as f32 / passes as f32;
             for &(id, start, target) in &kinematics {
@@ -302,14 +311,18 @@ impl PhysicsWorld3d {
                 }
             }
             self.prepare_joint_reactions();
-            let pass_domain = match domain.partition(pass - 1, passes) {
-                Ok(domain) if domain.duration() > 0. => domain,
-                _ => {
-                    self.character_motion
-                        .backend_motion
-                        .fail(TrajectoryError::InvalidTime);
-                    break;
+            let pass_domain = if let Some(domain) = domain {
+                match domain.partition(pass - 1, passes) {
+                    Ok(part) if part.duration() > 0. => Some(part),
+                    _ => {
+                        self.character_motion
+                            .backend_motion
+                            .fail(TrajectoryError::InvalidTime);
+                        break;
+                    }
                 }
+            } else {
+                None
             };
             let before = self.actual_motion_completed_time();
             if !self.step_backend(params.dt, pass_domain) {

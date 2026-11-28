@@ -301,6 +301,16 @@ impl PhysicsWorld3d {
         capture.elapsed = 1.;
     }
 
+    pub(in crate::physics3d) fn finish_interpolated_step_motion(&mut self) {
+        // Charge captured geometry and BVH topology independently of the solver.
+        const MAX_CAPTURE_WORK: u64 = 32 * 1024 * 1024;
+        let mut work = crate::physics3d::solver_trajectory::Work {
+            used: 0,
+            limit: MAX_CAPTURE_WORK,
+        };
+        self.finish_step_motion(&mut work);
+    }
+
     pub(in crate::physics3d) fn finish_step_motion(
         &mut self,
         work: &mut crate::physics3d::solver_trajectory::Work,
