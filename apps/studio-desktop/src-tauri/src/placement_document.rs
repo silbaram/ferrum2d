@@ -1214,9 +1214,11 @@ fn infer_project_path_from_scene_document(path: &Path) -> PathBuf {
     parent.to_path_buf()
 }
 
+/// Development fallback when no scene path is given. The installed product frontend starts a new
+/// scene instead of requesting it; the bundled examples live in apps/studio/examples.
 fn sample_scene_document_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../studio/public/placement.garden.scene-authoring.json")
+        .join("../../studio/examples/placement.garden.scene-authoring.json")
 }
 
 #[cfg(test)]

@@ -16,7 +16,7 @@ async function fixture() {
   const put = async (path, data) => { await mkdir(dirname(join(root, path)), {recursive: true}); await writeFile(join(root, path), data); };
   await put('examples/site/dist/index.html', siteHtml);
   await put('examples/site/dist/assets/site.js', 'site script');
-  await put('apps/studio/dist/index.html', '<!doctype html><html><head><title>Studio</title></head><body></body></html>');
+  await put('apps/studio/dist-demo/index.html', '<!doctype html><html><head><title>Studio</title></head><body></body></html>');
   await put('docs/README.md', '# Fixture docs\n');
   await put('apps/studio/public/fonts/notice.txt', 'Fixture notice');
   await put('apps/studio/src/fonts/NotoSansKR-UI.woff2', 'Fixture font');
@@ -30,7 +30,7 @@ async function keepsPrevious(root, result, message) {
   assert.equal(await readFile(join(root, 'dist-pages/previous-build.txt'), 'utf8'), 'last successful build');
 }
 
-for (const [name, path] of [['site', 'examples/site/dist/index.html'], ['Studio', 'apps/studio/dist/index.html']]) {
+for (const [name, path] of [['site', 'examples/site/dist/index.html'], ['Studio', 'apps/studio/dist-demo/index.html']]) {
   test(`a missing ${name} build preserves the previous Pages artifact`, async () => {
     const root = await fixture();
     try {

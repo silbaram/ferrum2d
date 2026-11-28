@@ -6,8 +6,10 @@ import {resolve,extname,sep} from 'node:path';
 import {createHash} from 'node:crypto';
 import {chromium} from 'playwright-core';
 import {showPlacementBottom} from './placement-panel-navigation.mjs';
+import {prepareStudioDemoBuild} from './placement-test-build.mjs';
 const out=resolve('artifacts/physics-3d/scene-authoring-browser');await mkdir(out,{recursive:true});
-const root=resolve('apps/studio/dist'),fixture=await readFile('docs/engine/samples/data-scene-physics.scene-authoring.json');
+// The fixture replaces the default garden scene, which only the web demo build opens.
+const root=await prepareStudioDemoBuild(),fixture=await readFile('docs/engine/samples/data-scene-physics.scene-authoring.json');
 let servedFixture=fixture;
 const types={'.html':'text/html','.js':'application/javascript','.wasm':'application/wasm','.json':'application/json','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.woff2':'font/woff2'};
 const server=createServer((req,res)=>{void(async()=>{

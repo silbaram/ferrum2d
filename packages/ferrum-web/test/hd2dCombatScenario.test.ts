@@ -13,7 +13,7 @@ const repository = new URL("../../../../", import.meta.url);
 const sdk = (name: string) => new URL(`../src/${name}.js`, import.meta.url).href;
 const files: Record<string, string> = {
   "/rock.glb": "examples/data-scene-native/assets/rock.glb",
-  "/village.scene.json": "apps/studio/public/placement.village.scene-authoring.json",
+  "/village.scene.json": "apps/studio/examples/placement.village.scene-authoring.json",
 };
 
 async function fixtureModule(file: string, imports: readonly [string, string][] = []): Promise<string> {
@@ -66,7 +66,7 @@ async function withBrowserStandIns(run: () => Promise<void>): Promise<void> {
   globals.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("data:")) return nativeFetch(url, init);
-    const path = url.startsWith("/village/") ? "apps/studio/public/assets/rpg-village/" + url.slice(9) : files[url];
+    const path = url.startsWith("/village/") ? "apps/studio/examples/assets/rpg-village/" + url.slice(9) : files[url];
     if (!path) throw new Error(`Unexpected fixture request ${url}`);
     return new Response(new Blob([(await readFile(new URL(path, repository))).slice()]));
   };

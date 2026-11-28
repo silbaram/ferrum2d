@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { githubRelease, DEFAULT_GITHUB_REPOSITORY } from "../../packages/create-game/bin/github-release.mjs";
 import { runReleaseCommand } from "./release-command.mjs";
+import { assertStudioFrontendWithoutExamples } from "../validate/check-studio-build-variants.mjs";
 import { stageStudioUpdater, updaterSettings } from "./studio-updater.mjs";
 import { fileRecord, nativeChecks, readJson, releaseIdentity, requireNewOutput, requireSource, studioManifestName, studioPlatforms, validateEngineBundle, verifyAsset, writeNewBundle } from "./release-distribution.mjs";
 
@@ -166,6 +167,8 @@ export async function prepareStudioRelease(options, { root = repositoryRoot, pla
     if (installers.length !== 1) throw new Error(`Expected exactly one fresh ${plan.release.version} ${native.bundle} installer, found ${installers.length}`);
     const frontend = path.join(root, "apps/studio/dist");
     await fileRecord(path.join(frontend, "index.html"));
+    // Installed Studio starts from a new scene; bundled examples belong to the web demo only.
+    await assertStudioFrontendWithoutExamples(frontend);
     const wasm = await filesWithExtension(frontend, "wasm");
     if (!(await Promise.all(wasm.map(fileRecord))).some(file => file.sha256 === runtime.sha256)) throw new Error("Packaged frontend does not contain the current engine Wasm");
     const after = await sourceIdentity(root, run);

@@ -69,6 +69,7 @@ async function fixture(t) {
           assert.deepEqual(JSON.parse(await readFile(path.join(sdk, "package.json"), "utf8")), sourcePackage);
           await put("apps/studio/dist/assets/core.wasm", await readFile(path.join(sdk, "pkg/ferrum_core_bg.wasm")));
           await put("apps/studio/dist/index.html", "<canvas></canvas>");
+          await put("apps/studio/dist/placement-scenes.json", '{"version":1,"scenes":[],"truncated":false,"diagnostics":[]}');
           await put(`target/${target}/release/bundle/deb/studio_${release.version}_amd64.deb`, "test installer");
         } else throw new Error("Unexpected SDK rebuild: " + args.join(" "));
         return { stdout: "" };

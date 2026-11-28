@@ -5,6 +5,7 @@ import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { assertStudioFrontendWithoutExamples } from "../validate/check-studio-build-variants.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const desktopRoot = path.join(repoRoot, "apps/studio-desktop");
@@ -40,6 +41,8 @@ const debArtifacts = await filesWithSuffix(path.join(targetRoot, "bundle/deb"), 
 const wasmArtifacts = await filesWithSuffix(frontendRoot, ".wasm");
 await assertNonEmptyFile(binaryPath, "desktop executable");
 await assertNonEmptyFile(path.join(frontendRoot, "index.html"), "packaged frontend index");
+// Installed Studio starts from a new scene; bundled examples belong to the web demo only.
+await assertStudioFrontendWithoutExamples(frontendRoot);
 if (debArtifacts.length !== 1) {
   throw new Error(`expected exactly one Linux deb artifact, found ${debArtifacts.length}`);
 }

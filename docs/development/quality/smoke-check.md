@@ -651,9 +651,18 @@ Data Scene 작성·복원 시나리오는 별도의 SDK 경로에서 실행한�
 | 도구·Inspector·레이아웃 | `pnpm smoke:placement-tools`, `pnpm smoke:placement-inspector`, `pnpm smoke:placement-layouts` |
 | 언어·격자·카메라 | `pnpm test:placement-locale`, `pnpm smoke:placement-locale`, `pnpm test:placement-grid`, `pnpm smoke:placement-grid`, `pnpm test:placement-camera`, `pnpm smoke:placement-camera` |
 | 업데이트 | `pnpm test:updates`, `pnpm test:github-release`, `pnpm smoke:studio` |
+| 제품·웹 데모 빌드 구분 | `pnpm test:studio-build-variants`, `node scripts/validate/check-studio-build-variants.mjs <제품> <데모>`, `pnpm smoke:studio-build-variants` |
 
 production 기본 화면과 별도 fixture build를 구분한다. 기본 화면을 테스트 fixture로 덮어쓰지 않으며,
 보고서는 `productionDefault`와 `regressionBuild`의 근거를 각각 남긴다.
+
+Studio 빌드는 세 갈래다. 제품 빌드(`apps/studio/dist`, 설치판)는 예제가 없고 빈 새 2D 장면으로 시작한다.
+웹 데모 빌드(`--mode demo`, Pages)와 테스트 빌드(`--mode test`)는 `apps/studio/examples/`의 정원·마을을 포함한다.
+`productionDefault`는 제품 빌드에서 예제 파일 404, 빈 장면 목록, 파일 → 예제 메뉴 없음, 예제 주소의 새 장면 시작과 안내를 확인하고,
+`productionDefault.demo`는 웹 데모 빌드에서 정원 465개 객체, 마을 모델 42개, 예제 메뉴와 실행·정지를 확인한다.
+garden 주소에 fixture를 넣는 smoke(`scene-physics`, `native-authoring-studio`, `native-template-studio`)는 웹 데모 빌드를 쓴다.
+PR CI는 `Studio product and web demo build contents` 단계에서 두 빌드의 파일 구성을 비교하고,
+`pnpm smoke:studio-build-variants`는 로컬에서 두 빌드를 실제 브라우저로 약 30초 안에 확인한다.
 
 - picking·편집·레이어 숨김/잠금·patch·Undo/Redo와 실제 native command/화면 변화를 확인한다.
 - 문서 교체·취소·실패·공유 자산의 참조 수명, 미저장 draft 보존과 stale 응답 차단을 검사한다.

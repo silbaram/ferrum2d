@@ -14,8 +14,8 @@ import { smokePlacementTransforms } from "./placement-transform-smoke.mjs";
 import { smokePlacementLayers } from "./placement-layers-smoke.mjs";
 import { smokePlacementSceneExplorer } from "./placement-scene-explorer-smoke.mjs";
 import { smokePlacementUpdates } from "./placement-updates-smoke.mjs";
-import { placementRegressionFixture, preparePlacementTestBuild } from "./placement-test-build.mjs";
-import { smokePlacementProductionDefault } from "./placement-production-default-smoke.mjs";
+import { placementRegressionFixture, preparePlacementTestBuild, prepareStudioDemoBuild } from "./placement-test-build.mjs";
+import { smokePlacementDemoDefault, smokePlacementProductionDefault } from "./placement-production-default-smoke.mjs";
 import { smokePlacementSpatialWorkspace } from "./placement-spatial-workspace-smoke.mjs";
 import {
   runtimeBudgetForSmokeMode,
@@ -365,6 +365,12 @@ try {
     const productionServer = await serveStatic(productionDistDir, { contentSecurityPolicy: desktopCsp });
     try { productionDefault = await smokePlacementProductionDefault(browser, `http://${DEFAULT_HOST}:${productionServer.address().port}`, timeoutMs); }
     finally { await new Promise(resolve => productionServer.close(resolve)); }
+    if (regressionBuild) {
+      // The web demo keeps the bundled examples that the product build no longer ships.
+      const demoServer = await serveStatic(await prepareStudioDemoBuild(), {});
+      try { productionDefault.demo = await smokePlacementDemoDefault(browser, `http://${DEFAULT_HOST}:${demoServer.address().port}`, timeoutMs); }
+      finally { await new Promise(resolve => demoServer.close(resolve)); }
+    }
   }
   const page = await browser.newPage({ viewport: { width: 960, height: 640 }, deviceScaleFactor: 1 });
   page.setDefaultTimeout(timeoutMs);

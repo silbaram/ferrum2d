@@ -14,7 +14,7 @@ import bmesh
 from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / 'apps/studio/public/assets/rpg-village'
+OUT = ROOT / 'apps/studio/examples/assets/rpg-village'
 SOURCE = ROOT / 'apps/studio/assets/rpg-village'
 OUT.mkdir(parents=True, exist_ok=True)
 SOURCE.mkdir(parents=True, exist_ok=True)

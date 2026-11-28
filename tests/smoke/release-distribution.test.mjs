@@ -43,6 +43,7 @@ async function nativeFixture(t, { platform = "linux", arch = "x64", stale = fals
   const wasm = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]);
   await put(root, "packages/ferrum-web/pkg/ferrum_core_bg.wasm", wasm);
   await put(root, "apps/studio/dist/index.html", "<canvas></canvas>");
+  await put(root, "apps/studio/dist/placement-scenes.json", '{"version":1,"scenes":[],"truncated":false,"diagnostics":[]}');
   await put(root, "apps/studio/dist/assets/core.wasm", wrongWasm ? "old wasm" : wasm);
   if (stale) { await put(root, path.relative(root, installer), "old installer"); await utimes(installer, 0, 0); }
   const legacyInstaller = installer.replace(productName, "Cached Other Product");

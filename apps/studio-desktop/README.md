@@ -94,7 +94,10 @@ pnpm smoke:aseprite-project
 
 이 명령은 Wasm을 빌드한 뒤 Tauri dev shell을 실행하고, Tauri `beforeDevCommand`가 `@ferrum2d/studio` Vite dev server를 띄운다.
 
-기본값은 `apps/studio/public/placement.garden.scene-authoring.json` 정원 문서다. 다른 로컬 문서를 열려면 절대 경로를 환경변수로 넘긴다.
+개발 실행(`tauri dev`)은 예제가 있는 Vite dev server를 쓰므로 기본값은 `apps/studio/examples/placement.garden.scene-authoring.json` 정원 문서다.
+다른 로컬 문서를 열려면 절대 경로를 환경변수로 넘긴다.
+설치판은 예제 없는 제품 빌드(`apps/studio/dist`)를 담는다. 프로젝트나 파일을 지정하지 않으면 저장되지 않은 새 2D 장면으로 시작하고,
+저장하려면 프로젝트 폴더를 연다. 릴리스 준비와 `pnpm smoke:studio-desktop-package`는 설치 파일의 frontend에 예제가 없는지 확인한다.
 
 ```bash
 FERRUM_PLACEMENT_SCENE_DOCUMENT=/absolute/path/to/scene-authoring.json pnpm dev:studio-desktop

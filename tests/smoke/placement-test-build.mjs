@@ -44,3 +44,30 @@ async function create(dist, save) {
     return root;
   } catch (error) { process.off("exit", cleanup); await rm(root, { recursive: true, force: true }); throw error; }
 }
+
+const demoBuilds = new Map();
+
+/**
+ * The web demo build (`--mode demo`): bundled examples, no regression fixtures. Smokes that open
+ * the default garden or village scene use it; the product build starts with a new, empty scene.
+ * CI prepares it once (FERRUM_STUDIO_DEMO_DIST, FERRUM_STUDIO_SAVE_DEMO_DIST); otherwise it is
+ * built into a private temporary directory.
+ */
+export function prepareStudioDemoBuild({ save = false } = {}) {
+  const prepared = save ? process.env.FERRUM_STUDIO_SAVE_DEMO_DIST : process.env.FERRUM_STUDIO_DEMO_DIST;
+  if (prepared) return Promise.resolve(path.resolve(prepared));
+  if (!demoBuilds.has(save)) demoBuilds.set(save, createDemo(save));
+  return demoBuilds.get(save);
+}
+async function createDemo(save) {
+  const root = await mkdtemp(path.join(tmpdir(), "ferrum-studio-demo-"));
+  const cleanup = () => rmSync(root, { recursive: true, force: true });
+  process.once("exit", cleanup);
+  try {
+    await runReleaseCommand("pnpm", ["exec", "vite", "build", "--base=./", "--mode", "demo", "--outDir", root, "--emptyOutDir"], {
+      cwd: app, timeoutMs: 120_000,
+      env: { ...process.env, VITE_FERRUM_STUDIO_SAVE: String(save) },
+    });
+    return root;
+  } catch (error) { process.off("exit", cleanup); await rm(root, { recursive: true, force: true }); throw error; }
+}

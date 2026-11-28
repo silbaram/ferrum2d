@@ -898,6 +898,7 @@ export const koreanMessages: Readonly<Record<string, string>> = {
   Saved: "저장됨",
   "Saving…": "저장 중…",
   "Export Only": "내보내기 전용",
+  "This build has no examples. Started a new 2D scene.": "이 빌드에는 예제가 없습니다. 새 2D 장면으로 시작했습니다.",
   "Save Failed": "저장 실패",
   Blocked: "차단됨",
   Unsaved: "미저장",

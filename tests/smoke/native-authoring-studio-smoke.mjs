@@ -6,10 +6,12 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
 import { clickPlacementControl, showPlacementAssetPanel, showPlacementBottom, showPlacementInspector } from "./placement-panel-navigation.mjs";
+import { prepareStudioDemoBuild } from "./placement-test-build.mjs";
 
 const out = resolve("artifacts/physics-3d/aggregate-authoring/native-studio");
 await mkdir(out, { recursive: true });
-const root = resolve("apps/studio/dist"), modelBytes = await readFile("examples/data-scene-native/assets/rock.glb");
+// The fixture replaces the default garden scene, which only the web demo build opens.
+const root = await prepareStudioDemoBuild(), modelBytes = await readFile("examples/data-scene-native/assets/rock.glb");
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 const contentId = sha(modelBytes), h = Math.sin(0.31) / Math.sqrt(2);
 const body = { kind: "dynamic", elevation: 5, rotation: [h, 0, h, Math.cos(0.31)], renderOffset: [0.5, -0.25, 0.75],

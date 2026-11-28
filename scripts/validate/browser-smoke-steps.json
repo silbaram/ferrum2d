@@ -18,7 +18,7 @@
     },
     {
       "name": "Build Studio smoke variants",
-      "run": "VITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --outDir \"$RUNNER_TEMP/studio-save\"\nVITE_FERRUM_STUDIO_SAVE=false pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode test --outDir \"$RUNNER_TEMP/studio-test\"\nVITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode test --outDir \"$RUNNER_TEMP/studio-test-save\"\nprintf 'FERRUM_STUDIO_TEST_DIST=%s\\nFERRUM_STUDIO_SAVE_TEST_DIST=%s\\n' \\\n  \"$RUNNER_TEMP/studio-test\" \"$RUNNER_TEMP/studio-test-save\" >> \"$GITHUB_ENV\""
+      "run": "VITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --outDir \"$RUNNER_TEMP/studio-save\"\nVITE_FERRUM_STUDIO_SAVE=false pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode test --outDir \"$RUNNER_TEMP/studio-test\"\nVITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode test --outDir \"$RUNNER_TEMP/studio-test-save\"\nVITE_FERRUM_STUDIO_SAVE=true pnpm --filter @ferrum2d/studio exec vite build --base=./ --mode demo --outDir \"$RUNNER_TEMP/studio-demo-save\"\nprintf 'FERRUM_STUDIO_TEST_DIST=%s\\nFERRUM_STUDIO_SAVE_TEST_DIST=%s\\nFERRUM_STUDIO_DEMO_DIST=%s\\nFERRUM_STUDIO_SAVE_DEMO_DIST=%s\\n' \\\n  \"$RUNNER_TEMP/studio-test\" \"$RUNNER_TEMP/studio-test-save\" \"$RUNNER_TEMP/studio-demo-save\" \"$RUNNER_TEMP/studio-demo-save\" >> \"$GITHUB_ENV\""
     }
   ],
   "core": [

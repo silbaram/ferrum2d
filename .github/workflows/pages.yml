@@ -50,6 +50,10 @@ jobs:
       - name: Build examples
         run: pnpm build
 
+      # Pages hosts the web demo Studio with bundled examples; the product build has none.
+      - name: Build web demo Studio
+        run: pnpm --filter @ferrum2d/studio build:demo
+
       - name: Build Pages artifact
         run: pnpm build:pages
 
