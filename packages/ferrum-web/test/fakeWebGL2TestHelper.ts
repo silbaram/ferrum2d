@@ -37,6 +37,7 @@ export function fakeWebGL2() {
   let viewport = [0, 0, 128, 128];
   let clearColor = [0, 0, 0, 0];
   let colorMask = [true, true, true, true];
+  let scissorBox = [0, 0, 128, 128];
   const methods: Record<string, (...args: never[]) => unknown> = {
     getParameter: ((name: number) => {
       if (name === constant("DRAW_FRAMEBUFFER_BINDING")) return drawFramebuffer;
@@ -45,7 +46,11 @@ export function fakeWebGL2() {
       if (name === constant("VIEWPORT")) return new Int32Array(viewport);
       if (name === constant("COLOR_CLEAR_VALUE")) return new Float32Array(clearColor);
       if (name === constant("COLOR_WRITEMASK")) return [...colorMask];
+      if (name === constant("FRAMEBUFFER_BINDING")) return drawFramebuffer;
+      if (name === constant("SCISSOR_BOX")) return new Int32Array(scissorBox);
       if (name === constant("MAX_TEXTURE_SIZE")) return 4096;
+      if (name === constant("MAX_DRAW_BUFFERS")) return 8;
+      if (name === constant("COMPRESSED_TEXTURE_FORMATS")) return new Uint32Array();
       return null;
     }) as never,
     bindFramebuffer: ((target: number, framebuffer: unknown) => {
@@ -54,6 +59,7 @@ export function fakeWebGL2() {
     }) as never,
     bindTexture: ((_target: number, texture: unknown) => { texture2d = texture; }) as never,
     viewport: ((x: number, y: number, width: number, height: number) => { viewport = [x, y, width, height]; }) as never,
+    scissor: ((x: number, y: number, width: number, height: number) => { scissorBox = [x, y, width, height]; }) as never,
     clearColor: ((...rgba: number[]) => { clearColor = [...rgba].map(Math.fround); }) as never,
     colorMask: ((...mask: boolean[]) => { colorMask = [...mask]; }) as never,
     enable: ((cap: number) => { enabled.add(cap); }) as never,
@@ -72,15 +78,22 @@ export function fakeWebGL2() {
     getShaderParameter: (() => true) as never,
     getProgramParameter: (() => true) as never,
     getAttribLocation: (() => 0) as never,
-    getExtension: (() => null) as never,
+    // Render-target formats are available; timer queries and context loss stay unsupported.
+    getExtension: ((name: string) => ["EXT_color_buffer_float", "EXT_color_buffer_half_float", "OES_texture_float_linear"].includes(name)
+      ? new Proxy({}, { get: (_target, property) => typeof property === "string" ? constant(`${name}.${property}`) : undefined })
+      : null) as never,
     getSupportedExtensions: (() => []) as never,
     checkFramebufferStatus: (() => constant("FRAMEBUFFER_COMPLETE")) as never,
     isContextLost: (() => false) as never,
     getError: (() => 0) as never,
+    // Readback has no rasterized image; report opaque white texels.
+    readPixels: ((...args: unknown[]) => { const pixels = args[6]; if (ArrayBuffer.isView(pixels)) new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength).fill(255); }) as never,
     deleteTexture: ((resource: FakeResource) => { live.Texture.delete(resource); }) as never,
     deleteFramebuffer: ((resource: FakeResource) => { live.Framebuffer.delete(resource); }) as never,
   };
   const gl = new Proxy({ drawingBufferWidth: 128, drawingBufferHeight: 128 } as Record<string, unknown>, {
+    // Feature checks such as `"readBuffer" in gl` see a complete WebGL2 context.
+    has: (_target, property) => typeof property === "string",
     get(target, property) {
       if (typeof property !== "string") return undefined;
       if (property in methods) return methods[property];
