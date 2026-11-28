@@ -334,8 +334,6 @@ mod narrow_phase;
 
 #[cfg(feature = "alloc")]
 mod broad_phase_bvh;
-#[cfg(feature = "alloc")]
-pub(crate) use broad_phase_bvh::BroadStepCredit;
 mod broad_phase_pair_event;
 #[cfg(feature = "alloc")]
 mod collider;

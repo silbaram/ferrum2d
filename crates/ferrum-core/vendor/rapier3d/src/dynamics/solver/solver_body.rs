@@ -39,8 +39,6 @@ macro_rules! scatter(
 pub(crate) const SOLVER_BODY_ALLOW_FAST_ROTATION: u8 = 1;
 /// Prescribed kinematic motion must not be reduced by the dynamic speed cap.
 pub(crate) const SOLVER_BODY_KINEMATIC: u8 = 2;
-/// An explicit motion resolver replaced the prescribed body pose.
-pub(crate) const SOLVER_BODY_MOTION_RESOLVED: u8 = 4;
 
 #[derive(Default)]
 pub struct SolverBodies {

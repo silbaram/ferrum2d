@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::alloc_prelude::*;
 use core::marker::PhantomData;
 use core::ops::Deref;
@@ -47,19 +46,10 @@ impl<Handle, Object: HasModifiedFlag> ModifiedObjects<Handle, Object> {
         self.0.clear()
     }
 
-    pub(crate) fn swap_entries(&mut self, saved: &mut Vec<Handle>) {
-        core::mem::swap(&mut self.0, saved);
-    }
-
-    pub(crate) fn try_reserve_returns(
-        &mut self,
-        additional: usize,
-    ) -> Result<(), alloc::collections::TryReserveError> {
-        self.0.try_reserve(additional)
-    }
-
-    /// Pushes an object handle only if its MODIFIED flag is not set, and marks
-    /// the object as modified before adding it to the queue.
+    /// Pushes a object handle to this set after checking that it doesn’t have the MODIFIED
+    /// flag set.
+    ///
+    /// This will also set the object’s MODIFIED flag.
     pub fn push_once(&mut self, handle: Handle, object: &mut Object) {
         if !object.has_modified_flag() {
             self.push_unchecked(handle, object);

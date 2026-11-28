@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Structure for combining the various physics components to perform an actual simulation.
 
 #[cfg(feature = "alloc")]
@@ -7,7 +6,7 @@ pub use event_handler::ActiveEvents;
 #[cfg(all(feature = "std", feature = "alloc"))]
 pub use event_handler::ChannelEventCollector;
 #[cfg(feature = "alloc")]
-pub use event_handler::{EventHandler, SolverBodyIntegration, SolverBodyMotion};
+pub use event_handler::EventHandler;
 #[cfg(feature = "alloc")]
 pub use physics_hooks::ActiveHooks;
 #[cfg(feature = "alloc")]
@@ -21,10 +20,6 @@ pub use physics_pipeline::{PhysicsPipeline, Quarantine};
 pub use physics_world::PhysicsWorld;
 #[cfg(feature = "alloc")]
 pub use query_pipeline::{QueryFilter, QueryFilterFlags, QueryPipeline, QueryPipelineMut};
-pub use solver_motion::{
-    SolverCcdClamp, SolverCcdCrossing, SolverCcdPlan, SolverMotionBody, SolverMotionContext,
-    SolverMotionDecision, SolverMotionWriteError,
-};
 
 #[cfg(all(feature = "debug-render", feature = "alloc"))]
 pub use self::debug_render_pipeline::{
@@ -43,11 +38,6 @@ mod physics_pipeline;
 mod physics_world;
 #[cfg(feature = "alloc")]
 mod query_pipeline;
-#[cfg(feature = "alloc")]
-mod rigid_step_credit;
-#[cfg(feature = "alloc")]
-pub use rigid_step_credit::RigidStepCredit;
-mod solver_motion;
 #[cfg(feature = "alloc")]
 mod user_changes;
 

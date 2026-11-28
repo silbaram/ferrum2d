@@ -52,6 +52,9 @@ PNG extrusion의 현재 계약과 검증 명령은
 
 ## 물리·탐색 후속 후보
 
+- 비율 관절의 위치 보정 검사(`correction_fits`)는 모든 콜라이더를 순회한다. 콜라이더가 많은 월드에서는
+  BVH로 보정하려는 바디 주변의 후보만 조회하도록 개선한다. 기존 contact policy와 허용 오차는 유지한다.
+
 지원하는 물리·보행 충돌의 범위는 [물리 기능 맵](../development/architecture/physics-engine.md)을 따른다.
 아래 항목은 그 이후의 별도 후보이며 기존 기능의 재구현 목록이 아니다.
 

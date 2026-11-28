@@ -35,7 +35,6 @@ impl StagedIslandSolver {
         counters: &mut Counters,
         gravity: crate::math::Vector,
         base_params: &IntegrationParameters,
-        motion_time: (f64, f64),
         islands: &IslandManager,
         bodies: &mut RigidBodySet,
         // The persistent per-color solver contact buckets (+ the
@@ -54,22 +53,14 @@ impl StagedIslandSolver {
         // The narrow-phase's per-body masks of persistent contact solver colors,
         // used to color the joints in the same color space as the contacts.
         contact_color_masks: &[u128],
-        events: &dyn crate::pipeline::EventHandler,
-    ) -> crate::pipeline::SolverMotionDecision {
+    ) {
         counters.solver.velocity_assembly_time.resume();
-        self.velocity_solver.ccd_plan.clear();
         // Substep solve-groups: each group (contiguous constraint-closed awake-body range, keyed
         // by max `additional_solver_iterations`) runs `base + extra` substeps at smaller dt —
         // real substeps buy convergence on high mass ratios, unlike the flat PGS sweeps they
         // replaced. Multibody scenes: one group at max extra (generic tables not group-major yet).
         let island_bodies = islands.island(island_id).bodies();
-        // Continuous response couples bodies that may not touch until later
-        // in this pass. Such a pass needs one actual clock: reuse the existing
-        // ungrouped path at the component-wise maximum requested tuning.
-        // The base plus extra values are not clamped or rewritten in bodies.
-        let multi_group = !events.resolves_solver_motion()
-            && islands.solve_groups.len() >= 2
-            && multibodies.iter().next().is_none();
+        let multi_group = islands.solve_groups.len() >= 2 && multibodies.iter().next().is_none();
         let max_extra = islands
             .solve_groups
             .first()
@@ -634,18 +625,6 @@ impl StagedIslandSolver {
          */
         self.sync = StageSync::new(num_workers);
 
-        let motion_resolver = events.resolves_solver_motion().then_some(events);
-        let motion_events =
-            (events.wants_body_motion() || motion_resolver.is_some()).then_some(events);
-        self.motion_body_mask.clear();
-        if motion_events.is_some() {
-            self.motion_body_mask
-                .extend(island_bodies.iter().map(|&id| {
-                    multibodies.rigid_body_link(id).is_none() && !bodies[id].is_soft_frame()
-                }));
-        }
-
-        let motion_decision = core::sync::atomic::AtomicU8::new(0);
         let ctx = SharedCtx {
             sync: &self.sync,
             chunk_segments: &self.chunk_segments,
@@ -658,12 +637,7 @@ impl StagedIslandSolver {
             island_bodies,
             has_multibodies: !self.velocity_solver.multibody_roots.is_empty(),
             base_params,
-            motion_time,
-            motion_events,
-            motion_body_mask: &self.motion_body_mask,
-            motion_resolver,
-            motion_decision: &motion_decision,
-            motion_colliders: colliders,
+            colliders,
             store,
             joints: impulse_joints.as_mut_ptr(),
             num_joints: impulse_joints.len(),
@@ -726,14 +700,10 @@ impl StagedIslandSolver {
         // Publish the fused post-solve CCD activation verdict. Multibody link bodies skip the
         // fused flag computation (separate writeback), so their presence invalidates it and
         // the pipeline falls back to its own pass.
-        let decision = crate::pipeline::SolverMotionDecision::from_code(
-            motion_decision.load(Ordering::Acquire),
-        );
         self.post_solve_ccd_active = self
             .velocity_solver
             .multibody_roots
             .is_empty()
             .then(|| self.any_ccd_active.load(Ordering::Relaxed));
-        decision
     }
 }

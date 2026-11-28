@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::math::{Pose, Real, Vector};
 use crate::query::{sat, ContactManifold};
 #[cfg(feature = "dim3")]
@@ -119,7 +118,7 @@ pub fn contact_manifold_cuboid_capsule<'a, ManifoldData, ContactData>(
     }
     #[cfg(feature = "dim3")]
     {
-        feature1 = cube1.support_face(best_sep.1);
+        feature1 = cube1.polyhedron_support_face(best_sep.1);
         feature2 = PolygonalFeature::from(segment2);
     }
 
@@ -142,11 +141,10 @@ pub fn contact_manifold_cuboid_capsule<'a, ManifoldData, ContactData>(
     #[cfg(feature = "dim3")]
     PolygonalFeature::contacts(
         pos12,
-        pos21,
-        best_sep.1,
-        pos21.rotation * -best_sep.1,
         &feature1,
+        &best_sep.1,
         &feature2,
+        prediction + capsule2.radius,
         manifold,
         flipped,
     );

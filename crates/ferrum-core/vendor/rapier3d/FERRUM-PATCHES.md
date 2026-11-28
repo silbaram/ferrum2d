@@ -38,7 +38,7 @@
   기존 동작을 보존하며 hook이나 추가 충돌 query를 필요로 하지 않는다.
 
 최초 마찰 수정 시점에는 상류 원본 324개 중 23개 파일을 수정하고 Rust 파일 1개를 추가했다.
-현재(2026-11-22 확인) 상류 `src`의 Rust 파일 239개 중 44개를 수정했고 Rust 파일 27개를 추가했다.
+현재(2026-11-28 확인) 상류 `src`의 Rust 파일 239개 중 35개를 수정했고 Rust 파일 23개를 추가했다.
 수정한 파일은 모두 첫 줄에 Ferrum2D 수정 고지를 둔다. 추가한 파일은 Ferrum2D 원본이다. 이전 마찰 수정만 있을 때의
 검증은 `artifacts/physics-3d/contact-policy-qa`에 보존하며, 접촉 보정 이후 검증은
 `artifacts/physics-3d/contact-correction-qa`에서 구분한다. 전역 설정 이후 최신 검증은
@@ -61,7 +61,7 @@
   `src/dynamics/solver/staged_island_solver/worker.rs`, `src/pipeline/physics_pipeline/substep.rs`,
   `src/dynamics/ccd/mod.rs`, `src/dynamics/mod.rs`:
   평면 축 잠금과 실제 Z축 회전이 확인되는 단일 박스 동적 바디는 post-solve CCD 활성화 시
-  COM 기준 XY 회전 반경으로 재판정한다. 준비된 CCD 계획과 native writeback에 같은 판정을 적용한다.
+  COM 기준 XY 회전 반경으로 재판정한다. 일반 solver writeback과 CCD activation에서 이 판정을 사용한다.
 
 - `src/dynamics/ccd/ccd_solver.rs`, `src/dynamics/ccd/sweeps.rs`,
   `src/dynamics/ccd/mod.rs`, `src/dynamics/mod.rs`:
@@ -71,8 +71,7 @@
   motion clamp 계산은 유지한다. 통계를 위해 별도 geometry query를 실행하지 않는다.
   `CCDSolver.reset_diagnostics`는 adapter가 각 backend step 전에 호출한다. 기본 detailed report limit는
   0이며 Ferrum2D는 WorldConfig.max_events를 설정한다. 진단은 serde state에 포함하지 않는다.
-  수정 검증은 `artifacts/physics-3d/statistics-qa`에 기록한다. CCD callback/diagnostics는 물리 impulse를
-  뜻하지 않는다. retained witness와 per-body result 저장 비용은 최종 성능 검증 대상이다.
+  수정 검증은 `artifacts/physics-3d/statistics-qa`에 기록한다. CCD 진단은 물리 충격량 대신 실제 position clamp를 나타낸다. retained witness와 per-body result 저장 비용은 최종 성능 검증 대상이다.
 
 
 ## 지정된 kinematic 선형 운동 보존
@@ -86,31 +85,8 @@ Ferrum2D는 두 kinematic 종류의 지정 선형 운동을 보존한다. dynami
 
 직접 native 두 모드·두 kinematic 종류의 두 tick 위치/속도와 dynamic 상한 보존,
 실제 Data Scene 고속 투사체의 연속 tick·수동 tick·충돌 지점 정지를 회귀 검증한다.
-이는 이동 대상과의 상대 운동 sweep이나 고속 kinematic 접촉 비용 수용을 완료했다는 의미가 아니다.
-
-## 실제 solver 적분 경로 관측
-
-`pipeline/event_handler.rs`에 기본 비활성인 rigid-body motion callback과 owned COM pose record를 추가하고
-`pipeline/mod.rs`에서 내보낸다. `physics_pipeline/substep.rs`는 각 CCD 시간 구간의 시작을 알린다.
-`physics_pipeline/solve.rs`, `staged_island_solver/init.rs`·`mod.rs`가 observer를 전달하고,
-`worker.rs`는 실제 속도 제한·위치 적분 전후의 COM pose와 구간 시간을 전달한다. 각 적분의 회전을
-별도로 보관하므로 같은 자세로 돌아온 여러 회전을 한 번의 최단 회전으로 압축하지 않는다.
-
-observer 활성 시에만 재사용 eligibility mask를 구성한다. multibody link·soft-frame·soft particle은
-이 callback 대상에서 제외한다. 기존 worker가 소유한 pose를 복사하며 추가 unsafe 접근이나 concurrent
-RigidBodySet 읽기를 도입하지 않는다. callback은 parallel 빌드에서 동시에 실행될 수 있다.
-Ferrum2D의 수집기는 Mutex 안의 재사용 Vec에 기록하며, 기록 유무로 solver 계산식·적분·속도 제한을 바꾸지 않는다.
-
-`ccd_solver.rs`는 기존 clamp를 적용한 뒤 실제 시작/제한된 COM pose와 fraction을 observer에 전달한다.
-bounded CCD 진단 버퍼와 독립적이므로 진단이 넘쳐도 게임 판정에 필요한 경로는 누락되지 않는다.
-adapter는 해당 CCD 시간 구간의 solver overshoot를 폐기하고 승인된 sweep 구간과 이후 정지를 사용한다.
-같은 body의 반복 clamp는 fraction을 곱하고 마지막 pose를 보존한다. 기존 CCD 자체의 판정·clamp 계산은 유지한다.
-
-이 관측은 transient callback으로 전달하며 native backend state나 Wasm render ABI에 필드를 추가하지 않는다.
-position-kinematic의 정확한 target writeback은 adapter에서 지정된 pass별 pose 보간으로 처리한다.
-적분 interval 내부의 연속 경로는 두 pose의 보간이며 새로운 연속시간 적분법이 아니다. 고밀도 기록/정렬/BVH 비용,
-고속 회전에서 native CCD 자체의 정확성, snapshot/replay와 최종 제품 검증은 별도 수용이 필요하다.
-회귀와 vendor 검증은 `artifacts/physics-3d/solver-motion-qa`에 기록한다.
+`RigidBody::predict_kinematic_motion`은 같은 각속도 상한, COM 적분과 감쇠를 사용해 위치와
+회전량을 예측한다. KCC의 밀기와 지정 경로 계산에서 이 예측을 사용한다.
 
 ## 캡슐 이동 종료 오차의 단위 정합
 
@@ -122,14 +98,7 @@ Ferrum2D의 접지 이동용 swept clearance도 0이 아닌 작은 입력에 동
 작은 속도·벽 정지·경사/단차 및 기존 캐릭터 회귀를 함께 검증한다. f32 위치 정밀도보다
 작은 이동까지 표현된다는 뜻은 아니다.
 
-## Native checkpoint의 solver 운동 관측
-
-`pipeline/event_handler.rs`의 Ferrum 전용 `SolverBodyMotion`에 `serde-serialize` feature 조건부
-Serialize/Deserialize를 추가했다. callback은 여전히 transient이며 backend world에 새 저장 필드를 넣지 않는다.
-adapter가 이미 보관한 실제 구간별 motion을 native checkpoint에 포함해 복원 직후 projectile 상대 운동
-query를 유지하기 위한 변경이다. Serde가 꺼진 빌드의 타입과 callback 동작은 유지한다.
-CCDSolver workspace/진단은 상류처럼 직렬화하지 않으며 adapter가 보관한 완료 step 통계와 clamp 결과를
-저장한다. 복원 시 diagnostic limit를 다시 설정한다. 전체 Engine/Data Scene 저장은 별도 연결이 필요하다.
+## Native backend 저장의 target 간 검증
 
 `tests/snapshot_portability.rs`의 기준 snapshot도 Ferrum의 접촉 보정/settings 저장 layout에 맞춘다.
 동일 dependency lock의 수정 없는 상류는 원래 기준값 488,334 bytes를 통과했으며, Ferrum 소스는
@@ -422,97 +391,6 @@ total work에 포함된다. Scratch는 누적 requested payload이며 CPU/RSS/�
 - Fixes normal public remove/add-before-next-step leaving an old-generation pair and one reverse link behind (3 stored pairs versus 5 directed adjacency entries in the minimal source fixture). Stored-reference/cardinality validation remains strict.
 - The `pending_set_aabb` drain now runs after the removal and filter-change loops instead of before them, and it records an updated leaf only while `tree.leaf_node(index)` still exists. A removal or filter change in the same update detaches that leaf; the later insertion then owns the slot's change history. Collider handles still enter `updated_colliders` for stale-pair detection.
 - No persistent field, wire, public API, dependency, shape or BVH geometry change. Apart from the `pending_set_aabb` ordering above, non-reuse paths retain existing pair/event ordering and stored bytes. Reuse boundary behavior is corrected by removing obsolete generations; the previous inconsistent pair history is not a replay-compatibility target.
-
-## Ferrum2D: 실제 solver 구간 운동 승인
-
-`SolverBodyIntegration`은 실제 선형화 quaternion 적분식, solver 속도와 실제 kernel dt를
-반올림된 관측 시간과 구분해 보존한다. 선택된 배타 운동 승인 단계는 모든 rigid-body
-적분이 완료된 기존 worker-0 barrier에서 ordinary reference를 빌린다. 새 unsafe 표현식,
-외부 힘 재적분, 영속 solver field는 추가하지 않는다. 유한값·unit 회전·엄격한 slot 순서를
-가진 전체 batch를 먼저 검사하고 승인된 solver row만 함께 바꾼다.
-
-명시적인 Approved/Rejected/NeedsWakeJoin 결과로 미승인 제안이 body/contact impulse
-writeback이나 후행 CCD/최종 위치 advance에 도달하지 못하게 한다. Committed seconds는
-private solver scratch의 승인 callback 수가 아니라 완전히 writeback/advance된 slice 시간이다.
-기본 opt-out의 barrier, solver grouping, body writeback과 event adapter는 그대로 따른다.
-
-선택된 결합 운동은 기존 ungrouped 경로의 최대 additional solver/PGS 설정을 공통 실제
-시간축으로 사용한다. 저장 승인된 body extra를 제한하거나 다시 쓰지 않는다. 명시적인
-교체가 없으면 position-kinematic의 원래 정확한 authored target writeback을 유지한다.
-마지막 실제 interval/기존 target override의 읽기 전용 정보와 batch의
-`keep_integrated_endpoint`가 검증되지 않은 dt0 target 치환을 막는다. 원래 CCD Sweep을
-관측하여 짧아진 endpoint 두 개로 nlerp 시간을 다시 만들지 않는다.
-
-하위 owner가 실제 piecewise 곡선, 센서 통과, 잠든 물체의 접촉 prefix 재검사와 endpoint
-placement를 별도로 검사한다. Callback hook만으로 전체 angular CCD 완료라고 부르지 않는다.
-Local motion credit는 사전 계획의 속도·activation·pending target만 보관하며 arena,
-월드, island/contact cache나 이미 승인된 body pose를 복원하지 않는다. 계획 전에
-modified queue의 반환 여유를 fallible reserve할 수 있다. Raw arena slot 수는 빈 slot과
-retired slot의 순회 비용도 포함한다.
-
-이 transient API는 원래 backend serde field를 추가하지 않는다. Ferrum의 완료된 스텝
-검색 owner는 별도 version6 exact-curve payload와 cold admission을 사용한다. 구현과
-합성 검증은 `artifacts/physics-3d/goal-closure/actual-angular-trajectories/`에서 추적한다.
-중간 compile은 전체 Goal5 완료 증거가 아니다.
-
-## Tick-local precise solver clock
-
-- SolverMotionContext exposes private logical substep bounds `D*i/N` in f64,
-  where D is the original full CCD slice dt widened from f32. Original observer
-  labels, substep physical integration_seconds, solved velocities and poses do
-  not change. No additional force integration occurs.
-- SolverBodyIntegration permits evaluating its original kernel using only the
-  final interval-local physical dt; no absolute f32 time is reconstructed.
-- PhysicsPipeline separately reports f64 committed logical time only after the
-  same completed CCD-slice writeback that updates its existing f32 observer.
-  Rejected slices receive no committed-time credit.
-
-## Prepared Native CCD on actual original kernels
-
-- Reuse native solved fast-body activation, non-bullet/bullet target tiers,
-  groups, hooks and pseudo/sensor policy through shared readonly helpers.
-- An opted-in handler plans one complete CCD slice after every group and
-  restitution, before persistent contact/joint impulse and body writeback.
-  Worker zero reuses the original exclusive approval borrow and StageSync;
-  pointer expressions are centralized without a new pointer/alias contract.
-- A reusable non-serialized VelocitySolver plan retains private f64 cutoffs and
-  original-kernel COM endpoints. Coverage includes mixed actual paths, so the
-  old whole-endpoint sweep never clamps an already-approved Core path again.
-- At the original postsolve CCD phase, apply only prevalidated position rows;
-  solved velocities, damping, forces, masses and elapsed-time credit are unchanged.
-  Diagnostics retain collider-pair-call/applied-body/drop meanings. The bounded
-  diagnostics Vec is reserved fallibly before solver publication; apply allocates
-  nothing. Core stages sensor events and publishes only completed slices once.
-- Default handlers leave the plan uncovered and retain the original CCD sweep,
-  scheduling and event path. Existing observer f32 fraction is output only;
-  Core exact paths retain original Integrated domains and Constant suffixes.
-  No persistent field/Curve variant, serde wire change or Wasm ABI is introduced.
-
-
-## Controller·joint·CCD 공통 논리 시간 구간
-
-`EventHandler::solver_motion_step_domain`과 `handle_body_motion_pass_domain_started`는 opt-in
-실행의 정확한 tick 시간 구간을 전달한다. pipeline은 기존 F32 CCD remaining-time 분할을 그대로
-실행하고 그 경계를 전체 논리 구간에 매핑한다. staged solver는 동일한 구간을 직접 전달받아
-내부 interval의 첫·마지막 경계 비트를 보존한다. `SolverMotionContext`의 precise 시간, 전체
-Native CCD 증명과 prepared clamp, 실제 완료 credit은 이 시간선을 사용한다. 기존 F32 observer
-label과 Native dt, force·constraint·velocity cap·적분 수식은 유지한다. prepared clamp의 관측
-fraction만 정확한 논리 구간에서 계산하고 물리 sweep_seconds는 원 dt를 보존한다.
-
-Core는 증명한 Kernel을 원 global tick domain 그대로 저장하며 사후 clock shift를 하지 않는다.
-새 Native response continuation은 원 Kernel의 h/D에서 물리 잔여 시간을 가져온다. 시간 credit은
-실제 전체 CCD slice writeback이 끝난 뒤에만 그 slice의 정확한 끝으로 진행한다. 마지막 통계
-값만 덮어써 미완료 구간을 완료로 처리하는 경로는 두지 않는다. 단계별 회귀와 전체 제품
-수용 검증은 구분하며, 현재 후보의 통합 실행 전에는 완료된 결과로 주장하지 않는다.
-
-## 거부된 고정 틱의 rigid 상태 복원
-
-`RigidStepCredit`은 몸체·콜라이더의 변경 필드, 사용자 변경 큐와 broad phase의 영속
-상태를 작업자가 재사용하는 버퍼에 보관한다. Core는 쓸 수 있는 메모리와 작업량을
-먼저 확인하고, graph 준비 이후에도 승인한 시간이 0인 경우에만 원래 상태를 복구한다.
-BVH 노드는 배열 단위로 복사한다. 인접 목록의 세대·길이와 간선은 각각 하나의 배열에
-담는다. 밀집한 위치가 옮겨가도 각 슬롯의 과거 최대 버퍼는 남지 않는다. 보유 배열의
-실제 capacity를 검사하며 콜라이더 형상과 arena는 원래 소유자에 둔다.
 
 ## Ferrum2D: 저장된 solver hint 교차 검증
 

@@ -3,7 +3,7 @@
 Parry3D 0.31.1 원본은 `UPSTREAM.json`의 crates.io archive SHA-256와 파일별 해시로 고정한다.
 기존 Rapier 의존성의 동일 버전을 local path로 연결하며 새 물리 backend나 production library를 추가하지 않는다.
 Apache-2.0 라이선스와 원본의 개별 저작권·라이선스 고지를 보존한다.
-현재(2026-11-22 확인) 상류 `src`의 Rust 파일 344개 중 30개를 수정했고 Rust 파일 11개를 추가했다.
+현재(2026-11-28 확인) 상류 `src`의 Rust 파일 344개 중 25개를 수정했고 Rust 파일 9개를 추가했다.
 수정한 파일은 모두 첫 줄에 Ferrum2D 수정 고지를 둔다. 추가한 파일은 Ferrum2D 원본이다.
 
 - `src/query/ray/ray_ball.rs`: 구 중심에서 시작하는 solid ray의 TOI0에서 0 벡터를 정규화해 NaN 법선을
@@ -131,18 +131,6 @@ Work에 emitted/compared bytes도 포함하고 scratch는 누적 requested paylo
 소스·패치·정상 shared producer/손상 guard-only·COW/replay/예산 증거는
 `artifacts/physics-3d/goal-closure/native-file-shape-aliases/reports`에서 추적한다.
 
-## 실제 trajectory query의 원래 local witness
-
-- `query/sweep_toi/proxy_distance.rs`, `mod.rs`: 별도 3D readonly variant가 기존 simplex의 원래 A/B indices와 weights로 local core witness를 반환한다. Affine anchor+weighted differences로 공통 source plane을 보존하며 좌표 snap이나 radius/clearance 변경은 하지 않는다.
-- 원래 `proxy_distance` API/결과/Serialize wire는 그대로이며 `const LOCAL_WITNESS=false` 경로는 추가 local-witness 계산을 실행하지 않는다. 새 variant는 힙 할당/iteration 증가 없이 최대4개 simplex point만 읽는다.
-- Core가 A-relative로 이미 반올림된 B witness를 다시 world로 옮기면서 실제 접촉을 작은 양수 gap으로 만들던 오류를 막기 위해 각 원래 pose에 local witness를 적용한다.
-
-## 실제 contact의 기존 Cuboid/Capsule SAT 명시 사용
-
-- `query/contact_manifolds/mod.rs`: 기존 `contact_manifold_cuboid_capsule(_shapes)` module/export를 활성화한다. 일반 `DefaultQueryDispatcher` 선택은 변경하지 않고 Core actual fullshape contact census에서만 명시 호출한다.
-- 원래 SAT face/edge 선택과 finite-feature clipping의 full shape/radius/normal을 유지해 평면 접선에서 generic smooth-GJK normal 오차가 tiny upward impulse를 만들지 않도록 한다.
-- 이 기존 비활성 module의3D API 호출을 현재 `Cuboid::support_face`와 `PolygonalFeature::contacts(pos12,pos21,n1,n2,feature1,feature2,...)` signature에만 맞춘다. SAT separation/prediction 검사·radius 조정·finite feature clipping의 수학은 변경하지 않는다.
-
 ## Original cuboid local support witnesses
 
 - Cuboid-cuboid SAT face contacts retain each actual support witness in its
@@ -161,44 +149,3 @@ Work에 emitted/compared bytes도 포함하고 scratch는 누적 requested paylo
   negative signed support gap.
 - Separated face/vertex and edge/edge paths retain their existing closest-point
   behavior; no prediction threshold, shape, solver, wire or public API changes.
-
-- `src/query/sweep_toi/proxy_distance.rs`, `sweep_toi/mod.rs`: 3D original-core GJK에
-  `proxy_distance_with_local_witness_metered`의 fallible 사전 admission을 추가한다.
-  Bootstrap/cache(최대3), 실제 각 simplex body(최대32), 원 A→B cloud support scan,
-  Finish/witness/cache publish 직전에만 callback을 호출한다. Err면 외부 SimplexCache는
-  변경하지 않는다. 기존 두 API는 const METERED=false/Infallible specialization으로
-  callback 경로 없이 원 F32 문장/연산/iteration/반환/cache 순서를 보존한다.
-  Core는 실제 simplex 크기의 bounded fixed phase와 실제 점 방문을 분리 청구하며
-  BoxBox/BoxCapsule 특수 finite query에는 실행하지 않은 GJK32 reserve를 청구하지 않는다.
-  별도 Native contact fallback의 원32 reserve는 실행 전에 계속 보존한다. 이 reserve는
-  Native GJK100/EPA/heap/silhouette의 전체 작업 상한을 증명하지 않으며, 전체 fallback
-  metering은 필수 후속 A29로 남긴다. 저장/World/Wasm ABI/원 shape/skin/iteration cap은 불변이다.
-
-- `src/query/{native_work,gjk/gjk,epa/epa3,contact/metered}.rs`: A29는 위 Native
-  fallback을 원 point-cloud leaf dispatcher와 같은 순서로 계량한다. GJK는 원
-  단일 private core에서 const-false/true 경로를 사용하며 perturb `continue`를 포함한
-  매 loop를 실행 전에 승인한다. EPA도 단일 core를 유지하고 모든 bootstrap support,
-  invalid-face를 포함한 heap pop, 확장, silhouette edge, 새 face, 종료 witness를
-  승인한다. metered silhouette만 fallible local DFS stack을 사용해 원 adj1→adj2
-  방문 순서를 보존한다. 기존 API의 recursive 경로/F32 식/100 counter와 EPA의
-  `niter > 100` 종료는 그대로다.
-- `contact_point_cloud_metered`는 `ToiProxy`의 전체 leaf 목록만 받는다. Ball의
-  primitive PointQuery와 convex/round PointQuery 내부 GJK/EPA 및 feature lookup까지
-  포함하며 composite/custom은 원 Core leaf 입구와 같이 범위 밖이다. 공개 entry는
-  immutable pose/shape와 callback만 받고 simplex/EPA를 새 local 소유로 만들어 Err
-  때 원 World/shape/cache에 설치하지 않는다. 기본 일반 `contact` 계약은 유지한다.
-- 저장소 증가는 원 local Vec/heap의 target requested backing bytes와 relocation bytes를
-  기존 shared Work ledger에 **예약 전에** 합산한 뒤 `try_reserve_exact`를 사용한다.
-  새 기본 allowance/필드/TLS/dependency는 없다. 논리 요청 byte/방문 단위는 allocator
-  actual capacity, 물리 메모리/RSS, scalar 명령 수 또는 elapsed 상한이 아니다.
-  metered 저장소의 요청 target은 checked `max(len+1, 2*capacity, 4)`로 정해 원
-  amortized 성장에 없던 원소당 exact 재할당을 도입하지 않는다. target bytes와
-  relocation bytes 승인 후에만 `try_reserve_exact(target-len)`을 실행한다.
-  기본 경로는 const false에서 원 push/allocation 순서로 동작하며 compiler 성능은
-  이 source patch만으로 실측했다고 주장하지 않는다. EPA/단순체 struct와 wire는 불변이다.
-
-## 고정 틱 복원용 BVH 복사
-
-`Bvh::step_credit_bytes`와 `try_copy_step_credit`는 노드, 부모, 희소 leaf 슬롯,
-재사용 목록과 최적화 위치를 보존한다. 상한 확인 뒤 호출자가 소유한 배열을 재사용해
-일괄 복사하며 트리 깊이에 따른 재귀와 직렬화가 필요 없다.

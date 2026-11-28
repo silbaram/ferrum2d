@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::alloc_prelude::*;
 use crate::data::arena::Arena;
 use crate::data::{HasModifiedFlag, ModifiedObjects};
@@ -56,21 +55,6 @@ pub struct ColliderSet {
 }
 
 impl ColliderSet {
-    /// Number of stored arena slots visited by a complete iterator, including
-    /// vacant/retired slots. This is not the number of live objects.
-    pub fn motion_storage_slots(&self) -> usize {
-        self.colliders.capacity()
-    }
-
-    /// Reserve modification queue capacity before a local preplan can fail.
-    /// Returning at most `additional` motion credits then needs no queue growth.
-    pub fn try_reserve_motion_credit_returns(
-        &mut self,
-        additional: usize,
-    ) -> Result<(), alloc::collections::TryReserveError> {
-        self.modified_colliders.try_reserve_returns(additional)
-    }
-
     /// Creates a new empty collection of colliders.
     pub fn new() -> Self {
         ColliderSet {

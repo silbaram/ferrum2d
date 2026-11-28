@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Per-substep pipeline stages: broad/narrow-phase collision detection and the
 //! island build + staged velocity constraint solve.
 
@@ -165,7 +164,6 @@ impl PhysicsPipeline {
         &mut self,
         gravity: Vector,
         integration_parameters: &IntegrationParameters,
-        motion_time: (f64, f64),
         islands: &mut IslandManager,
         narrow_phase: &mut NarrowPhase,
         bodies: &mut RigidBodySet,
@@ -174,7 +172,7 @@ impl PhysicsPipeline {
         multibody_joints: &mut MultibodyJointSet,
         soft_bodies: &mut SoftBodySet,
         events: &dyn EventHandler,
-    ) -> crate::pipeline::SolverMotionDecision {
+    ) {
         // Persistent islands, two tiers: a bounded local dual search settles each removal (proves
         // connectivity — common case, island never marked dirty — or peels the detached side at its cost);
         // the rest falls to the deferred union-find split (one island/step), run before the fused traversal so split bids see the post-split state.
@@ -386,13 +384,12 @@ impl PhysicsPipeline {
             let num_threads = 1;
 
             let joint_assembly_epoch = impulse_joints.assembly_epoch;
-            let decision = self.staged_solver.init_and_solve(
+            self.staged_solver.init_and_solve(
                 num_threads,
                 island_id,
                 &mut self.counters,
                 gravity,
                 integration_parameters,
-                motion_time,
                 islands,
                 bodies,
                 narrow_phase.solver_graph(),
@@ -405,12 +402,7 @@ impl PhysicsPipeline {
                 narrow_phase,
                 colliders,
                 unsafe { contact_color_masks.as_slice() },
-                events,
             );
-            if decision != crate::pipeline::SolverMotionDecision::Approved {
-                self.counters.stages.solver_time.pause();
-                return decision;
-            }
             // The soft-body surface contacts live outside the solver contact graph: write their
             // impulses back to the manifolds (contact-force events, warm start) here.
             self.staged_solver
@@ -428,6 +420,5 @@ impl PhysicsPipeline {
         );
 
         self.counters.stages.solver_time.pause();
-        crate::pipeline::SolverMotionDecision::Approved
     }
 }

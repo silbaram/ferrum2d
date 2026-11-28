@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Physics pipeline structures.
 
 use crate::alloc_prelude::*;
@@ -46,9 +45,6 @@ mod test_staged;
 pub struct PhysicsPipeline {
     /// Counters used for benchmarking only.
     pub counters: Counters,
-    motion_decision: crate::pipeline::SolverMotionDecision,
-    motion_committed_seconds: crate::math::Real,
-    motion_committed_time: f64,
     joint_constraint_indices: Vec<ContactManifoldIndex>,
     /// Whether [`Self::joint_constraint_indices`] has been filled by this pipeline yet.
     /// The joint set memoizes its selection against the buffer the caller keeps, so a
@@ -112,9 +108,6 @@ impl PhysicsPipeline {
     pub fn new() -> PhysicsPipeline {
         PhysicsPipeline {
             counters: Counters::new(true),
-            motion_decision: crate::pipeline::SolverMotionDecision::Approved,
-            motion_committed_seconds: 0.,
-            motion_committed_time: 0.,
             #[cfg(feature = "parallel")]
             active_body_handles: vec![],
             sleep_observations: Vec::new(),
@@ -131,27 +124,6 @@ impl PhysicsPipeline {
             soft_synced_colliders: vec![],
             quarantine: Quarantine::default(),
         }
-    }
-
-    /// Last solver approval outcome. Rejection blocks the unapproved interval's
-    /// rigid writeback, but does not roll back earlier pipeline bookkeeping.
-    pub fn solver_motion_decision(&self) -> crate::pipeline::SolverMotionDecision {
-        self.motion_decision
-    }
-
-    /// Seconds whose complete solver writeback and final pose advancement have
-    /// finished in the last pipeline step. An aborted current slice contributes
-    /// zero even if its private solver buffer held approved internal intervals.
-    /// This is elapsed backend time, not a count of callback approvals.
-    pub fn solver_motion_committed_seconds(&self) -> crate::math::Real {
-        self.motion_committed_seconds
-    }
-
-    /// End of the last fully written/advanced CCD slice in the opted-in
-    /// resolver's logical step domain. Zero if no slice completed. The default
-    /// path retains elapsed physical seconds. Approvals alone are not credit.
-    pub fn solver_motion_committed_time(&self) -> f64 {
-        self.motion_committed_time
     }
 
     /// Completes the BVH optimization pass deferred by the last broad-phase update (if

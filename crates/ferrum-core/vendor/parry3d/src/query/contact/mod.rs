@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Implementation details of the `contact` and `contacts` functions.
 
 pub use self::contact::Contact;
@@ -34,11 +33,3 @@ mod contact_heightfield_shape;
 mod contact_shape_shape;
 #[cfg(feature = "alloc")]
 mod contact_support_map_support_map;
-
-#[cfg(all(feature = "dim3", feature = "alloc"))]
-pub(crate) mod metered;
-#[cfg(all(feature = "dim3", feature = "alloc"))]
-pub use metered::{
-    contact_point_cloud_metered, NativeContactError, NativeContactPhase, NativeContactStorage,
-    NativeContactWork,
-};

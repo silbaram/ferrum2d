@@ -363,74 +363,6 @@ where
     G1: ?Sized + SupportMap,
     G2: ?Sized + SupportMap,
 {
-    let mut admit = |_| Ok::<_, core::convert::Infallible>(());
-    let mut meter = query::native_work::Meter { admit: &mut admit };
-    match closest_points_impl::<false, G1, G2, _, _>(
-        pos12,
-        g1,
-        g2,
-        max_dist,
-        exact_dist,
-        simplex,
-        [0, 0],
-        &mut meter,
-    ) {
-        Ok(result) => result,
-        Err(_) => unreachable!("unmetered GJK admission is infallible"),
-    }
-}
-
-#[cfg(all(feature = "dim3", feature = "alloc"))]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn closest_points_metered<G1, G2, E, F>(
-    pos12: &Pose,
-    g1: &G1,
-    g2: &G2,
-    max_dist: Real,
-    exact_dist: bool,
-    simplex: &mut VoronoiSimplex,
-    support_points: [usize; 2],
-    meter: &mut query::native_work::Meter<'_, F>,
-) -> Result<GJKResult, query::native_work::NativeContactError<E>>
-where
-    G1: ?Sized + SupportMap,
-    G2: ?Sized + SupportMap,
-    F: FnMut(query::native_work::NativeContactWork) -> Result<(), E>,
-{
-    closest_points_impl::<true, G1, G2, E, F>(
-        pos12,
-        g1,
-        g2,
-        max_dist,
-        exact_dist,
-        simplex,
-        support_points,
-        meter,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn closest_points_impl<const METERED: bool, G1, G2, E, F>(
-    pos12: &Pose,
-    g1: &G1,
-    g2: &G2,
-    max_dist: Real,
-    exact_dist: bool,
-    simplex: &mut VoronoiSimplex,
-    support_points: [usize; 2],
-    meter: &mut query::native_work::Meter<'_, F>,
-) -> Result<GJKResult, query::native_work::NativeContactError<E>>
-where
-    G1: ?Sized + SupportMap,
-    G2: ?Sized + SupportMap,
-    F: FnMut(query::native_work::NativeContactWork) -> Result<(), E>,
-{
-    if METERED {
-        meter.charge(query::native_work::NativeContactWork::Fixed(
-            query::native_work::NativeContactPhase::GjkBootstrap,
-        ))?;
-    }
-
     let _eps = crate::math::DEFAULT_EPSILON;
     let _eps_tol: Real = eps_tol();
     let _eps_rel: Real = <Real as ComplexField>::sqrt(_eps_tol);
@@ -443,7 +375,7 @@ where
     if let Some(proj_dir) = proj.try_normalize() {
         old_dir = -proj_dir;
     } else {
-        return Ok(GJKResult::Intersection);
+        return GJKResult::Intersection;
     }
 
     let mut max_bound = Real::max_value();
@@ -460,11 +392,6 @@ where
     const MAX_PERTURBATIONS: usize = 2 * DIM;
 
     loop {
-        if METERED {
-            meter.charge(query::native_work::NativeContactWork::Fixed(
-                query::native_work::NativeContactPhase::GjkIteration,
-            ))?;
-        }
         let old_max_bound = max_bound;
 
         let neg_proj_coords = -proj;
@@ -474,7 +401,7 @@ where
             max_bound = dist;
         } else {
             // The origin is on the simplex.
-            return Ok(GJKResult::Intersection);
+            return GJKResult::Intersection;
         }
 
         if max_bound >= old_max_bound {
@@ -482,28 +409,25 @@ where
                 // Separation certified: the converged witnesses are the answer.
                 if exact_dist {
                     let (p1, p2) = result(simplex, true);
-                    return Ok(GJKResult::ClosestPoints(p1, p2, old_dir)); // upper bounds inconsistencies
+                    return GJKResult::ClosestPoints(p1, p2, old_dir); // upper bounds inconsistencies
                 } else {
-                    return Ok(GJKResult::Proximity(old_dir));
+                    return GJKResult::Proximity(old_dir);
                 }
             } else if exact_dist && best_min_bound >= -_eps_rel * support_scale {
                 // Origin on the CSO boundary: the pair is touching, so the witnesses
                 // describe the contact.
                 let (p1, p2) = result(simplex, true);
-                return Ok(GJKResult::ClosestPoints(p1, p2, old_dir));
+                return GJKResult::ClosestPoints(p1, p2, old_dir);
             } else if nb_perturbs < MAX_PERTURBATIONS {
                 // Try slight perturbations to avoid getting stuck into a numerical ambiguity.
                 nb_perturbs += 1;
                 dir = perturbed_dir(dir, nb_perturbs);
             } else {
                 // The CSO reaches past the origin in every direction probed.
-                return Ok(GJKResult::Intersection);
+                return GJKResult::Intersection;
             }
         }
 
-        if METERED {
-            meter.support(support_points)?;
-        }
         let cso_point = CsoPoint::from_shapes(pos12, g1, g2, dir);
         let min_bound = -dir.dot(cso_point.point);
 
@@ -513,15 +437,15 @@ where
         support_scale = support_scale.max(cso_point.point.length());
 
         if min_bound > max_dist {
-            return Ok(GJKResult::NoIntersection(dir));
+            return GJKResult::NoIntersection(dir);
         } else if !exact_dist && min_bound > 0.0 && max_bound <= max_dist {
-            return Ok(GJKResult::Proximity(old_dir));
+            return GJKResult::Proximity(old_dir);
         } else if max_bound - min_bound <= _eps_rel * max_bound {
             if exact_dist {
                 let (p1, p2) = result(simplex, false);
-                return Ok(GJKResult::ClosestPoints(p1, p2, dir)); // the distance found has a good enough precision
+                return GJKResult::ClosestPoints(p1, p2, dir); // the distance found has a good enough precision
             } else {
-                return Ok(GJKResult::Proximity(dir));
+                return GJKResult::Proximity(dir);
             }
         }
 
@@ -530,19 +454,19 @@ where
             if best_min_bound > 0.0 {
                 if exact_dist {
                     let (p1, p2) = result(simplex, false);
-                    return Ok(GJKResult::ClosestPoints(p1, p2, dir));
+                    return GJKResult::ClosestPoints(p1, p2, dir);
                 } else {
-                    return Ok(GJKResult::Proximity(dir));
+                    return GJKResult::Proximity(dir);
                 }
             } else if exact_dist && best_min_bound >= -_eps_rel * support_scale {
                 let (p1, p2) = result(simplex, false);
-                return Ok(GJKResult::ClosestPoints(p1, p2, dir));
+                return GJKResult::ClosestPoints(p1, p2, dir);
             } else if nb_perturbs < MAX_PERTURBATIONS {
                 // The duplicate support point cannot enrich the simplex; jump back to
                 // the top of the loop where the stagnation branch will perturb `dir`.
                 continue;
             } else {
-                return Ok(GJKResult::Intersection);
+                return GJKResult::Intersection;
             }
         }
 
@@ -553,19 +477,19 @@ where
             if min_bound >= _eps_tol {
                 if exact_dist {
                     let (p1, p2) = result(simplex, true);
-                    return Ok(GJKResult::ClosestPoints(p1, p2, old_dir));
+                    return GJKResult::ClosestPoints(p1, p2, old_dir);
                 } else {
                     // NOTE: previous implementation used old_proj here.
-                    return Ok(GJKResult::Proximity(old_dir));
+                    return GJKResult::Proximity(old_dir);
                 }
             } else {
-                return Ok(GJKResult::Intersection); // Vector inside of the cso.
+                return GJKResult::Intersection; // Vector inside of the cso.
             }
         }
         niter += 1;
 
         if niter == 100 {
-            return Ok(GJKResult::NoIntersection(Vector::X));
+            return GJKResult::NoIntersection(Vector::X);
         }
     }
 }

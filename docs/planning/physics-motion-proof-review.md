@@ -1,6 +1,6 @@
 # 3D 물리 운동 증명 방식 검토
 
-상태: P2b 제품 경로와 P3-1·P3-2 병합. P3-3·P3-4의 Core 정리를 같은 로컬 브랜치에서 진행했다. Vendor 정리는 P3-5에 남아 있다.
+상태: P3 완료. PR #114~#120을 거쳐 P2 제품 전환과 Core 정리를 병합했고, P3-5에서 vendor의 운동 증명 훅을 제거했다.
 
 관련 문서: [통합 3D 물리의 회전 상자 접촉 기록](unified-3d-physics-plan.md#해결-회전-상자-접촉의-운동-증명-2026-11-22), [PR CI 정리](ci-and-studio-distribution-plan.md)(빌드 시간 조사의 출발점).
 
@@ -20,7 +20,7 @@
 - `solver_trajectory`의 제품 코드 약 3.3만 줄 중 약 95%가 증명 장치다. 허용 오차 방식(Rapier CCD·접촉 여유)으로 바꾸면 대부분 지울 수 있고, 어느 방식이든 필요한 형상 계산은 1~2천 줄이며 그 대부분을 parry가 이미 제공한다.
 - **추천: 허용 오차 방식으로 전환한다.** 먼저 증명 검사기를 끈 실험 모드로 실제 동작을 비교한 뒤 단계적으로 전환·삭제한다(아래 "단계 제안").
 
-## 현재 동작 (확인한 사실)
+## 검토 당시 동작
 
 **틱 흐름.** `PhysicsWorld3d::step` → 캐릭터 이동(Rapier `KinematicCharacterController`) → 관절 → `step_backend` → vendor Rapier의 `PhysicsPipeline::step`.
 vendor에 추가한 콜백 `resolve_solver_motion`이 각 물체의 실제 적분 결과를 넘기면 증명을 돌려 승인·거절을 정한다. 거절된 구간은 반영하지 않는다
@@ -1519,3 +1519,120 @@ gzip -n -9 -c packages/ferrum-web/pkg/ferrum_core_bg.wasm | wc -c
   `browser-render-smoke.mjs` 기본·`physics-demo-suite` 모드로 검증했다.
   마을 전투는 `village-game-quality-browser-smoke.mjs`의 효과·LOD와 두 번 반복을 합한
   8개 조합이 통과했다. `smoke:hd2d-combat`은 요청한 실행 범위에서 제외했다.
+
+## P3 결과
+
+P3-5 기준은 PR #120을 병합한 `6fea8619`다. Rapier의 운동 승인·관측 콜백과 f64 논리 시간, 준비된 CCD
+계획, 강체·broad phase 저널과 Parry의 계량 질의 및 BVH 복사를 제거했다.
+Rapier의 일반 CCD 쌍 선별에는 `ccd_pair_kind`를 사용한다. 키네마틱 예측 루프, 위치 목표의 선속도 계산,
+기존 적분 barrier, 일반 CCD와 마찰·접촉·저장 수정은 유지했다.
+Parry의 캡슐·상자 SAT는 `DefaultQueryDispatcher`가 호출하지 않아 직접 호출용 연결과 수정을 되돌렸다.
+일반 dispatcher가 호출하는 상자·상자 SAT 보정과 coplanar GJK 복구는 유지했다.
+
+| Vendor | 상류 `src` Rust 파일 | 현재 수정 / 추가 | 원본 복원 / Ferrum 전용 파일 삭제 |
+| --- | ---: | ---: | ---: |
+| Rapier3D 0.36.1 | 239 | 35 / 23 | 9 / 4 |
+| Parry3D 0.31.1 | 344 | 25 / 9 | 5 / 2 |
+
+캐시한 crates.io 아카이브 SHA-256과 상류 파일 758개를 `UPSTREAM.json`에 대조했다. 원본으로 돌아간
+14개 파일은 수정 고지가 사라졌고 원본 SHA-256과 일치했다. 수정 기록과 npm 라이선스 고지는
+남은 패치에 맞춰 갱신했다.
+
+### 결과 일치
+
+| 대상 | 기준 대비 결과 |
+| --- | --- |
+| 군중 64명, 405틱 | SHA-256 `486c58c1e2a2fec256d42c63fc567da28d89576a5305d3c6be24ec8d96f9a301` |
+| 물리 실험실 7개, 각 300틱 | 매 틱 공개 상태 버퍼 2,280,000바이트와 접촉·CCD를 포함한 step 통계 일치 |
+| 관절 실험실 300틱 | SHA-256 `2ab514ecf617433a49311717704a7df8a7cf836fc64176ebfd544f26b462d72a` |
+| create-game 4개 | minimal 2, breakout 40, topdown 32, platformer 40프레임의 바디·캐릭터 상태 word 일치 |
+| Native 저장 18개 | 바이트 길이와 내부 버전 일치. outer·내부 빌드 지문을 맞추고 종속 CRC만 다시 계산하면 전체 바이트 일치 |
+| Rapier 저장 호환성 | PR #120과 P3-5의 native, P3-5의 실제 `wasm32-wasip1`이 모두 523,167바이트 및 FNV-1a `0x130ca32309695f65` 생성 |
+
+Rapier 저장 호환성 시험의 저장본 크기·digest 단언은 세 실행에서 같은 이유로 실패했다. 저장된 golden은
+513,247바이트 및 `0xe7e849ba178f3a1a`다. 기존 golden의 불일치가 PR #120에서도 재현되므로
+이 PR의 저장 결과, fixture 형식, 테스트 golden은 그대로 뒀다. 템플릿에서는 Native SHA-256과 이에 의존하는
+snapshot·replay 해시만 갱신했다.
+
+### 삭제 규모와 cold 빌드
+
+`5d0097e7`에서 P3-5까지의 물리 줄 수다. `git diff --no-renames --unified=0`에서 Rust 경로를
+집계하고, 시험 파일과 `#[cfg(test)]`·`#[test]` 항목을 별도로 셌다.
+
+| 경로 | 제품 삭제 / 추가 | 시험 삭제 / 추가 |
+| --- | ---: | ---: |
+| Core `src` | 63,811 / 599 | 54,298 / 1,759 |
+| Rapier·Parry vendor `src` | 2,731 / 97 | 550 / 0 |
+
+| 측정 | P3 전 `5d0097e7` | PR #120 | P3-5 | P3 전 대비 |
+| --- | ---: | ---: | ---: | ---: |
+| Core 디버그 `cargo test --no-run` | 91.08초 | 77.62초 | 78.27초 | −14.1% |
+| Wasm release | 159.16초 | 142.02초 | 144.00초 | −9.5% |
+| `ferrum_core_bg.wasm` | 10,027,707 B | 8,441,026 B | 8,457,523 B | −15.7% |
+| `gzip -n -9` | 3,490,382 B | 2,852,717 B | 2,859,435 B | −18.1% |
+
+P3-0과 같은 Ryzen AI Max+ 395, WSL2, Rust 1.97.1, Wasm pack 0.15.0 환경이다.
+`CARGO_BUILD_JOBS=8`과 별도의 빈 프로젝트 내 `CARGO_TARGET_DIR` 두 개에서 Native와 Wasm을 순서대로 빌드했다.
+
+```bash
+p3_dir="$PWD/artifacts/physics-p3-5"
+export RUSTUP_TOOLCHAIN=stable CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=8
+CARGO_TARGET_DIR="$p3_dir/native-cold" /usr/bin/time -f '%e' \
+  cargo +stable test --no-run --locked --offline --manifest-path crates/ferrum-core/Cargo.toml
+# 설치된 wasm-bindgen 0.2.120과 wasm-opt 117을 PATH에 둔다.
+CARGO_TARGET_DIR="$p3_dir/wasm-cold" /usr/bin/time -f '%e' \
+  wasm-pack build --mode no-install crates/ferrum-core --release --target web --out-dir ../../packages/ferrum-web/pkg
+wc -c < packages/ferrum-web/pkg/ferrum_core_bg.wasm
+gzip -n -9 -c packages/ferrum-web/pkg/ferrum_core_bg.wasm | wc -c
+```
+
+### 물리 스텝 시간
+
+P3 전 기준 `5d0097e7`과 P3-5의 복사본을 같은 release 설정으로 빌드했다. 임시 계측은
+`PhysicsWorld3d::step_checked`와 경로가 있는 `step_with_kinematic_paths`의 진입·반환 사이를
+Chromium 148의 `performance.now()`로 쟀다. 이 구간은 Rapier와 Core의 틱 준비·정리를 포함한다.
+게임 AI, 렌더 명령, GPU 렌더링, JS 표본 저장은 계측 구간 외부에 있다.
+
+| 장면 | 각 버전 표본 | P3 전 평균 / 최대 (ms) | P3-5 평균 / 최대 (ms) | 평균 변화 |
+| --- | ---: | ---: | ---: | ---: |
+| 마을 전투, 적 32명·추가 발판 | 162 | 0.977 / 5.945 | 0.904 / 2.215 | −7.5% |
+| 64명 군중, 50 ms RAF·405틱 | 405 | 0.453 / 1.730 | 0.472 / 1.580 | +4.2% |
+| 공간 씬 발판·KCC 탑승자 | 10,000 | 0.0193 / 7.405 | 0.0137 / 6.845 | −28.9% |
+
+마을은 P3-2의 96×96 발판 배치와 X축 32단위·1.333초 경로를 사용했다. 효과·LOD·오디오를
+끄고 두 실행에서 각각 시뮬레이션 2.5초 예열 뒤 81틱을 측정했다. 발사·명중 집계도 일치했다.
+군중은 공식 405틱 입력 구간을 한 번 측정했다. 최초 배치 4틱과 체크포인트 재생 12틱은 표본에서
+제외했다. 공간 씬은 60 Hz에서 반복당 120틱 예열 후 1,000틱을 수동 진행했다. 두 실행에서
+각각 5회 반복했고, 탑승자 상태 word와 접지가 일치했다.
+최대 시간은 브라우저 일정에 따른 단발 지연을 포함한다.
+
+P3-2에서 보고한 마을 전투의 Wasm 전체 프레임 구간 +4.4%는 P3 전체 전후의 물리 구간에서
+재현되지 않았다. 이번 마을 전투의 평균 물리 스텝은 두 실행 모두 짧았다. P3-2만의 효과는
+기준 커밋과 계측 구간이 달라 이 비교에서 분리할 수 없다.
+
+### 최종 검증
+
+- Core 단위·통합 3,227건, `cargo clippy --all-targets -- -D warnings`,
+  `cargo fmt --manifest-path crates/ferrum-core/Cargo.toml --all -- --check` 통과. 기존 ignored 시험은 3건이다.
+- Rapier 라이브러리 205건, Parry 라이브러리 90건 통과. Rapier `snapshot_portability`의
+  기존 golden 실패는 위 표에 기록했다. 비교 명령은 아래와 같다.
+- `pnpm test:web` 292건과 Wasm 소스 지문·라이선스 고지, 공개 API·타입, Rust 시험 구조,
+  문서 링크, ferrum-web·studio-kit·create-game·agents 패키지 및 템플릿 리플레이 검사 통과.
+  Wasm 소스 지문은 `89bb1a804c4f83ad`에서 `8a72745a5888f107`로 바뀌었다.
+- 로컬 Chromium에서 `pnpm smoke:unified-physics-web`과 checked-error 3개 모드,
+  `browser-render-smoke.mjs`의 Platformer·물리 실험실 7개·벽돌 깨기, 마을 전투 8개 조합을 검증했다.
+  통합 물리 Web의 벽돌 깨기 검사는 초속 5,000 공의 벽돌 명중을 확인한다.
+  `smoke:hd2d-combat`은 사용자 지시에 따라 제외했다.
+
+```bash
+cargo test --locked --offline --manifest-path crates/ferrum-core/Cargo.toml
+cargo clippy --locked --offline --manifest-path crates/ferrum-core/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --offline --manifest-path crates/ferrum-core/vendor/rapier3d/Cargo.toml \
+  --features serde-serialize,enhanced-determinism --lib --test snapshot_portability
+cargo test --locked --offline --manifest-path crates/ferrum-core/vendor/parry3d/Cargo.toml \
+  --features serde-serialize,enhanced-determinism --lib
+# 같은 Rapier 통합 시험을 wasm32-wasip1에서 다시 실행한다. 러너는 Node WASI preview1을 사용한다.
+cargo test --locked --offline --manifest-path crates/ferrum-core/vendor/rapier3d/Cargo.toml \
+  --features serde-serialize,enhanced-determinism --target wasm32-wasip1 \
+  --test snapshot_portability -- --nocapture
+```

@@ -12,9 +12,7 @@ use crate::dynamics::solver::contact_constraint::ContactWithCoulombFrictionBuild
 #[cfg(feature = "dim3")]
 use crate::dynamics::solver::contact_constraint::ContactWithTwistFrictionBuilder;
 use crate::dynamics::solver::joint_constraint::GenericJointConstraintBuilder;
-use crate::dynamics::solver::solver_body::{
-    SOLVER_BODY_ALLOW_FAST_ROTATION, SOLVER_BODY_KINEMATIC, SOLVER_BODY_MOTION_RESOLVED,
-};
+use crate::dynamics::solver::solver_body::{SOLVER_BODY_ALLOW_FAST_ROTATION, SOLVER_BODY_KINEMATIC};
 use crate::dynamics::solver::solver_contact_graph::ContactRef;
 use crate::dynamics::{JointGraphEdge, RigidBodyType, RigidBodyVelocity};
 use crate::geometry::ContactManifold;
@@ -33,66 +31,6 @@ pub(super) unsafe fn run_worker(ctx: &SharedCtx, worker_id: usize) {
     // The caller's stage ordinal; every worker passes the same sequence of
     // stage sites, so ordinals agree by construction. See `StageSync`.
     let mut stage = 0;
-
-    // The two sites reuse the original worker-zero pointer expressions after
-    // a completed StageSync barrier. Integration, final approval and all
-    // references stay inside exactly the original exclusive borrow contract.
-    let motion_boundary = |index: usize, count: usize| {
-        let (start, end) = ctx.motion_time;
-        if index == 0 {
-            start
-        } else if index == count {
-            end
-        } else {
-            start + (end - start) * (index as f64 / count as f64)
-        }
-    };
-    let approve_motion =
-        |range: core::ops::Range<usize>,
-         start_time: Real,
-         end_time: Real,
-         precise_start: f64,
-         precise_end: f64,
-         is_last_interval: bool,
-         final_view: bool,
-         params: &crate::dynamics::IntegrationParameters| {
-            let vs = unsafe { &mut *ctx.velocity_solver };
-            let bodies = unsafe { &mut *ctx.bodies };
-            if !final_view {
-                let multibodies = unsafe { &mut *ctx.multibodies };
-                vs.integrate_multibody_positions(params, is_last_interval, bodies, multibodies);
-            }
-            let Some(resolver) = ctx.motion_resolver else {
-                return crate::pipeline::SolverMotionDecision::Approved;
-            };
-            let mut approval = MotionApproval {
-                bodies,
-                colliders: ctx.motion_colliders,
-                handles: &ctx.island_bodies[range.clone()],
-                solver: &mut vs.solver_bodies,
-                first: range.start,
-                start_time,
-                end_time,
-                precise_start,
-                precise_end,
-                is_last_interval,
-                final_view,
-            };
-            if final_view {
-                vs.ccd_plan.clear();
-                let decision =
-                    resolver.plan_solver_ccd(&approval, ctx.base_params, &mut vs.ccd_plan);
-                if decision == crate::pipeline::SolverMotionDecision::Approved
-                    && !vs.ccd_plan.valid(&approval)
-                {
-                    crate::pipeline::SolverMotionDecision::Rejected
-                } else {
-                    decision
-                }
-            } else {
-                resolver.resolve_solver_motion(&mut approval)
-            }
-        };
 
     /*
      * Stage: initialize solver bodies and their velocity increments (parallel over
@@ -739,78 +677,26 @@ pub(super) unsafe fn run_worker(ctx: &SharedCtx, worker_id: usize) {
                             linvel: vels.linear,
                             angvel: vels.angular,
                         };
-                        let observed_start =
-                            (ctx.motion_body_mask.get(i) == Some(&true)).then(|| pose.pose());
                         new_vels.integrate_linearized(
                             params.dt,
                             &mut pose.translation,
                             &mut pose.rotation,
                         );
-                        if let (Some(events), Some(start), Some(&body)) =
-                            (ctx.motion_events, observed_start, ctx.island_bodies.get(i))
-                        {
-                            events.handle_solver_body_proposal(
-                                crate::pipeline::SolverBodyIntegration {
-                                    motion: crate::pipeline::SolverBodyMotion {
-                                        body,
-                                        start_time: solved_dt,
-                                        end_time: (substep_id + 1) as Real * params.dt,
-                                        start,
-                                        end: pose.pose(),
-                                    },
-                                    integration_seconds: params.dt,
-                                    linear_velocity: new_vels.linvel,
-                                    angular_velocity: new_vels.angvel,
-                                },
-                            );
-                        }
                     }
                     done += claimed_len;
                 }
                 // One completion flush per worker per stage: per-batch RMWs on the
                 // shared counter measurably throttle scalar builds (4x the chunks).
-                if ctx.motion_resolver.is_some() {
-                    // The new approval callback needs every claimed rigid slot.
-                    // Finish their stage before reusing the existing worker-0
-                    // exclusive borrows below. No pointer or alias is added.
-                    sync.complete(stage, done, num_group_bodies);
-                    stage = sync.sync(stage, num_group_bodies);
-                } else {
-                    sync.complete(stage, done, num_group_bodies + 1);
-                }
+                sync.complete(stage, done, num_group_bodies + 1);
 
                 if worker_id == 0 {
-                    let decision = approve_motion(
-                        group.bodies.clone(),
-                        solved_dt,
-                        (substep_id + 1) as Real * params.dt,
-                        motion_boundary(substep_id, num_substeps),
-                        motion_boundary(substep_id + 1, num_substeps),
-                        is_last_substep,
-                        false,
-                        params,
-                    );
-                    if ctx.motion_resolver.is_some() {
-                        ctx.motion_decision.store(decision as u8, Ordering::Release);
-                        sync.complete(stage, 1, 1);
-                    } else {
-                        sync.complete(stage, 1, num_group_bodies + 1);
-                    }
+                    let vs = unsafe { &mut *ctx.velocity_solver };
+                    let bodies = unsafe { &mut *ctx.bodies };
+                    let multibodies = unsafe { &mut *ctx.multibodies };
+                    vs.integrate_multibody_positions(params, is_last_substep, bodies, multibodies);
+                    sync.complete(stage, 1, num_group_bodies + 1);
                 }
-                stage = sync.sync(
-                    stage,
-                    if ctx.motion_resolver.is_some() {
-                        1
-                    } else {
-                        num_group_bodies + 1
-                    },
-                );
-                if ctx.motion_resolver.is_some() && ctx.motion_decision.load(Ordering::Acquire) != 0
-                {
-                    // All workers have crossed the same decision barrier. Stop
-                    // before stabilization and persistent impulse/body writeback.
-                    return;
-                }
+                stage = sync.sync(stage, num_group_bodies + 1);
             }
 
             /*
@@ -916,31 +802,6 @@ pub(super) unsafe fn run_worker(ctx: &SharedCtx, worker_id: usize) {
                 sync.complete(stage, 1, 1);
             }
             stage = sync.sync(stage, 1);
-        }
-    }
-
-    // Final approval is global to this staged solve, after all groups and
-    // restitution and before persistent impulse/body writeback. Worker zero
-    // reuses the existing exclusive body/solver borrow; no pointer or alias
-    // contract is introduced by this adapter.
-    if ctx.motion_resolver.is_some() {
-        if worker_id == 0 {
-            let decision = approve_motion(
-                0..ctx.island_bodies.len(),
-                0.,
-                ctx.base_params.dt,
-                ctx.motion_time.0,
-                ctx.motion_time.1,
-                true,
-                true,
-                ctx.base_params,
-            );
-            ctx.motion_decision.store(decision as u8, Ordering::Release);
-            sync.complete(stage, 1, 1);
-        }
-        stage = sync.sync(stage, 1);
-        if ctx.motion_decision.load(Ordering::Acquire) != 0 {
-            return;
         }
     }
 
@@ -1110,10 +971,7 @@ pub(super) unsafe fn run_worker(ctx: &SharedCtx, worker_id: usize) {
                 //       exactly equal to the integrated position because of rounding errors).
                 // A soft-frame proxy's pose is not integrated either: the soft-body sync
                 // re-derives it exactly from the particles at the end of the step.
-                if (rb.body_type != RigidBodyType::KinematicPositionBased
-                    || vs.solver_bodies.flags[i] & SOLVER_BODY_MOTION_RESOLVED != 0)
-                    && !rb.is_soft_frame()
-                {
+                if rb.body_type != RigidBodyType::KinematicPositionBased && !rb.is_soft_frame() {
                     let local_com = -rb.mprops.local_mprops.local_com;
                     rb.pos.next_position = solver_poses.pose().prepend_translation(local_com);
                 }
@@ -1131,7 +989,7 @@ pub(super) unsafe fn run_worker(ctx: &SharedCtx, worker_id: usize) {
                     // walk over every active body when no multibody is present.
                     let moving_fast = crate::dynamics::post_solve_ccd_active(
                         rb,
-                        ctx.motion_colliders,
+                        ctx.colliders,
                         &rb.pos,
                         &rb.ccd_vels,
                         base_params.dt,
@@ -1171,175 +1029,5 @@ pub(super) unsafe fn run_worker(ctx: &SharedCtx, worker_id: usize) {
         // No sync after the multibody-velocity writeback: nothing follows, and
         // the caller's scope join is the final synchronization point.
         let _ = stage;
-    }
-}
-
-/// This adapter is constructed only inside the existing worker-0 exclusive
-/// borrow after the integration barrier. It contains ordinary references only.
-struct MotionApproval<'a> {
-    bodies: &'a crate::dynamics::RigidBodySet,
-    colliders: &'a crate::geometry::ColliderSet,
-    handles: &'a [crate::dynamics::RigidBodyHandle],
-    solver: &'a mut crate::dynamics::solver::solver_body::SolverBodies,
-    first: usize,
-    start_time: Real,
-    end_time: Real,
-    precise_start: f64,
-    precise_end: f64,
-    is_last_interval: bool,
-    final_view: bool,
-}
-impl MotionApproval<'_> {
-    fn validate(
-        &self,
-        index: usize,
-        value: crate::pipeline::SolverMotionBody,
-    ) -> Result<(), crate::pipeline::SolverMotionWriteError> {
-        use crate::pipeline::SolverMotionWriteError as E;
-        if self.handles.get(index).copied() != Some(value.handle) {
-            return Err(E::Index);
-        }
-        if !value.end.is_finite()
-            || !value.linear_velocity.is_finite()
-            || !value.angular_velocity.is_finite()
-        {
-            return Err(E::NonFinite);
-        }
-        #[cfg(feature = "dim3")]
-        let norm = value
-            .end
-            .rotation
-            .to_array()
-            .iter()
-            .map(|v| {
-                let v = f64::from(*v);
-                v * v
-            })
-            .sum::<f64>();
-        #[cfg(feature = "dim2")]
-        let norm = {
-            let re = f64::from(value.end.rotation.re);
-            let im = f64::from(value.end.rotation.im);
-            re * re + im * im
-        };
-        // Rotation is a concrete floating quaternion/complex type. Its
-        // constructor does not enforce unit length. Match Ferrum's existing
-        // admitted body-pose squared-norm error; do not silently normalize.
-        if (norm - 1.).abs() > 1e-5 {
-            return Err(E::InvalidRotation);
-        }
-        Ok(())
-    }
-    fn publish(&mut self, index: usize, value: crate::pipeline::SolverMotionBody) {
-        let i = self.first + index;
-        let pose = &mut self.solver.poses[i];
-        let same_translation = pose.translation.to_array().map(Real::to_bits)
-            == value.end.translation.to_array().map(Real::to_bits);
-        #[cfg(feature = "dim3")]
-        let same_rotation = pose.rotation.to_array().map(Real::to_bits)
-            == value.end.rotation.to_array().map(Real::to_bits);
-        #[cfg(feature = "dim2")]
-        let same_rotation = [pose.rotation.re, pose.rotation.im].map(Real::to_bits)
-            == [value.end.rotation.re, value.end.rotation.im].map(Real::to_bits);
-        pose.translation = value.end.translation;
-        pose.rotation = value.end.rotation;
-        let velocity = &mut self.solver.vels[i];
-        let same_linear = velocity.linear.to_array().map(Real::to_bits)
-            == value.linear_velocity.to_array().map(Real::to_bits);
-        #[cfg(feature = "dim3")]
-        let same_angular = velocity.angular.to_array().map(Real::to_bits)
-            == value.angular_velocity.to_array().map(Real::to_bits);
-        #[cfg(feature = "dim2")]
-        let same_angular = velocity.angular.to_bits() == value.angular_velocity.to_bits();
-        velocity.linear = value.linear_velocity;
-        velocity.angular = value.angular_velocity;
-        // An unchanged approval must not turn prescribed exact-target
-        // writeback into an approximate integrated endpoint. Compare bits so
-        // explicit signed-zero changes are retained too.
-        if value.keep_integrated_endpoint
-            || !(same_translation && same_rotation && same_linear && same_angular)
-        {
-            self.solver.flags[i] |= SOLVER_BODY_MOTION_RESOLVED;
-        }
-    }
-}
-impl crate::pipeline::SolverMotionContext for MotionApproval<'_> {
-    fn bodies(&self) -> &crate::dynamics::RigidBodySet {
-        self.bodies
-    }
-    fn colliders(&self) -> &crate::geometry::ColliderSet {
-        self.colliders
-    }
-    fn start_time(&self) -> Real {
-        self.start_time
-    }
-    fn end_time(&self) -> Real {
-        self.end_time
-    }
-    fn precise_start_time(&self) -> f64 {
-        self.precise_start
-    }
-    fn precise_end_time(&self) -> f64 {
-        self.precise_end
-    }
-    fn is_last_interval(&self) -> bool {
-        self.is_last_interval
-    }
-    fn prescribed_motion_resolved(&self, index: usize) -> Option<bool> {
-        (index < self.handles.len())
-            .then(|| self.solver.flags[self.first + index] & SOLVER_BODY_MOTION_RESOLVED != 0)
-    }
-    fn body_count(&self) -> usize {
-        self.handles.len()
-    }
-    fn body(&self, index: usize) -> Option<crate::pipeline::SolverMotionBody> {
-        let handle = *self.handles.get(index)?;
-        let i = self.first + index;
-        let pose = self.solver.poses.get(i)?;
-        let velocity = self.solver.vels.get(i)?;
-        Some(crate::pipeline::SolverMotionBody {
-            handle,
-            end: if self.final_view
-                && self.bodies[handle].body_type() == RigidBodyType::KinematicPositionBased
-                && self.solver.flags[i] & SOLVER_BODY_MOTION_RESOLVED == 0
-            {
-                let body = &self.bodies[handle];
-                body.pos
-                    .next_position
-                    .prepend_translation(body.local_center_of_mass())
-            } else {
-                pose.pose()
-            },
-            linear_velocity: velocity.linear,
-            angular_velocity: velocity.angular,
-            keep_integrated_endpoint: self.solver.flags[i] & SOLVER_BODY_MOTION_RESOLVED != 0,
-        })
-    }
-    fn write_body(
-        &mut self,
-        index: usize,
-        value: crate::pipeline::SolverMotionBody,
-    ) -> Result<(), crate::pipeline::SolverMotionWriteError> {
-        self.validate(index, value)?;
-        self.publish(index, value);
-        Ok(())
-    }
-    fn write_bodies(
-        &mut self,
-        values: &[(usize, crate::pipeline::SolverMotionBody)],
-    ) -> Result<(), crate::pipeline::SolverMotionWriteError> {
-        let mut previous = None;
-        for &(index, value) in values {
-            if previous.is_some_and(|p| p >= index) {
-                return Err(crate::pipeline::SolverMotionWriteError::IndexOrder);
-            }
-            self.validate(index, value)?;
-            previous = Some(index);
-        }
-        // No fallible operation or external callback occurs after validation.
-        for &(index, value) in values {
-            self.publish(index, value);
-        }
-        Ok(())
     }
 }

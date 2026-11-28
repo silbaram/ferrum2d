@@ -38,20 +38,11 @@ pub(super) fn is_bullet(rb: &RigidBody) -> bool {
 /// against automatic targets (fixed geometry and soft-body meshes); a bullet sweeps against
 /// every body type except other bullets.
 fn tier_allows(rb1: &RigidBody, rb2: Option<&RigidBody>, co2: &Collider) -> bool {
-    solver_ccd_body_tier_allows(rb1, rb2, co2.is_deformable_collider())
-}
-/// Native potential target tier without a speculative speed estimate.
-/// Final fast-body activation is checked independently on the solved motion.
-pub fn solver_ccd_body_tier_allows(
-    rb1: &RigidBody,
-    rb2: Option<&RigidBody>,
-    deformable: bool,
-) -> bool {
     rb1.is_dynamic()
         && if is_bullet(rb1) {
             !rb2.map(is_bullet).unwrap_or(false)
         } else {
-            is_fixed_target(rb2) || deformable
+            is_fixed_target(rb2) || co2.is_deformable_collider()
         }
 }
 
@@ -90,7 +81,7 @@ fn pair_filtered_out_by_hooks(
 /// collider pair. `Some(true)` is a pseudo/sensor pair, `Some(false)` is solid.
 /// Fast-body activation is intentionally a separate solved-motion predicate.
 #[allow(clippy::too_many_arguments)]
-pub fn solver_ccd_pair_kind(
+fn ccd_pair_kind(
     bodies: &RigidBodySet,
     colliders: &ColliderSet,
     origin: RigidBodyHandle,
@@ -125,34 +116,6 @@ pub fn solver_ccd_pair_kind(
             || co2.is_sensor()
             || !co1.flags.solver_groups.test(co2.flags.solver_groups),
     )
-}
-
-/// Whether the original moving shape is supported by native CCD.
-pub fn solver_ccd_shape_supported(shape: &dyn Shape) -> bool {
-    !shape_never_ccd_swept(shape)
-}
-
-/// Evaluate the post-solve fast criterion on a solved COM endpoint without
-/// first writing it to persistent rigid-body storage.
-pub fn solver_ccd_active(
-    body: &RigidBody,
-    colliders: &ColliderSet,
-    end_com: Pose,
-    params: &crate::dynamics::IntegrationParameters,
-) -> bool {
-    if params.max_ccd_substeps == 0
-        || !body.is_enabled()
-        || !body.is_dynamic()
-        || body.is_soft_frame()
-    {
-        return false;
-    }
-    let position = crate::dynamics::RigidBodyPosition {
-        position: body.pos.position,
-        next_position: end_com.prepend_translation(-body.mprops.local_mprops.local_com),
-    };
-    let velocity = position.interpolate_velocity(params.inv_dt(), body.local_center_of_mass());
-    post_solve_ccd_active(body, colliders, &position, &velocity, params.dt)
 }
 
 pub(crate) fn post_solve_ccd_active(
@@ -899,7 +862,7 @@ pub(super) fn sweep_fast_body(
             }
             let bh2 = co2.parent.map(|p| p.handle);
             let rb2 = bh2.and_then(|h| bodies.get(h));
-            let Some(is_pseudo) = solver_ccd_pair_kind(bodies, colliders, handle, *ch1, ch2, hooks)
+            let Some(is_pseudo) = ccd_pair_kind(bodies, colliders, handle, *ch1, ch2, hooks)
             else {
                 return;
             };

@@ -568,10 +568,9 @@ clear/rebuild로 손상 상태를 복구하지 않는다. 이 연결은 나머�
 Native capsule snapshot은 public enable과 같은 skin/radius 및 body×collider 현재 축 조건을 검사한다. 예약된 다음
 target의 과거 pose를 현재 축 조건으로 거절하지 않으며, 이것만으로 CharacterRuntime 전체 payload를 승인하지 않는다.
 
-별도 character 저장 검사는 Runtime의12개 persistent 필드와 `PathScratch`의 Preview/합산 상태 사본을 다룬다.
-공개 명령 범위와 solver 결과 범위를 구분해 결과 속도가 단일 명령 상한을 넘거나 cold edit 뒤 translation과
-velocity×dt가 다른 정상 이력을 보존한다. 이전 config가 저장되지 않은 Preview를 현재 up/mass와 대조하지 않고,
-제거된 support/stop token도 현재 World로 다시 만들지 않는다. `hit_ceiling`은 여러 구간의 OR 이력이므로 마지막
+캐릭터 저장 검사는 이동 입력·힘·지지체 이력과 캐릭터 상태를 검사한다. 공개 명령 범위와 스텝 결과의 범위를
+구분해 결과 속도가 단일 명령 상한을 넘거나 실행 중 설정 수정으로 translation과 velocity×dt가 달라진 이력도
+보존한다. `hit_ceiling`은 여러 구간의 OR 이력이므로 마지막
 구간의 하강 속도를0으로 강제하지 않는다. 이 native pass는 기본128 Mi 논리 방문·scratch0의 독립 정책이며
 candidate의 post-decode budget과 별도로 표시한다. 기존 누적 decoder scope를 새로 시작하지 않는다.
 WorldState.characters도 원시 BodyId 순서/중복을 삽입 전에 검사해 조용한 정렬·행 소거를 거절한다.
@@ -796,7 +795,7 @@ FrameState의 소유 진단은 Runtime overlay/profiler/trace로 전달한다. n
 Raw Engine과 Web의 backend 생략 생성은 Native PlanarXy·자동·가변 시간 정책을 사용한다.
 명시적 `physicsBackend: "legacy"`만 legacy 경로를 선택하며, 저장 복원은 파일에 저장된 정책을 유지한다.
 전체 제품 통합과 밀집 성능의 최종 수용은 별도 검증 대상이다.
-캐릭터 입력·중력·점프와 이동 발판 운반은 Rust의 승인 물리 구간에서 처리하고,
+캐릭터 입력·중력·점프와 이동 발판 운반은 Rust의 물리 스텝에서 처리하고,
 접지 상태는 backend step 뒤의 실제 위치를 기준으로 확인한다. 아직 기존 엔진의 HD-2D 이동 경로를 대체하지 않는다.
 관절은 backend의 마지막 impulse만 읽어 순간 파손을 놓치지 않도록 각 solver substep의 하중을 확인한다.
 이 경로에서는 position-kinematic 목표를 substep별 보간하고, 세대 핸들과 bounded 삭제/파손 이벤트를 유지한다.
@@ -909,9 +908,8 @@ Data Scene 생성 투사체는 spawn 시 native velocity-kinematic sensor에 연
 예측 분할기와 기본 vendor Dynamic CCD의 local candidate 검색은 회전 tip이 두 endpoint AABB 밖을 지나는 경우도 포함한다. 실제 collider-local
 COM과 bounding sphere의 pivot envelope, endpoint union에 nlerp curvature를 반영한 bound의 보수적 교집합을 쓴다.
 작은 각도는 회전 축에 따른 coordinate 범위를 보존하며 지속 BVH leaf·contact tolerance·TOI·결과 순서는 바꾸지 않는다.
-예측 pass는 force-integrated velocity, 승인 pass는 현재 solver ccd_vels를 사용한다. 회전0은 원래 union bits 그대로다.
-이 candidate 검색만으로 endpoint-nlerp narrowphase의 full-winding 손실이나 character의 authored 예측과 backend cap의
-차이를 해결하지 않는다. Core의 실제 kernel 승인 경계는 아래와 같으며 전체 character·운반 경로 수용은 별도다.
+예측 pass는 힘을 반영한 속도를, 위치 클램프 pass는 solver가 계산한 `ccd_vels`를 사용한다. 회전이 없으면
+끝점 AABB의 합집합을 그대로 사용한다. 후보 검색 뒤에는 대상 자세의 보간을 사용해 실제 충돌을 검사한다.
 
 main tile과 정적 SpatialScene 지형을 같은 native world의 fixed body로 등록하며, authored 이동 발판은 position-kinematic body를 사용한다. 변경된 지형과 planar body batch의
 형상·최종 용량을 먼저 검사하고 삭제 후 갱신·생성한다. 같은 cell/surface id는 collider handle을 유지하며 삭제 후
@@ -938,7 +936,7 @@ query·pause·자동 물리 OFF·거절된 틱은 phase를 진행시키지 않�
 HD actor의 Y-up capsule 이동은 native controller를 사용하며, 전체 solver 궤적·회전 CCD 수용은 아래 미완 범위를 따른다.
 Rapier의 선형 속도 상한은 dynamic/soft-frame에 유지하고 지정된 kinematic 선형 운동에는 적용하지 않는다.
 이렇게 velocity 명령의 감속 및 position 목표와 보고 속도의 불일치를 방지한다. 각속도 상한은 그대로다.
-Velocity-kinematic의 capsule preview/path/carry 예측은 solver와 같은 각속도 상한·COM·damping·pass별 writeback
+속도 키네마틱의 캡슐 밀기·지정 경로·운반 예측은 solver와 같은 각속도 상한·COM·damping·pass별 writeback
 연산을 사용한다. 저수준 authored motion 조회는 원래 입력 속도를 유지하며 예상된4rad 이동 때문에 실제45도만
 회전하는 bar가 닿지 않은 capsule을 밀던 오류를 방지한다. Joint 유무에 따른 실제 pass schedule도 공유한다.
 충돌 이벤트로 구간 dt가 다시 줄어드는 경우의 prefix 재평가와 전체 piecewise/angular narrowphase 수용은 별도 미완이다.

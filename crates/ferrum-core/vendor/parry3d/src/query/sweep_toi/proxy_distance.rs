@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! GJK distance between two point-cloud proxies with an index-based simplex cache.
 //!
 //! The cache warm-starts successive distance queries on the same pair, which is the
@@ -812,95 +811,6 @@ pub fn proxy_distance(
     use_radii: bool,
     cache: &mut SimplexCache,
 ) -> ProxyDistanceOutput {
-    match proxy_distance_impl::<false, false, core::convert::Infallible>(
-        pos12,
-        proxy_a,
-        proxy_b,
-        use_radii,
-        cache,
-        &mut |_| Ok(()),
-    ) {
-        Ok(result) => result.0,
-        Err(never) => match never {},
-    }
-}
-
-/// Core distance plus both core witnesses in their original local frames.
-/// The extra witnesses are meaningful when the returned distance is positive.
-/// They are formed directly from the original indices and simplex weights,
-/// rather than inverting a previously rounded A-relative witness. Radii are
-/// not applied; the caller keeps the original shape radii separately.
-#[cfg(feature = "dim3")]
-pub fn proxy_distance_with_local_witness(
-    pos12: &Pose,
-    proxy_a: &ToiProxy,
-    proxy_b: &ToiProxy,
-    cache: &mut SimplexCache,
-) -> (ProxyDistanceOutput, Vector, Vector) {
-    match proxy_distance_impl::<true, false, core::convert::Infallible>(
-        pos12,
-        proxy_a,
-        proxy_b,
-        false,
-        cache,
-        &mut |_| Ok(()),
-    ) {
-        Ok(result) => result,
-        Err(never) => match never {},
-    }
-}
-
-/// Bounded work about to run in the original three-dimensional proxy GJK.
-/// Every notification precedes its work; support scans are separate from
-/// simplex iterations because duplicate/overlap termination does not count
-/// every executed loop in `ProxyDistanceOutput::iterations`.
-#[cfg(feature = "dim3")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProxyDistanceWork {
-    /// Validate/reconstruct up to three cached vertices or initialize one.
-    Bootstrap,
-    /// Solve one at-most-four-vertex simplex and choose a search direction.
-    Iteration {
-        /// Simplex size before reduction, from one to four vertices.
-        simplex_vertices: usize,
-    },
-    /// Scan both original point clouds in the original A-then-B order.
-    Support {
-        /// Original first-cloud point count.
-        points_a: usize,
-        /// Original second-cloud point count.
-        points_b: usize,
-    },
-    /// Normalize, reconstruct bounded witnesses, and finally publish cache.
-    Finish,
-}
-
-/// Fallible admission of each executed stage of the original local-witness
-/// query. An admission error leaves the caller's simplex cache unchanged.
-/// This does not meter a separate Native support-map/EPA contact query.
-#[cfg(feature = "dim3")]
-pub fn proxy_distance_with_local_witness_metered<E>(
-    pos12: &Pose,
-    proxy_a: &ToiProxy,
-    proxy_b: &ToiProxy,
-    cache: &mut SimplexCache,
-    admit: &mut impl FnMut(ProxyDistanceWork) -> Result<(), E>,
-) -> Result<(ProxyDistanceOutput, Vector, Vector), E> {
-    proxy_distance_impl::<true, true, E>(pos12, proxy_a, proxy_b, false, cache, admit)
-}
-
-#[cfg(feature = "dim3")]
-fn proxy_distance_impl<const LOCAL_WITNESS: bool, const METERED: bool, E>(
-    pos12: &Pose,
-    proxy_a: &ToiProxy,
-    proxy_b: &ToiProxy,
-    use_radii: bool,
-    cache: &mut SimplexCache,
-    admit: &mut impl FnMut(ProxyDistanceWork) -> Result<(), E>,
-) -> Result<(ProxyDistanceOutput, Vector, Vector), E> {
-    if METERED {
-        admit(ProxyDistanceWork::Bootstrap)?;
-    }
     let points_a = proxy_a.points();
     let points_b = proxy_b.points();
     let point_b_in_a = |i: u32| pos12.transform_point(points_b[i as usize]);
@@ -956,11 +866,6 @@ fn proxy_distance_impl<const LOCAL_WITNESS: bool, const METERED: bool, E>(
     // Run GJK.
     let mut iteration = 0;
     while iteration < MAX_GJK_ITERATIONS {
-        if METERED {
-            admit(ProxyDistanceWork::Iteration {
-                simplex_vertices: count,
-            })?;
-        }
         // Solve simplex.
         let solved = match count {
             1 => {
@@ -985,14 +890,11 @@ fn proxy_distance_impl<const LOCAL_WITNESS: bool, const METERED: bool, E>(
 
         if count == 4 {
             // Overlap
-            if METERED {
-                admit(ProxyDistanceWork::Finish)?;
-            }
             let (pa, pb) = witness_points3(&simplex, count);
             output.point_a = pa;
             output.point_b = pb;
             output.iterations = iteration;
-            return Ok((output, Vector::ZERO, Vector::ZERO));
+            return output;
         }
 
         // Assure distance progression.
@@ -1050,25 +952,16 @@ fn proxy_distance_impl<const LOCAL_WITNESS: bool, const METERED: bool, E>(
         if search_direction.length_squared() < 1000.0 * Real::MIN_POSITIVE {
             // The origin is probably contained by a line segment or triangle.
             // Thus the shapes are overlapped.
-            if METERED {
-                admit(ProxyDistanceWork::Finish)?;
-            }
             let (pa, pb) = witness_points3(&simplex, count);
             output.point_a = pa;
             output.point_b = pb;
             output.iterations = iteration;
-            return Ok((output, Vector::ZERO, Vector::ZERO));
+            return output;
         }
 
         normal = -search_direction;
 
         // Get new support points.
-        if METERED {
-            admit(ProxyDistanceWork::Support {
-                points_a: points_a.len(),
-                points_b: points_b.len(),
-            })?;
-        }
         let index_a = proxy_a.support(-search_direction);
         let support_a = points_a[index_a as usize];
         let index_b = proxy_b.support(pos12.rotation.inverse() * search_direction);
@@ -1095,14 +988,11 @@ fn proxy_distance_impl<const LOCAL_WITNESS: bool, const METERED: bool, E>(
         iteration += 1;
     }
 
-    if METERED {
-        admit(ProxyDistanceWork::Finish)?;
-    }
     let normal = normal.normalize_or_zero();
     if normal == Vector::ZERO {
         // Treat as overlap.
         output.iterations = iteration;
-        return Ok((output, Vector::ZERO, Vector::ZERO));
+        return output;
     }
 
     // Build witness points and save cache.
@@ -1113,26 +1003,6 @@ fn proxy_distance_impl<const LOCAL_WITNESS: bool, const METERED: bool, E>(
         cache.index_a[i] = v.index_a;
         cache.index_b[i] = v.index_b;
     }
-
-    let (local_a, local_b) = if LOCAL_WITNESS {
-        // Affine reconstruction preserves a common source plane exactly:
-        // coordinates shared by its points have zero differences. This is
-        // algebraic interpolation, not snapping a witness onto a new plane.
-        let a0 = points_a[simplex[0].index_a as usize];
-        let b0 = points_b[simplex[0].index_b as usize];
-        simplex
-            .iter()
-            .take(count)
-            .skip(1)
-            .fold((a0, b0), |(a, b), vertex| {
-                (
-                    a + vertex.a * (points_a[vertex.index_a as usize] - a0),
-                    b + vertex.a * (points_b[vertex.index_b as usize] - b0),
-                )
-            })
-    } else {
-        (Vector::ZERO, Vector::ZERO)
-    };
 
     // Results stay in frame A.
     output.point_a = pa;
@@ -1153,5 +1023,5 @@ fn proxy_distance_impl<const LOCAL_WITNESS: bool, const METERED: bool, E>(
         output.point_b -= rb * normal;
     }
 
-    Ok((output, local_a, local_b))
+    output
 }

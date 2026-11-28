@@ -329,9 +329,6 @@ impl PhysicsPipeline {
         hooks: &dyn PhysicsHooks,
         events: &dyn EventHandler,
     ) {
-        self.motion_decision = crate::pipeline::SolverMotionDecision::Approved;
-        self.motion_committed_seconds = 0.;
-        self.motion_committed_time = 0.;
         self.counters.reset();
         self.counters.step_started();
         self.quarantine.clear();
@@ -493,22 +490,6 @@ impl PhysicsPipeline {
         }
 
         let mut remaining_time = integration_parameters.dt;
-        let resolves_motion = events.resolves_solver_motion();
-        let (logical_start, logical_end) = events.solver_motion_step_domain(remaining_time);
-        let logical_duration = logical_end - logical_start;
-        let mut logical_pass_end = logical_start;
-        if resolves_motion
-            && (!logical_start.is_finite()
-                || !logical_end.is_finite()
-                || !logical_duration.is_finite()
-                || logical_duration <= 0.)
-        {
-            self.motion_decision = crate::pipeline::SolverMotionDecision::Rejected;
-            colliders.set_modified(modified_colliders);
-            self.join_deferred_bvh_optimize(broad_phase);
-            self.counters.step_completed();
-            return;
-        }
         // The CCD passes shrink `integration_parameters.dt`: what predicts the next step (the
         // end-of-step AABBs and soft-body sync) reads the full step's parameters instead.
         let step_parameters = *integration_parameters;
@@ -592,42 +573,14 @@ impl PhysicsPipeline {
                 remaining_substeps = 0;
             }
 
-            let logical_pass_start = logical_pass_end;
-            logical_pass_end = if remaining_substeps == 0 {
-                logical_end
-            } else {
-                logical_start
-                    + logical_duration
-                        * (1. - f64::from(remaining_time) / f64::from(step_parameters.dt))
-            };
             num_passes += 1;
-            if events.wants_body_motion() || resolves_motion {
-                events.handle_body_motion_pass_domain_started(
-                    integration_parameters.dt,
-                    logical_pass_start,
-                    logical_pass_end,
-                );
-            }
-            if resolves_motion
-                && (!logical_pass_end.is_finite()
-                    || logical_pass_end <= logical_pass_start
-                    || logical_pass_end > logical_end)
-            {
-                self.motion_decision = crate::pipeline::SolverMotionDecision::Rejected;
-                colliders.set_modified(modified_colliders);
-                self.join_deferred_bvh_optimize(broad_phase);
-                self.counters.step_completed();
-                return;
-            }
 
             self.counters.custom.resume();
             self.interpolate_kinematic_velocities(&integration_parameters, islands, bodies);
             self.counters.custom.pause();
-            self.staged_solver.velocity_solver.ccd_plan.clear();
-            let decision = self.build_islands_and_solve_velocity_constraints(
+            self.build_islands_and_solve_velocity_constraints(
                 gravity,
                 &integration_parameters,
-                (logical_pass_start, logical_pass_end),
                 islands,
                 narrow_phase,
                 bodies,
@@ -638,22 +591,7 @@ impl PhysicsPipeline {
                 events,
             );
 
-            if decision != crate::pipeline::SolverMotionDecision::Approved {
-                self.motion_decision = decision;
-                // The modification buffer belongs to ColliderSet even when the
-                // candidate interval was rejected. Do not advance kinematic next
-                // poses or run CCD over proposals that were not approved.
-                colliders.set_modified(modified_colliders);
-                self.join_deferred_bvh_optimize(broad_phase);
-                self.counters.step_completed();
-                return;
-            }
-
-            // If CCD is enabled, execute the CCD motion clamping.
-            // The original post-solve fast verdict controls pass accounting
-            // even when Core supplied a complete prepared position-only plan.
-            // A clamp count is not a substitute for activation (e.g. no-hit,
-            // filtered pairs and sensors can still execute an active CCD pass).
+            // The fused post-solve verdict saves a serial body pass when available.
             let ccd_active = if ccd_is_enabled {
                 match self.staged_solver.post_solve_ccd_active {
                     Some(any_active) => any_active,
@@ -669,17 +607,7 @@ impl PhysicsPipeline {
                 false
             };
             any_ccd_active |= ccd_active;
-            if self.staged_solver.velocity_solver.ccd_plan.covered {
-                ccd_solver.apply_prepared(
-                    &self.staged_solver.velocity_solver.ccd_plan,
-                    integration_parameters.dt,
-                    logical_pass_start,
-                    logical_pass_end,
-                    bodies,
-                    colliders,
-                    events,
-                );
-            } else if ccd_active {
+            if ccd_active {
                 self.join_deferred_bvh_optimize(broad_phase);
                 self.run_ccd_motion_clamping(
                     &integration_parameters,
@@ -706,12 +634,6 @@ impl PhysicsPipeline {
             // Neutralize bodies whose integrated pose went non-finite before the remaining
             // CCD substeps can spread their velocities.
             self.quarantine.apply_end_step(bodies, colliders);
-            self.motion_committed_seconds += integration_parameters.dt;
-            if resolves_motion {
-                self.motion_committed_time = logical_pass_end;
-            } else {
-                self.motion_committed_time += f64::from(integration_parameters.dt);
-            }
             self.counters.stages.update_time.pause();
 
             if remaining_substeps > 0 {

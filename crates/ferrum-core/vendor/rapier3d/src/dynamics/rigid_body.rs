@@ -1292,52 +1292,6 @@ impl RigidBody {
         params: &IntegrationParameters,
         passes: usize,
     ) -> (Pose, Vector) {
-        self.kinematic_motion_intervals(params, passes, |_, _, _, _, _| {})
-    }
-
-    /// Visit every actual upcoming velocity-kinematic solver integration.
-    ///
-    /// This reuses the exact cap/integration/pass-damping kernel below. The
-    /// visitor is allocation-free and cannot mutate the body. `handle` must be
-    /// this body's live identity in the caller's body set. Dynamic constraint
-    /// solutions are deliberately not represented as kinematic predictions.
-    #[doc(hidden)]
-    #[cfg(feature = "dim3")]
-    pub fn visit_kinematic_motion(
-        &self,
-        handle: crate::dynamics::RigidBodyHandle,
-        params: &IntegrationParameters,
-        passes: usize,
-        mut visit: impl FnMut(crate::pipeline::SolverBodyIntegration),
-    ) -> Pose {
-        self.kinematic_motion_intervals(
-            params,
-            passes,
-            |start_time, end_time, start, end, velocity| {
-                visit(crate::pipeline::SolverBodyIntegration {
-                    motion: crate::pipeline::SolverBodyMotion {
-                        body: handle,
-                        start_time,
-                        end_time,
-                        start,
-                        end,
-                    },
-                    integration_seconds: params.dt / params.num_solver_iterations as Real,
-                    linear_velocity: velocity.linvel,
-                    angular_velocity: velocity.angvel,
-                });
-            },
-        )
-        .0
-    }
-
-    #[cfg(feature = "dim3")]
-    fn kinematic_motion_intervals(
-        &self,
-        params: &IntegrationParameters,
-        passes: usize,
-        mut visit: impl FnMut(Real, Real, Pose, Pose, RigidBodyVelocity<Real>),
-    ) -> (Pose, Vector) {
         debug_assert_eq!(self.body_type, RigidBodyType::KinematicVelocityBased);
         debug_assert!(params.num_solver_iterations > 0 && passes > 0);
         let local_com = self.mprops.local_mprops.local_com;
@@ -1347,29 +1301,19 @@ impl RigidBody {
         let mut end = self.pos.position;
         let max_ang = RigidBodyVelocity::solver_max_angular_velocity(params.inv_dt());
         let sub_dt = params.dt / params.num_solver_iterations as Real;
-        let mut elapsed = 0.0;
         for _ in 0..passes {
-            for substep in 0..params.num_solver_iterations {
+            for _ in 0..params.num_solver_iterations {
                 if !self.ccd.allow_fast_rotation {
                     RigidBodyVelocity::cap_solver_angular_velocity(&mut vels.angvel, max_ang);
                 }
                 // Reuse exactly the worker's COM and quaternion integration.
-                let start = pose;
                 vels.integrate_linearized(sub_dt, &mut pose.translation, &mut pose.rotation);
-                visit(
-                    elapsed + substep as Real * sub_dt,
-                    elapsed + (substep + 1) as Real * sub_dt,
-                    start,
-                    pose,
-                    vels,
-                );
                 // One increment can be recovered without folding the total winding.
                 let mut increment = Rotation::IDENTITY;
                 let mut origin = Vector::ZERO;
                 vels.integrate_linearized(sub_dt, &mut origin, &mut increment);
                 angular_displacement += increment.to_scaled_axis();
             }
-            elapsed += params.dt;
             vels = vels.apply_damping(params.dt, &self.damping);
             // Writeback and the next pass reconstruct the COM pose through the
             // body origin. Preserve that rounding at pass boundaries too.
@@ -2393,36 +2337,5 @@ mod kinematic_accepted_prediction_tests {
         };
         let (_, short) = capped.predict_kinematic_motion(&short, 1);
         assert_eq!(long, short);
-    }
-}
-
-/// Local pre-solver command/momentum credit, not a world or solver checkpoint.
-/// It contains no geometry, arena, contact cache or force integration state.
-#[derive(Clone, Copy, Debug)]
-pub struct RigidBodyMotionCredit {
-    velocity: RigidBodyVelocity<Real>,
-    activation: RigidBodyActivation,
-    target: Pose,
-}
-impl RigidBody {
-    /// Retain the exact preplan velocity/activation and pending target without
-    /// advancing time or changing the body's modification state.
-    pub fn motion_credit(&self) -> RigidBodyMotionCredit {
-        RigidBodyMotionCredit {
-            velocity: self.vels,
-            activation: self.activation,
-            target: self.pos.next_position,
-        }
-    }
-    /// Return only a preplan's local motion credit after zero committed time.
-    /// Unlike public velocity setters this also restores position-kinematic
-    /// interpolation velocities. It never reverses an accepted body pose.
-    pub fn return_motion_credit(&mut self, credit: &RigidBodyMotionCredit) {
-        self.vels = credit.velocity;
-        if self.activation != credit.activation {
-            self.changes |= RigidBodyChanges::SLEEP;
-        }
-        self.activation = credit.activation;
-        self.pos.next_position = credit.target;
     }
 }
