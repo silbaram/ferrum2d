@@ -198,6 +198,7 @@ impl PhysicsWorld3d {
             self.tick_outputs.paths = scratch;
             return self.actual_motion_result();
         }
+        self.save_character_preview(&mut scratch.preview);
 
         let mut stopped = Vec::new();
         let mut pushes = BTreeMap::new();
@@ -218,7 +219,11 @@ impl PhysicsWorld3d {
                 if let Some(index) = scratch.ids.iter().position(|&id| id == body) {
                     scratch.stopped[index] = Some(0.);
                 }
-                if start > 0. {
+                if start > 0.
+                    && !paths
+                        .iter()
+                        .any(|path| path.body == body && path.sweep_sensors)
+                {
                     self.rewind_kinematic_path(&scratch, body, &pushes, &velocity_starts);
                 }
                 scratch.stopped_bodies.push(body);
@@ -877,6 +882,9 @@ mod tests {
         w.add_force(free, [10.0, 0.0, 0.0], [0.0; 3]).unwrap();
         w.add_force(attached, [0.0, 10.0, 0.0], [0.0; 3]).unwrap();
         w.set_kinematic_target(other, pose(1.0, 5.0)).unwrap();
+        // This query inspects original mid-tick solver fragments. The ordinary
+        // turn and squeeze tests exercise the product's two accepted cuts.
+        w.force_character_motion_proof();
         w.set_step_motion_enabled(true);
         let path = KinematicPath {
             sweep_sensors: false,

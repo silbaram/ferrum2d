@@ -24,6 +24,8 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
   피격 넉백은 게임에서 `drainUnifiedPhysicsCollisionEvents`의 접촉을 읽어
   `applyUnifiedPhysicsCharacterImpulses`로 적용한다. 움직이는 키네마틱에 끼이면 해당 물체가
   틱 시작 자세에서 정지한다. 캐릭터 이동 및 리플레이 결과가 이전과 달라질 수 있다.
+- 통합 투사체는 타깃의 틱 시작·끝 자세를 보간해 명중을 검사한다. 틱 안에서 방향을 바꾼 물체의
+  투사체 명중 결과와 리플레이 해시가 달라질 수 있다.
 
 ### Fixed
 

@@ -269,6 +269,38 @@ impl PhysicsWorld3d {
         capture.elapsed = end_fraction;
     }
 
+    pub(in crate::physics3d) fn record_interpolated_step_motion(&mut self) {
+        let capture = &mut self.step_motion;
+        if !capture.enabled {
+            return;
+        }
+        if capture.starts.len() > 1 << 20
+            || capture.segments.try_reserve(capture.starts.len()).is_err()
+        {
+            capture.invalidate_capture();
+            return;
+        }
+        for start in &mut capture.starts {
+            let Some(body) = self.backend.bodies.get(start.body) else {
+                continue;
+            };
+            if !self.backend.colliders.contains(start.collider) {
+                continue;
+            }
+            let end = *body.position();
+            capture.segments.push(target_motion(
+                start,
+                rp::Vector::ZERO,
+                start.pose,
+                end,
+                0.,
+                1.,
+            ));
+            start.pose = end;
+        }
+        capture.elapsed = 1.;
+    }
+
     pub(in crate::physics3d) fn finish_step_motion(
         &mut self,
         work: &mut crate::physics3d::solver_trajectory::Work,
@@ -277,9 +309,8 @@ impl PhysicsWorld3d {
     }
 
     /// Casts against this tick's captured target motion, using normalized tick time.
-    /// This is internal until snapshot/replay and full native motion tracing are wired.
-    /// Captured Native paths retain individual solver integrations and accepted
-    /// CCD clamps. Position-controlled sensors can follow the authored path.
+    /// The ordinary path interpolates each target's published start and end
+    /// poses. Targets that turn and return within a tick may not be observed.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn sweep_step_motion(
         &self,

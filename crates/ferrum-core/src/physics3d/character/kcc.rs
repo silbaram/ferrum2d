@@ -41,7 +41,8 @@ impl PhysicsWorld3d {
     ) {
         self.refresh_queries();
         let dt = self.backend.integration_parameters.dt;
-        let blocked = self.stop_blocked_platform_groups(paths, dt);
+        let mut velocity_stops = Vec::new();
+        let blocked = self.stop_blocked_platform_groups(paths, dt, &mut velocity_stops);
         for &body in &blocked {
             self.record_path_stop();
             stopped.push(body);
@@ -87,6 +88,9 @@ impl PhysicsWorld3d {
         }
         self.characters = characters;
         self.step_with_joints(start, end);
+        for id in velocity_stops {
+            self.stop_prescribed_body(id);
+        }
         self.reconcile_dynamic_character_support();
         let mut characters = std::mem::take(&mut self.characters);
         for plan in &mut plans {
@@ -98,7 +102,8 @@ impl PhysicsWorld3d {
                 .dot(plan.controller.up)
                     > 0.;
             let support = if runtime.state.vertical_speed <= 0. && !moved_up {
-                self.kcc_ground(plan, runtime.config.skin_width * 2.)
+                super::character_ground(&self.backend, &self.contact_policies, plan.id, runtime)
+                    .or_else(|| self.kcc_ground(plan, runtime.config.skin_width * 2.))
             } else {
                 None
             };
@@ -250,10 +255,6 @@ impl PhysicsWorld3d {
                     _ => false,
                 }
             });
-        // A zero move asks Rapier to depenetrate even when movement input follows.
-        plan.translation = self
-            .kcc_move(&plan, simple, rp::Vector::ZERO, moving_support)
-            .translation;
         let mut controller = plan.controller;
         if !grounded || jump > 0. || vertical_speed > 0. || moving_support.is_some() {
             controller.snap_to_ground = None;
@@ -263,6 +264,24 @@ impl PhysicsWorld3d {
             + rp::Vector::from(runtime.external_velocity)
             + up * walking_speed)
             * dt;
+        let lateral = desired - up * desired.dot(up);
+        let use_clearance = moving_support.is_none()
+            && jump == 0.
+            && walking_speed <= 0.
+            && lateral.length_squared() > 0.;
+        // Preserve the exact resting pose on an already accepted support.
+        // Other static overlaps still go through KCC depenetration.
+        let ignored = if grounded && desired == rp::Vector::ZERO {
+            runtime.state.ground.map(|support| native_id(support.body))
+        } else {
+            moving_support
+        };
+        if !use_clearance {
+            // A zero move depenetrates static geometry before a normal KCC move.
+            plan.translation = self
+                .kcc_move(&plan, simple, rp::Vector::ZERO, ignored)
+                .translation;
+        }
         runtime.collisions.clear();
         let mut external = rp::Vector::from(runtime.external_velocity);
         let mut dropped_contacts = 0;
@@ -270,7 +289,7 @@ impl PhysicsWorld3d {
         let movement = self.kcc_query(
             &plan,
             pose,
-            moving_support,
+            ignored,
             if desired == rp::Vector::ZERO {
                 rp::QueryFilterFlags::EXCLUDE_DYNAMIC
             } else {
@@ -278,25 +297,29 @@ impl PhysicsWorld3d {
             },
             true,
             |query| {
+                if use_clearance {
+                    // Share the stationary clearance handling with traversal
+                    // probes, particularly when a capsule fits a low ceiling.
+                    return super::super::character_query::move_with_clearance(
+                        &self.backend,
+                        &query,
+                        &controller,
+                        &runtime.config,
+                        self.config.length_unit,
+                        plan.shape.as_ref(),
+                        &pose,
+                        desired,
+                        grounded && walking_speed == 0.,
+                        &mut runtime.collisions,
+                        &mut dropped_contacts,
+                    )
+                    .0;
+                }
                 controller.move_shape(0., &query, plan.shape.as_ref(), &pose, desired, |hit| {
                     if runtime.config.push_mass == 0. {
                         return;
                     }
-                    let target = &self.backend.colliders[hit.handle];
-                    let dynamic = target
-                        .parent()
-                        .is_some_and(|id| self.backend.bodies[id].is_dynamic());
-                    if !dynamic {
-                        let normal = super::super::character_geometry::collision_normal(
-                            target,
-                            plan.shape.as_ref(),
-                            &hit,
-                        );
-                        let horizontal = normal - up * normal.dot(up);
-                        if let Some(direction) = horizontal.try_normalize() {
-                            external -= direction * external.dot(direction).min(0.);
-                        }
-                    } else if runtime.collisions.len() < 32 {
+                    if runtime.collisions.len() < 32 {
                         runtime.collisions.push(hit);
                     } else {
                         dropped_contacts += 1;
@@ -304,6 +327,28 @@ impl PhysicsWorld3d {
                 })
             },
         );
+        runtime.collisions.retain(|hit| {
+            let target = &self.backend.colliders[hit.handle];
+            if runtime.config.push_mass == 0. {
+                return false;
+            }
+            if target
+                .parent()
+                .is_some_and(|id| self.backend.bodies[id].is_dynamic())
+            {
+                return true;
+            }
+            let normal = super::super::character_geometry::collision_normal(
+                target,
+                plan.shape.as_ref(),
+                hit,
+            );
+            let horizontal = normal - up * normal.dot(up);
+            if let Some(direction) = horizontal.try_normalize() {
+                external -= direction * external.dot(direction).min(0.);
+            }
+            false
+        });
         runtime.external_velocity = external.to_array();
         plan.translation += movement.translation;
 
@@ -508,7 +553,12 @@ impl PhysicsWorld3d {
             .to_array();
     }
 
-    fn stop_blocked_platform_groups(&mut self, paths: &[KinematicPath], dt: f32) -> Vec<BodyId> {
+    fn stop_blocked_platform_groups(
+        &mut self,
+        paths: &[KinematicPath],
+        dt: f32,
+        velocity_stops: &mut Vec<BodyId>,
+    ) -> Vec<BodyId> {
         let mut platforms: BTreeSet<_> = paths.iter().map(|path| path.body).collect();
         platforms.extend(self.characters.values().filter_map(|rider| {
             rider
@@ -525,6 +575,7 @@ impl PhysicsWorld3d {
         self.refresh_path_motion_queries();
         let schedule = self.backend_pass_schedule();
         let mut blocked = BTreeSet::new();
+        let mut clipped = BTreeMap::<BodyId, f32>::new();
         let (mut casts, mut failures) = (0u32, 0u32);
         for id in platforms {
             let platform = &self.backend.bodies[native_id(id)];
@@ -547,6 +598,7 @@ impl PhysicsWorld3d {
             let members = std::iter::once(native_id(id)).chain(riders.iter().copied());
             let sweep_sensors = prescribed.is_some_and(|path| path.sweep_sensors);
             let mut blocker = None;
+            let mut dash_stop: Option<(f32, Option<BodyId>)> = None;
             let blocked_group = members.clone().any(|handle| {
                 self.backend.bodies[handle]
                     .colliders()
@@ -672,6 +724,11 @@ impl PhysicsWorld3d {
                                         ShapeCastOptions {
                                             max_time_of_impact: 1.,
                                             stop_at_penetration: false,
+                                            target_distance: if sweep_sensors {
+                                                0.0001 * self.config.length_unit
+                                            } else {
+                                                0.
+                                            },
                                             ..Default::default()
                                         },
                                     )
@@ -686,20 +743,36 @@ impl PhysicsWorld3d {
                                         false,
                                     )
                                 };
-                                let is_blocked = match hit {
-                                    Ok(hit) => hit.is_some_and(|hit| hit.time_of_impact < 1.),
+                                let time = match hit {
+                                    Ok(hit) => hit.map(|hit| hit.time_of_impact),
                                     Err(_) => {
                                         failures = failures.saturating_add(1);
-                                        true
+                                        Some(0.)
                                     }
                                 };
-                                if is_blocked && other_body.is_some_and(is_moving_kinematic) {
-                                    blocker = other.parent().map(|body| {
+                                let Some(time) = time.filter(|&time| time < 1.) else {
+                                    return false;
+                                };
+                                let hit_blocker = if other_body.is_some_and(is_moving_kinematic) {
+                                    other.parent().map(|body| {
                                         let (slot, generation) = body.into_raw_parts();
                                         BodyId { slot, generation }
-                                    });
+                                    })
+                                } else {
+                                    None
+                                };
+                                if sweep_sensors && riders.is_empty() {
+                                    if dash_stop.is_none_or(|(old, _)| time < old) {
+                                        dash_stop = Some((
+                                            time,
+                                            hit_blocker
+                                                .filter(|b| !paths.iter().any(|p| p.body == *b)),
+                                        ));
+                                    }
+                                    return false;
                                 }
-                                is_blocked
+                                blocker = hit_blocker;
+                                true
                             })
                     })
             });
@@ -708,10 +781,39 @@ impl PhysicsWorld3d {
                 // The rider and the incoming carrier share the same obstructed gap.
                 blocked.extend(blocker);
             }
+            if let Some((time, incoming)) = dash_stop {
+                for body in std::iter::once(id).chain(incoming) {
+                    clipped
+                        .entry(body)
+                        .and_modify(|old| *old = old.min(time))
+                        .or_insert(time);
+                }
+            }
         }
         self.record_path_queries(casts, failures, false);
         for &id in &blocked {
             self.stop_prescribed_body(id);
+        }
+        for (id, fraction) in clipped {
+            if !blocked.insert(id) {
+                continue;
+            }
+            // A dash uses the cast's safe prefix so contact can consume its
+            // remaining travel. A blocked carrier above stops as a whole.
+            let body = &mut self.backend.bodies[native_id(id)];
+            if body.body_type() == rp::RigidBodyType::KinematicPositionBased {
+                body.set_next_kinematic_position(
+                    super::super::kinematic_paths::interpolate_kinematic_pose(
+                        *body.position(),
+                        *body.next_position(),
+                        f64::from(fraction),
+                    ),
+                );
+            } else {
+                body.set_linvel(body.linvel() * fraction, true);
+                body.set_angvel(body.angvel() * fraction, true);
+                velocity_stops.push(id);
+            }
         }
         blocked.into_iter().collect()
     }

@@ -228,6 +228,7 @@ fn squeeze_substeps_preserve_force_targets_and_original_motion_time() {
     w.add_force(free, [10.0, 0.0, 0.0], [0.0; 3]).unwrap();
     w.set_kinematic_target(other, pose(5.0, 200.0)).unwrap();
     w.set_kinematic_target(moving, pose(-3.0, 0.0)).unwrap();
+    w.force_character_motion_proof();
     w.set_step_motion_enabled(true);
     w.step();
     assert!((w.body_state(free).unwrap().linear_velocity[0] - 1.0).abs() < 1e-5);

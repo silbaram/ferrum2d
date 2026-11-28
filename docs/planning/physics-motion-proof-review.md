@@ -149,6 +149,10 @@ vendor에 추가한 콜백 `resolve_solver_motion`이 각 물체의 실제 적�
      `forced_proof_includes_all_enabled_native_dynamic_origins`,
      `prediction_extra_cadence_never_changes_actual_backend_base_parameters`
    - `p1a_compare_*`의 강체 증명 대조군. 일반 CCD·관통·겹침 검사와 공개 오류 복구 회귀는 해당 시점의 제품 경로로 유지한다.
+   - `force_character_motion_proof`와 P1b 증명 비교. 분류 표의 정확 suffix·handoff·zero-time credit,
+     `event_prefix`의 정밀 재생, exact step-motion trace·file admission 시험도 지운다.
+   - `step_motion::exact`와 내부 callback의 Native trajectory trace. 프로젝트 파일의 호환 범위를
+     검토한 뒤 snapshot의 기존 exact 레코드를 정리한다. 일반 보간·BVH와 공개 체크포인트 검사는 유지한다.
 4. 그 뒤 기존 2D 물리(`physics`·`collision`) 정리와 크레이트 분리를 검토한다(빌드 시간 조사의 2·3번 항목).
 
 ## 사용자 결정 (2026-11-27)

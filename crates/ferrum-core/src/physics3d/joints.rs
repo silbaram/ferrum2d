@@ -224,7 +224,9 @@ impl PhysicsWorld3d {
                 self.record_committed_backend_prefix(before);
                 return;
             }
-            self.record_step_motion_segment(end_fraction);
+            if self.backend_motion_enabled() {
+                self.record_step_motion_segment(end_fraction);
+            }
             self.advance_planar_angles(self.backend.integration_parameters.dt);
             return;
         }
@@ -320,9 +322,12 @@ impl PhysicsWorld3d {
             {
                 break;
             }
-            self.record_step_motion_segment(
-                start_fraction + (end_fraction - start_fraction) * (pass as Time / passes as Time),
-            );
+            if self.backend_motion_enabled() {
+                self.record_step_motion_segment(
+                    start_fraction
+                        + (end_fraction - start_fraction) * (pass as Time / passes as Time),
+                );
+            }
             self.finish_joints();
         }
         kinematics.clear();

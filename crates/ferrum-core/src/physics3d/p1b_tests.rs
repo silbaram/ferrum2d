@@ -253,7 +253,7 @@ fn p1b_kcc_keeps_support_when_the_platform_descends_and_reverses() {
 }
 
 #[test]
-fn p1b_kcc_finds_walkable_ground_past_an_overlapping_wall() {
+fn p1b_kcc_preserves_walkable_ground_when_a_wall_pushes_the_rider() {
     let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
     let floor = body(
         &mut world,
@@ -292,8 +292,8 @@ fn p1b_kcc_finds_walkable_ground_past_an_overlapping_wall() {
     world.step_checked().unwrap();
     let position = world.body_state(rider).unwrap().pose.position;
     assert!(
-        position[0] + 0.25 > 0.49 - 0.25,
-        "wall must overlap the rider"
+        position[0] < 0. && position[0] + 0.25 <= 0.49 - 0.25 + 0.005,
+        "wall must push without passing through the grounded rider: {position:?}"
     );
     assert_eq!(
         world.character_state(rider).unwrap().ground.unwrap().body,

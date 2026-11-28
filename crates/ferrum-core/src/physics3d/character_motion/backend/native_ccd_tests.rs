@@ -416,6 +416,7 @@ fn path_origin_sensor_request_survives_actual_rotation_and_never_creates_an_impu
                 },
             )
             .unwrap();
+        world.force_character_motion_proof();
         world.set_step_motion_enabled(true);
         let path = KinematicPath {
             body: mover,

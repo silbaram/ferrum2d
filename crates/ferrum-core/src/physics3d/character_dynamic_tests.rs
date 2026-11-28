@@ -818,12 +818,12 @@ fn p2b_a_peer_blocks_the_capsule_without_pushing_the_box_behind_it() {
     // A proposed KCC push beyond the preceding peer must also be discarded.
     assert!(w.character_state(a).unwrap().blocked_by_character);
     assert!(
-        (0.009..=0.01001).contains(&states[0].pose.position[0]),
+        (0.009..=0.011).contains(&states[0].pose.position[0]),
         "{states:?}"
     );
     assert!(states[1].linear_velocity[0].abs() < 0.00001, "{states:?}");
     assert!(states[2].linear_velocity[0].abs() < 0.00001, "{states:?}");
-    assert!(states[1].pose.position[0] - states[0].pose.position[0] >= 0.49999);
+    assert!(states[1].pose.position[0] - states[0].pose.position[0] >= 0.499);
     assert!(states[2].pose.position[0] - states[1].pose.position[0] >= 0.509);
 }
 

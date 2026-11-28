@@ -886,11 +886,11 @@ World 이동을 유지한다.
 `UnifiedPhysicsOptions`의 `space`는 `planar-xy` 또는 `spatial`이다. `gravity` XYZ와 `lengthUnit`을 명시한다.
 Planar는 Z 이동 및 X/Y 회전을 허용하지 않는다. Spatial은 Y-up이며 상태 좌표는 화면 투영과 별개다.
 `stepSeconds` 기본값은 1/60, solver 반복 수는 각각 1, `continuous`는 `true`다.
-캐릭터·지정 경로·step-motion이 없는 world에서 `continuous`는 Rapier CCD를 켠다. 빠른 동적 물체는 고정
+통합 물리 world에서 `continuous`는 Rapier CCD를 켠다. 빠른 동적 물체는 고정
 콜라이더를 대상으로 검사한다. 동적 물체의 `ccd: true`는 운동학적 물체와 `ccd`를 켜지 않은 동적 물체도 검사한다.
 첫 접촉을 처리한 틱에 형상이 잠시 겹칠 수 있으며, 이후 접촉 solver가 겹침을 보정한다. `continuous: false`는
-CCD를 끄고 틱 단위 접촉은 계속 처리한다. 운동 증명에서 발생하는 `CapacityExceeded`와 `UnresolvedMotion`은
-캐릭터 또는 지정 경로·step-motion이 증명 경로를 사용하는 경우에 남아 있다.
+CCD를 끄고 틱 단위 접촉은 계속 처리한다. 지정 경로는 매듭에서 틱을 나눈다. 투사체는
+틱 시작·끝 타깃 자세의 보간으로 충돌을 검사하므로 한 틱 안에 방향을 바꿔 돌아온 타깃을 놓칠 수 있다.
 선택 capacity 기본값은 bodies 8192, colliders 16384, events 4096, characters 128, joints 16384다.
 설정 오류·controller의 직접 속도 변경·잠긴 회전·stale 핸들은 예외로 보고하고 기존 상태를 유지한다.
 
@@ -1228,7 +1228,7 @@ Force는 `clearUnifiedPhysicsCharacterForces(handles)`까지 유지한다. Impul
 XYZ 충격을 그 캐릭터의 entity 핸들과 함께 `applyUnifiedPhysicsCharacterImpulses`에 전달한다.
 충돌 버퍼는 다음 읽기 전에 사용한다.
 
-움직이는 위치·속도 키네마틱은 이번 틱 경로로 주변 캡슐을 검사하고 남은 이동으로 밀어낸다.
+움직이는 위치·속도 키네마틱과 지정 경로는 이번 틱의 이동으로 주변 캡슐을 검사하고 남은 이동으로 밀어낸다.
 밀림이 다른 물체에 막히면 해당 키네마틱을 틱 시작 자세에서 정지시키고 `kinematicPathStops`에
 기록한다. 탑승자 운반은 지지체의 실제 이동과 회전을 따른다.
 

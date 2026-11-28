@@ -337,7 +337,7 @@ impl PhysicsWorld3d {
         if !self.characters.is_empty() && !self.backend_motion_enabled() {
             return self.step_character_kcc();
         }
-        if self.has_moving_character_obstacles() || self.backend_motion_enabled() {
+        if self.backend_motion_enabled() {
             self.step_kinematic_tick(&[]);
             return self.actual_motion_result();
         }
@@ -428,8 +428,10 @@ impl PhysicsWorld3d {
                 return;
             }
         }
-        // Capture consumes the same tick ledger after actual approval; it
-        // never creates a fresh proof allowance or changes actual tick credit.
+        if !self.backend_motion_enabled() {
+            self.record_interpolated_step_motion();
+        }
+        // Capture keeps the tick's existing memory/work allowance.
         let mut work = self.saved_motion_proof_work();
         self.finish_step_motion(&mut work);
         if self.commit_saved_motion_proof_work(work).is_err() {

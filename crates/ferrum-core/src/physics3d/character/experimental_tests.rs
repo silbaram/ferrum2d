@@ -38,8 +38,6 @@ impl PhysicsWorld3d {
     }
 
     pub(in crate::physics3d) fn experimental_character_kcc_enabled(&self) -> bool {
-        self.character_motion.experiment == Experiment::CharacterKcc
-            && !self.characters.is_empty()
-            && !self.step_motion.enabled
+        self.character_motion.experiment == Experiment::CharacterKcc && !self.characters.is_empty()
     }
 }
