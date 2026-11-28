@@ -34,7 +34,7 @@ impl PhysicsWorld3d {
         if !self.begin_fixed_step() {
             return self.actual_motion_result();
         }
-        self.step_kcc_interval(&[], 0., 1., &mut Vec::new(), None);
+        self.step_kcc_interval(&[], 0., 1., &mut Vec::new());
         self.finish_fixed_step();
         self.actual_motion_result()
     }
@@ -45,7 +45,6 @@ impl PhysicsWorld3d {
         start: f64,
         end: f64,
         stopped: &mut Vec<BodyId>,
-        pushes: Option<&mut BTreeMap<(BodyId, BodyId), rp::Vector>>,
     ) {
         self.refresh_queries();
         let dt = self.backend.integration_parameters.dt;
@@ -66,7 +65,7 @@ impl PhysicsWorld3d {
             }
         }
         self.separate_kcc_crowd(&mut plans, &mut characters);
-        self.push_characters_with_kinematics(&mut plans, &mut characters, stopped, pushes);
+        self.push_characters_with_kinematics(&mut plans, &mut characters, stopped);
         for plan in &plans {
             let translation = plan.translation;
             let runtime = characters.get_mut(&plan.id).unwrap();

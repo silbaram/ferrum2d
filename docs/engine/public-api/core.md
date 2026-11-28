@@ -1199,9 +1199,9 @@ stepHeight/snapDistance 0은 해당 기능을 끈다. pushMass는 0 또는 0.000
 들어오는 동적 물체에는 캐릭터가 키네마틱 바디로 작동하며 접촉만으로 자동 밀리지 않는다.
 캐릭터는 Rapier KCC로 이동한다. 캐릭터끼리는 서로 막고 표면을 따라 미끄러지며, 운동량을 주고받지 않는다.
 벽이 가로막은 외부 속도 성분은 소거된다. 지지체나 키네마틱 장애물에 의해 이동한 거리는
-캐릭터 상태에 반영된다. 막힌 발판은 틱 시작 자세에 머물고 탑승자는 정지한 발판 위에서도
-KCC 입력으로 걸을 수 있다. `carryTranslation`이 0이 아니면 `carriedBy`가 운반했던 지지체를
-가리킨다. 되돌린 발판의 운반은 합계에서 빠진다.
+캐릭터 상태에 반영된다. 막힌 발판은 해당 물리 구간의 시작 자세에 머문다. 틱에 구간이 하나면
+틱 시작 자세다. 탑승자는 정지한 발판 위에서도 KCC 입력으로 걸을 수 있다.
+`carryTranslation`은 틱에 실제로 운반된 변위이며 0이 아니면 `carriedBy`가 운반했던 지지체를 가리킨다.
 
 캐릭터 상태의 `couplingVisits`, `couplingLimitFlag`, `obstacleLimitFlag`, `failedPairCasts`,
 `failedObstacleContacts`는 P2b 이후 항상 0이며 P3에서 정리한다.
@@ -1236,10 +1236,10 @@ Force는 `clearUnifiedPhysicsCharacterForces(handles)`까지 유지한다. Impul
 XYZ 충격을 그 캐릭터의 entity 핸들과 함께 `applyUnifiedPhysicsCharacterImpulses`에 전달한다.
 충돌 버퍼는 다음 읽기 전에 사용한다.
 
-움직이는 위치·속도 키네마틱과 지정 경로는 이번 틱의 이동으로 주변 캡슐을 검사하고 남은 이동으로 밀어낸다.
+움직이는 위치·속도 키네마틱과 지정 경로는 각 물리 구간의 이동으로 주변 캡슐을 검사하고 남은 이동으로 밀어낸다.
 회전 경로는 Parry의 비선형 cast로 검사한다.
-밀림이 다른 물체에 막히면 해당 키네마틱을 틱 시작 자세에서 정지시키고 `kinematicPathStops`에
-기록한다. 탑승자 운반은 동적·키네마틱 지지체의 실제 이동과 회전을 따른다. 발판이 한 틱 안에
+밀림이 다른 물체에 막히면 해당 키네마틱을 막힌 구간의 시작 자세에서 정지시키고
+`kinematicPathStops`에 기록한다. 틱에 구간이 하나면 틱 시작 자세에서 정지한다. 탑승자 운반은 동적·키네마틱 지지체의 실제 이동과 회전을 따른다. 발판이 한 틱 안에
 왕복해도 계속 실려 있었고 틱 끝에 접지라면 `carriedBy`에 그 발판이 남는다.
 
 `queryUnifiedPhysicsCharacterStates`는 마지막 fixed tick의 28-word/112-byte 상태를 반환한다.

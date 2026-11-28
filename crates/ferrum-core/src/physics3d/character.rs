@@ -76,7 +76,7 @@ pub struct CharacterState {
     pub ground: Option<ColliderRef>,
     /// Support that supplied accepted transport during the tick. A round
     /// trip can report the support with zero net carry if still grounded on it.
-    /// Rewound platform motion does not count as transport.
+    /// The total includes accepted carry from earlier slices of a split tick.
     pub carried_by: Option<BodyId>,
     /// Sum of accepted platform carry translations during this tick.
     pub carry_translation: [f32; 3],

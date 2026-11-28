@@ -8,7 +8,6 @@ pub(super) mod wake_join;
 use super::world::{native_id, native_pose};
 use super::{BodyId, CharacterState, PhysicsError, PhysicsWorld3d, Pose};
 use rapier3d::prelude as rp;
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct KinematicPath {
@@ -201,51 +200,16 @@ impl PhysicsWorld3d {
         self.save_character_preview(&mut scratch.preview);
 
         let mut stopped = Vec::new();
-        let mut pushes = BTreeMap::new();
-        let mut carries = BTreeMap::<BodyId, Vec<(BodyId, rp::Vector)>>::new();
-        let velocity_starts: Vec<_> = self
-            .backend
-            .bodies
-            .iter()
-            .filter(|(_, body)| {
-                body.is_enabled() && body.body_type() == rp::RigidBodyType::KinematicVelocityBased
-            })
-            .map(|(handle, body)| (handle, *body.position()))
-            .collect();
         for (start, end, seconds) in slices {
             self.backend.integration_parameters.dt = seconds;
             self.set_path_targets(paths, &scratch, end);
-            self.step_kcc_interval(paths, start, end, &mut stopped, Some(&mut pushes));
-            for (&rider, runtime) in &self.characters {
-                if let Some(support) = runtime.state.carried_by {
-                    let sources = carries.entry(rider).or_default();
-                    let old = sources
-                        .iter()
-                        .position(|(body, _)| *body == support)
-                        .map_or(rp::Vector::ZERO, |index| sources.remove(index).1);
-                    sources.push((
-                        support,
-                        old + rp::Vector::from(runtime.state.carry_translation),
-                    ));
-                }
-            }
+            self.step_kcc_interval(paths, start, end, &mut stopped);
             self.accumulate_character_slice(&mut scratch);
+            // The stop applies to this slice. Earlier poses and contact results
+            // are already committed, and the path continues from this boundary.
             for body in stopped.drain(..) {
                 if let Some(index) = scratch.ids.iter().position(|&id| id == body) {
-                    scratch.stopped[index] = Some(0.);
-                }
-                if start > 0.
-                    && !paths
-                        .iter()
-                        .any(|path| path.body == body && path.sweep_sensors)
-                {
-                    self.rewind_kinematic_path(
-                        &mut scratch,
-                        body,
-                        &mut pushes,
-                        &mut carries,
-                        &velocity_starts,
-                    );
+                    scratch.stopped[index] = Some(start);
                 }
                 scratch.stopped_bodies.push(body);
             }
@@ -257,69 +221,6 @@ impl PhysicsWorld3d {
         std::mem::swap(&mut self.path_scratch, &mut scratch);
         self.tick_outputs.paths = scratch;
         self.actual_motion_result()
-    }
-
-    fn rewind_kinematic_path(
-        &mut self,
-        scratch: &mut PathScratch,
-        body: BodyId,
-        pushes: &mut BTreeMap<(BodyId, BodyId), rp::Vector>,
-        carries: &mut BTreeMap<BodyId, Vec<(BodyId, rp::Vector)>>,
-        velocity_starts: &[(rp::RigidBodyHandle, rp::Pose)],
-    ) {
-        let handle = native_id(body);
-        let original = scratch
-            .targets
-            .iter()
-            .find(|(id, _, _)| *id == handle)
-            .map(|(_, start, _)| *start)
-            .or_else(|| {
-                velocity_starts
-                    .iter()
-                    .find(|(id, _)| *id == handle)
-                    .map(|(_, start)| *start)
-            });
-        if let Some(original) = original {
-            let platform = &mut self.backend.bodies[handle];
-            platform.set_position(original, true);
-            self.query_updates.extend_from_slice(platform.colliders());
-        }
-        for (id, total) in &mut scratch.characters {
-            let carry = carries
-                .get_mut(id)
-                .and_then(|sources| {
-                    let index = sources.iter().position(|(source, _)| *source == body)?;
-                    let (_, carry) = sources.remove(index);
-                    total.carried_by = sources.last().map(|&(source, _)| source);
-                    Some(carry)
-                })
-                .unwrap_or(rp::Vector::ZERO);
-            let pushed = pushes.remove(&(body, *id)).unwrap_or(rp::Vector::ZERO);
-            total.carry_translation = if total.carried_by.is_some() {
-                (rp::Vector::from(total.carry_translation) - carry).to_array()
-            } else {
-                [0.; 3]
-            };
-            let undone = carry + pushed;
-            if undone == rp::Vector::ZERO {
-                continue;
-            }
-            let runtime = self.characters.get_mut(id).expect("live rider");
-            let rider = &mut self.backend.bodies[native_id(*id)];
-            rider.set_position(
-                rp::Pose::from_translation(-undone) * *rider.position(),
-                true,
-            );
-            self.query_updates.extend_from_slice(rider.colliders());
-            let translation = rp::Vector::from(runtime.state.translation) - undone;
-            runtime.state.translation = translation.to_array();
-            total.translation = (rp::Vector::from(total.translation) - undone).to_array();
-            if runtime.state.carried_by == Some(body) {
-                runtime.state.carried_by = None;
-                runtime.state.carry_translation = [0.; 3];
-            }
-        }
-        self.refresh_queries();
     }
 
     pub(super) fn step_kinematic_tick(&mut self, paths: &[KinematicPath]) {
@@ -840,18 +741,92 @@ mod tests {
             }])
             .unwrap();
             let x = w.body_state(actor).unwrap().pose.position[0];
-            assert_eq!(w.body_state(moving).unwrap().pose.position[0], 3.);
+            let moving_x = w.body_state(moving).unwrap().pose.position[0];
             assert_eq!(w.step_statistics().backend_steps, 2);
             if blocked {
-                assert_eq!(x, 0.);
-                assert_eq!(w.kinematic_path_progress(moving), (0., true));
+                assert!((moving_x + 0.3).abs() < 1e-6, "moving x={moving_x}");
+                assert!((x + 0.81).abs() <= 0.005, "x={x}");
+                assert_eq!(w.kinematic_path_progress(moving), (0.5, true));
                 assert_eq!(w.step_statistics().kinematic_path_stops, 1);
             } else {
+                assert_eq!(moving_x, 3.);
                 assert!((x + 3.51).abs() <= 0.005, "x={x}");
                 assert_eq!(w.kinematic_path_progress(moving), (1., false));
                 assert_eq!(w.step_statistics().kinematic_path_stops, 0);
             }
         }
+    }
+
+    #[test]
+    fn late_knot_stop_does_not_launch_a_box_on_a_descending_platform() {
+        let mut w = PhysicsWorld3d::new(WorldConfig {
+            step_seconds: 0.1,
+            ..WorldConfig::default()
+        })
+        .unwrap();
+        let half_extents = Shape::Box {
+            half_extents: [2., 0.1, 2.],
+        };
+        let platform = solid(
+            &mut w,
+            BodyKind::KinematicPosition,
+            0.,
+            half_extents.clone(),
+        );
+        let floor = solid(&mut w, BodyKind::Fixed, 0., half_extents);
+        w.set_pose(floor, pose(0., -0.55)).unwrap();
+        let box_id = solid(
+            &mut w,
+            BodyKind::Dynamic,
+            0.,
+            Shape::Box {
+                half_extents: [0.25; 3],
+            },
+        );
+        w.set_pose(box_id, pose(0., 0.35)).unwrap();
+        w.set_body_options(
+            box_id,
+            &crate::physics3d::BodyOptions {
+                lock_rotation: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for _ in 0..4 {
+            w.step_checked().unwrap();
+        }
+        let mut held = PhysicsWorld3d::from_snapshot(&w.capture_snapshot().unwrap()).unwrap();
+        let knot = pose(0., -0.1);
+        let path = |end| KinematicPath {
+            body: platform,
+            sweep_sensors: false,
+            knots: vec![(0.5, knot), (1., end)],
+        };
+        w.step_with_kinematic_paths(&[path(pose(0., -0.5))])
+            .unwrap();
+        held.step_with_kinematic_paths(&[path(knot)]).unwrap();
+        assert!(w.body_state(box_id).unwrap().pose.position[1] < 0.34);
+        assert!((w.body_state(platform).unwrap().pose.position[1] + 0.1).abs() < 1e-6);
+        assert_eq!(w.kinematic_path_progress_precise(platform), (0.5, true));
+
+        for tick in 0..30 {
+            let state = w.body_state(box_id).unwrap();
+            let expected = held.body_state(box_id).unwrap();
+            assert!(
+                (state.pose.position[1] - expected.pose.position[1]).abs() < 1e-5
+                    && (state.linear_velocity[1] - expected.linear_velocity[1]).abs() < 1e-5,
+                "tick {tick}: unexpected vertical response: {state:?}; control={expected:?}"
+            );
+            // After falling onto the stopped platform, the box stays at its
+            // resting height within the contact tolerance.
+            if tick >= 2 {
+                assert!(state.pose.position[1] <= 0.255, "tick {tick}: {state:?}");
+            }
+            w.step_checked().unwrap();
+            held.step_checked().unwrap();
+        }
+        let end_y = w.body_state(box_id).unwrap().pose.position[1];
+        assert!((end_y - 0.25).abs() < 0.01, "box y={end_y}");
     }
 
     #[test]

@@ -25,7 +25,6 @@ impl PhysicsWorld3d {
         plans: &mut [MovePlan],
         characters: &mut BTreeMap<BodyId, CharacterRuntime>,
         blocked: &mut Vec<BodyId>,
-        mut pushes: Option<&mut BTreeMap<(BodyId, BodyId), rp::Vector>>,
     ) {
         let movers: Vec<_> = self
             .backend
@@ -123,11 +122,6 @@ impl PhysicsWorld3d {
                     true
                 }
             });
-        }
-        if let Some(steps) = pushes.as_mut() {
-            for (source, actor, delta) in applied {
-                *steps.entry((body_id(source), plans[actor].id)).or_default() += delta;
-            }
         }
     }
 
