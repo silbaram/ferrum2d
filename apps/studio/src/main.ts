@@ -190,10 +190,16 @@ import {
 import "./runtimeDemoShell.css";
 import "./styles.css";
 
+declare const __FERRUM_STUDIO_EXAMPLES__: boolean;
+/** False in the product build (installed desktop Studio): it bundles no example scenes. */
+const STUDIO_EXAMPLES = __FERRUM_STUDIO_EXAMPLES__;
+/** Source label of the new, empty 2D scene the product build starts with. It is never fetched. */
+const BLANK_SCENE_SOURCE = "new-scene.scene-authoring.json";
+const EXAMPLE_SCENE_ALIASES = new Set(["garden", "2d", "village", "hd2d"]);
 // Minimal documents exist only in isolated regression builds, never in public assets.
 const SCENE_DOCUMENT_URL = import.meta.env.MODE === "test"
   ? "./placement.scene-authoring.json"
-  : "./placement.garden.scene-authoring.json";
+  : STUDIO_EXAMPLES ? "./placement.garden.scene-authoring.json" : BLANK_SCENE_SOURCE;
 const HD2D_SCENE_DOCUMENT_URL = import.meta.env.MODE === "test"
   ? "./placement.hd2d.scene-authoring.json"
   : "./placement.village.scene-authoring.json";
@@ -632,11 +638,16 @@ async function bootstrap(): Promise<void> {
     const requestedDesktopProjectPath = placementDesktopProjectPath();
     const requestedDesktopSceneDocumentPath =
       placementDesktopSceneDocumentPath();
-    const loadedDocument = await loadSceneAuthoringDocument(
-      sceneDocumentUrl,
-      requestedDesktopSceneDocumentPath,
-      requestedDesktopProjectPath,
-    );
+    // The product build opens a new, unsaved 2D scene unless a desktop project or file was requested.
+    const blankStart = sceneDocumentUrl === BLANK_SCENE_SOURCE && (placementDesktopInvoke() === undefined
+      || (requestedDesktopSceneDocumentPath === undefined && requestedDesktopProjectPath === undefined));
+    const loadedDocument = blankStart
+      ? placementBlankSceneDocument()
+      : await loadSceneAuthoringDocument(
+        sceneDocumentUrl,
+        requestedDesktopSceneDocumentPath,
+        requestedDesktopProjectPath,
+      );
     const document = placementMassAuthoringEnabled()
       ? createPlacementMassAuthoringDocument(loadedDocument)
       : loadedDocument;
@@ -682,7 +693,8 @@ async function bootstrap(): Promise<void> {
     const selectedInstanceId =
       document.gameplay?.primaryActor ??
       firstActorInstance(resolved) ?? resolved.bindingPlan?.instances[0]?.id;
-    let saveEnabled = placementViewerSaveEnabled();
+    // A new scene has no file yet; it is exported or saved after opening a project.
+    let saveEnabled = !blankStart && placementViewerSaveEnabled();
     let normalTool: ReturnType<typeof createPlacementNormalTool> | undefined;
     let asepriteTool:
       | ReturnType<typeof createPlacementAsepriteTool>
@@ -961,7 +973,10 @@ async function bootstrap(): Promise<void> {
       ).variables;
       configureVillageActor(runtimeEngine, document);
       configureGardenActor(runtimeEngine, document);
-    } else
+    } else {
+      // A new, empty scene spawns nothing, so activate the Data Scene here as reapply does.
+      const initialFragment = resolved.sceneComposition.initialFragment;
+      if (!resolved.sceneComposition.fragments[initialFragment]?.instances.length) runtime.engine.useDataScene();
       applySceneBehaviorRecipes(
         runtime.engine,
         target,
@@ -974,6 +989,7 @@ async function bootstrap(): Promise<void> {
           path: "placementViewer.apply",
         },
       );
+    }
 
     const workspacePreview = createPlacementPreviewSession({
       document,
@@ -2587,6 +2603,13 @@ async function bootstrap(): Promise<void> {
     root
       .querySelector(".placement-status-bar")
       ?.append(reviewSummary, review, exportButton);
+    if (placementExampleSceneUnavailable()) {
+      const notice = shell.canvas.ownerDocument.createElement("output");
+      notice.dataset.placementExamplesUnavailable = "true";
+      notice.setAttribute("role", "status");
+      setUiText(notice, "This build has no examples. Started a new 2D scene.");
+      root.querySelector(".placement-status-bar")?.prepend(notice);
+    }
     root.addEventListener("placement-scene-frame", () => {
       root
         .querySelector<HTMLButtonElement>(
@@ -2650,7 +2673,8 @@ async function bootstrap(): Promise<void> {
         if ([...documents.values()].some(entry => entry.viewer.exportPatch())) throw new Error("Save or export unsaved scene changes before updating");
       },
     });
-    installPlacementWorkspaceChrome(root, viewportToolbar, name => {
+    // The product build bundles no examples, so its File menu has no Examples entry.
+    installPlacementWorkspaceChrome(root, viewportToolbar, !STUDIO_EXAMPLES ? undefined : name => {
       void (async () => {
         if (switching || documentSession?.isSaving()) return;
         switching = true;
@@ -3049,13 +3073,32 @@ function resolvePlacementWorkspaceDocument(
 
 function placementSceneDocumentUrl(): string {
   const scene = new URLSearchParams(window.location.search).get("scene");
-  if (scene === null || scene === "" || scene === "default") {
+  if (scene === null || scene === "" || scene === "default" || placementExampleSceneUnavailable()) {
     return SCENE_DOCUMENT_URL;
   }
   if (scene === "hd2d") return HD2D_SCENE_DOCUMENT_URL;
   if (scene === "village") return "./placement.village.scene-authoring.json";
   if (scene === "garden" || scene === "2d") return "./placement.garden.scene-authoring.json";
   throw new Error(`Unsupported placement scene fixture '${scene}'.`);
+}
+
+/** An example address (`?scene=village`) opened in a build without examples starts a new scene. */
+function placementExampleSceneUnavailable(): boolean {
+  const scene = new URLSearchParams(window.location.search).get("scene");
+  return !STUDIO_EXAMPLES && scene !== null && EXAMPLE_SCENE_ALIASES.has(scene);
+}
+
+function placementBlankSceneDocument(): SceneAuthoringDocumentSpec {
+  return {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: { object: { props: {} } },
+      fragments: { main: { instances: [] } },
+    },
+    behaviorRecipes: { entities: {} },
+  };
 }
 
 function placementMassAuthoringEnabled(): boolean {

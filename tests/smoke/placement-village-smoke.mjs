@@ -51,9 +51,9 @@ const draft = () => page.evaluate(() => JSON.stringify({ document: window.ferrum
 const play = async () => { await page.getByRole("button", { name: "Play", exact: true }).click(); await wait(() => window.ferrumPlacementWorkspaceMode === "game"); await page.locator("canvas.demo-canvas").focus(); };
 const stop = async () => { await page.getByRole("button", { name: "Stop", exact: true }).click(); await wait(() => window.ferrumPlacementWorkspaceMode === "spatial"); };
 try {
-  const manifest = JSON.parse(await readFile("apps/studio/public/assets/rpg-village/manifest.json", "utf8"));
+  const manifest = JSON.parse(await readFile("apps/studio/examples/assets/rpg-village/manifest.json", "utf8"));
   for (const [id, a] of Object.entries({ ...manifest.models, ...manifest.textures })) {
-    const b = await readFile(`apps/studio/public/assets/rpg-village/${a.file}`);
+    const b = await readFile(`apps/studio/examples/assets/rpg-village/${a.file}`);
     assert.equal(createHash("sha256").update(b).digest("hex"), a.sha256, id);
   }
   assert.equal(Object.keys(manifest.models).length, 14);
@@ -229,7 +229,7 @@ try {
   assert.equal(villageRequests.length, 0, "Ordinary 2D workspaces loaded village assets eagerly");
   await cold.locator("input[data-placement-document-file]").setInputFiles({
     name: "village.json", mimeType: "application/json",
-    buffer: await readFile("apps/studio/public/placement.village.scene-authoring.json"),
+    buffer: await readFile("apps/studio/examples/placement.village.scene-authoring.json"),
   });
   await cold.waitForFunction(() =>
     window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42 &&

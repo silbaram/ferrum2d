@@ -1,6 +1,7 @@
 import { savePlacementDocument } from "./server/sceneDocumentStore.mjs";
 import { placementNormalGeneratorPlugin } from "./server/normalGenerator.mjs";
 import { placementSceneCatalogPlugin } from "./server/sceneCatalog.mjs";
+import { placementExampleContentPlugin, studioExamplesEnabled } from "./server/exampleContent.mjs";
 import { writeFile, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -9,21 +10,35 @@ import { defineConfig, type Plugin } from "vite";
 const HANDOFF_ENDPOINT = "/__ferrum-placement-handoff";
 const SAVE_ENDPOINT = "/__ferrum-placement-save";
 const HANDOFF_FILE = fileURLToPath(new URL(".ferrum-placement-handoff.json", import.meta.url));
-const SCENE_DOCUMENT_FILE = fileURLToPath(new URL("public/placement.garden.scene-authoring.json", import.meta.url));
+// Bundled examples live outside public/ so the product build cannot copy them by accident.
+const EXAMPLES_DIR = fileURLToPath(new URL("examples", import.meta.url));
+const SCENE_DOCUMENT_FILE = fileURLToPath(new URL("examples/placement.garden.scene-authoring.json", import.meta.url));
 const MAX_HANDOFF_BYTES = 256 * 1024;
 const MAX_SAVE_BYTES = 2 * 1024 * 1024;
 
-export default defineConfig({
-  define: {
-    __FERRUM_VIEWER_SOURCE_VERSION__: JSON.stringify(JSON.parse(await readFile(new URL("../../packages/ferrum-web/package.json", import.meta.url), "utf8")).version),
-  },
-  plugins: [placementAgentHandoffPlugin(), placementNormalGeneratorPlugin(), placementSceneCatalogPlugin(fileURLToPath(new URL("public/", import.meta.url)))],
-  server: {
-    watch: {
-      // Reopen only after a confirmed save; filesystem HMR must not discard a draft.
-      ignored: ["**/.ferrum-placement-handoff.json", "**/.ferrum-scene-save-*.tmp", "**/public/**/*.json"],
+const viewerSourceVersion = JSON.parse(await readFile(new URL("../../packages/ferrum-web/package.json", import.meta.url), "utf8")).version;
+
+export default defineConfig(({ command, mode }) => {
+  const examples = studioExamplesEnabled({ command, mode });
+  return {
+    define: {
+      __FERRUM_VIEWER_SOURCE_VERSION__: JSON.stringify(viewerSourceVersion),
+      __FERRUM_STUDIO_EXAMPLES__: JSON.stringify(examples),
     },
-  },
+    plugins: [
+      placementAgentHandoffPlugin(),
+      placementNormalGeneratorPlugin(),
+      placementExampleContentPlugin(EXAMPLES_DIR, examples),
+      // Without examples the project scene list is empty: public/ holds only fonts.
+      placementSceneCatalogPlugin(examples ? EXAMPLES_DIR : fileURLToPath(new URL("public/", import.meta.url))),
+    ],
+    server: {
+      watch: {
+        // Reopen only after a confirmed save; filesystem HMR must not discard a draft.
+        ignored: ["**/.ferrum-placement-handoff.json", "**/.ferrum-scene-save-*.tmp", "**/public/**/*.json", "**/examples/**/*.json"],
+      },
+    },
+  };
 });
 
 function placementAgentHandoffPlugin(): Plugin {
