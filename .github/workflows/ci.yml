@@ -360,6 +360,7 @@ jobs:
         run: |
           pnpm validate:example-catalog
           pnpm test:browser-smoke-node-checks
+          pnpm test:example-site
 
       - name: Pixel postprocess contracts
         run: node --test tests/smoke/pixel-postprocess-contract.test.mjs

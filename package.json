@@ -112,6 +112,7 @@
     "report:example-demo-harness": "node scripts/validate/example-demo-harness-report.mjs",
     "validate:example-catalog": "node scripts/validate/check-example-catalog.mjs",
     "test:pages-build": "node --test tests/smoke/pages-build.test.mjs",
+    "test:example-site": "node --test tests/smoke/example-site-listing.test.mjs",
     "smoke:example-site": "pnpm test:pages-build && pnpm build:pages && node tests/smoke/example-site-smoke.mjs",
     "validate:docs-links": "node scripts/validate/check-docs-pages.mjs",
     "validate:language-boundaries": "node scripts/validate/check-language-boundaries.mjs",
