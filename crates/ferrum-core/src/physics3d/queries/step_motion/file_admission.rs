@@ -3,8 +3,9 @@
 //! cache rebuild or shape normalization is performed here.
 use super::*;
 use crate::physics3d::{
+    motion_work::Work,
     snapshot::PhysicsSnapshotError,
-    solver_trajectory::{Curve, Domain, Kernel, Work},
+    solver_trajectory::{Curve, Domain, Kernel},
 };
 
 const MAX_SEGMENTS: usize = 1 << 20;

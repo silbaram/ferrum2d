@@ -1,7 +1,7 @@
 //! Completed-step capture consumes the actual tick's remaining proof work.
 //! Failure keeps the existing unavailable-capture contract, never a no-hit.
 use super::*;
-use crate::physics3d::solver_trajectory::{TrajectoryError, Work};
+use crate::physics3d::{motion_error::TrajectoryError, motion_work::Work};
 
 impl StepMotion {
     pub(in crate::physics3d) fn invalidate_capture(&mut self) {

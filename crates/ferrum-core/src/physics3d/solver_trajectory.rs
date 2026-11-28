@@ -51,35 +51,10 @@ pub(super) struct ShapeMotion {
     pub local_pose: rp::Pose,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Work {
-    pub used: u64,
-    pub limit: u64,
-}
-impl Work {
-    #[cfg_attr(test, track_caller)]
-    pub fn charge(&mut self, amount: u64) -> Result<(), TrajectoryError> {
-        let Some(next) = self.used.checked_add(amount) else {
-            #[cfg(test)]
-            if test_work_failure_selected() {
-                test_work_failure(amount, self.used, self.limit);
-            }
-            return Err(TrajectoryError::WorkLimit);
-        };
-        if next > self.limit {
-            #[cfg(test)]
-            if test_work_failure_selected() {
-                test_work_failure(amount, self.used, self.limit);
-            }
-            return Err(TrajectoryError::WorkLimit);
-        }
-        self.used = next;
-        Ok(())
-    }
-}
+pub(super) use super::motion_work::Work;
 
 #[cfg(test)]
-fn test_work_failure_selected() -> bool {
+pub(super) fn test_work_failure_selected() -> bool {
     matches!(std::thread::current().name(),
         Some("physics3d::character_coupling_tests::coupled_push_preserves_tangential_input_and_planar_locks"
         | "physics3d::character_coupling_tests::excluded_capsule_pairs_do_not_transmit_pushes_or_consume_pair_query_work"
@@ -90,7 +65,7 @@ fn test_work_failure_selected() -> bool {
 }
 #[cfg(test)]
 #[track_caller]
-fn test_work_failure(requested: u64, used: u64, limit: u64) {
+pub(super) fn test_work_failure(requested: u64, used: u64, limit: u64) {
     let caller = std::panic::Location::caller();
     eprintln!(
         "ACTUAL_WORK_DENIED case={:?} caller={}:{} requested={requested} used={used} limit={limit}",

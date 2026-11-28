@@ -304,7 +304,7 @@ impl PhysicsWorld3d {
     pub(in crate::physics3d) fn finish_interpolated_step_motion(&mut self) {
         // Charge captured geometry and BVH topology independently of the solver.
         const MAX_CAPTURE_WORK: u64 = 32 * 1024 * 1024;
-        let mut work = crate::physics3d::solver_trajectory::Work {
+        let mut work = crate::physics3d::motion_work::Work {
             used: 0,
             limit: MAX_CAPTURE_WORK,
         };
@@ -313,7 +313,7 @@ impl PhysicsWorld3d {
 
     pub(in crate::physics3d) fn finish_step_motion(
         &mut self,
-        work: &mut crate::physics3d::solver_trajectory::Work,
+        work: &mut crate::physics3d::motion_work::Work,
     ) {
         self.step_motion.finish(&self.backend.colliders, work);
     }
@@ -343,7 +343,7 @@ impl PhysicsWorld3d {
         let bounds = shape.compute_aabb(&pose);
         let bounds = bounds.merged(&bounds.translated(translation));
         out.clear();
-        let mut work = crate::physics3d::solver_trajectory::Work {
+        let mut work = crate::physics3d::motion_work::Work {
             used: 0,
             limit: 32 * 1024 * 1024,
         };

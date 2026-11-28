@@ -50,6 +50,7 @@ pub(crate) use kinematic_paths::KinematicPath;
 mod motion_error;
 mod motion_time;
 mod motion_trace;
+mod motion_work;
 mod one_way;
 mod solver_trajectory;
 pub(crate) use one_way::TerrainOneWay;
