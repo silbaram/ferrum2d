@@ -158,7 +158,7 @@ impl PhysicsWorld3d {
     pub(super) fn step_with_joints(&mut self) {
         if self.joints.is_empty() {
             self.step_backend();
-            self.refresh_queries();
+            self.advance_planar_angles(self.backend.integration_parameters.dt);
             return;
         }
         // Rapier only exposes impulses from its final internal substep. Run the
