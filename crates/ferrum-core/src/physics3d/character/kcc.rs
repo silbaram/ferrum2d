@@ -22,23 +22,29 @@ struct MovePlan {
 }
 
 impl PhysicsWorld3d {
-    pub(in crate::physics3d) fn step_character_kcc(
-        &mut self,
-        paths: &[KinematicPath],
-    ) -> Result<(), PhysicsError> {
+    pub(in crate::physics3d) fn step_character_kcc(&mut self) -> Result<(), PhysicsError> {
         if !self.begin_fixed_step() {
             return self.actual_motion_result();
         }
-        for path in paths {
-            let target = path.knots.last().expect("validated path").1;
-            self.backend.bodies[native_id(path.body)]
-                .set_next_kinematic_position(native_pose(target));
-        }
+        self.step_kcc_interval(&[], 0., 1., &mut Vec::new(), None);
+        self.finish_fixed_step();
+        self.actual_motion_result()
+    }
+
+    pub(in crate::physics3d) fn step_kcc_interval(
+        &mut self,
+        paths: &[KinematicPath],
+        start: f64,
+        end: f64,
+        stopped: &mut Vec<BodyId>,
+        pushes: Option<&mut BTreeMap<(BodyId, BodyId), rp::Vector>>,
+    ) {
         self.refresh_queries();
         let dt = self.backend.integration_parameters.dt;
         let blocked = self.stop_blocked_platform_groups(paths, dt);
-        for _ in &blocked {
+        for &body in &blocked {
             self.record_path_stop();
+            stopped.push(body);
         }
         let mut characters = std::mem::take(&mut self.characters);
         self.character_order.clear();
@@ -66,7 +72,7 @@ impl PhysicsWorld3d {
             }
         }
         self.separate_kcc_crowd(&mut plans, &mut characters);
-        self.push_characters_with_kinematics(&mut plans, &mut characters);
+        self.push_characters_with_kinematics(&mut plans, &mut characters, stopped, pushes);
         for plan in &plans {
             let translation = plan.translation;
             let runtime = characters.get_mut(&plan.id).unwrap();
@@ -80,7 +86,7 @@ impl PhysicsWorld3d {
             );
         }
         self.characters = characters;
-        self.step_with_joints(0., 1.);
+        self.step_with_joints(start, end);
         self.reconcile_dynamic_character_support();
         let mut characters = std::mem::take(&mut self.characters);
         for plan in &mut plans {
@@ -104,8 +110,6 @@ impl PhysicsWorld3d {
             }
         }
         self.characters = characters;
-        self.finish_fixed_step();
-        self.actual_motion_result()
     }
 
     fn kcc_ground(&self, plan: &MovePlan, distance: f32) -> Option<ColliderRef> {
@@ -520,9 +524,11 @@ impl PhysicsWorld3d {
 
         self.refresh_path_motion_queries();
         let schedule = self.backend_pass_schedule();
-        let mut blocked = Vec::new();
+        let mut blocked = BTreeSet::new();
+        let (mut casts, mut failures) = (0u32, 0u32);
         for id in platforms {
             let platform = &self.backend.bodies[native_id(id)];
+            let prescribed = paths.iter().find(|path| path.body == id);
             let next = if platform.body_type() == rp::RigidBodyType::KinematicPositionBased {
                 *platform.next_position()
             } else {
@@ -539,9 +545,8 @@ impl PhysicsWorld3d {
                 .map(|(&rider, _)| native_id(rider))
                 .collect();
             let members = std::iter::once(native_id(id)).chain(riders.iter().copied());
-            let sweep_sensors = paths
-                .iter()
-                .any(|path| path.body == id && path.sweep_sensors);
+            let sweep_sensors = prescribed.is_some_and(|path| path.sweep_sensors);
+            let mut blocker = None;
             let blocked_group = members.clone().any(|handle| {
                 self.backend.bodies[handle]
                     .colliders()
@@ -596,21 +601,67 @@ impl PhysicsWorld3d {
                                 }
                                 let other_body =
                                     other.parent().and_then(|id| self.backend.bodies.get(id));
-                                if other_body
-                                    .is_some_and(|body| body.is_dynamic() || !body.is_enabled())
-                                {
+                                if other_body.is_some_and(|body| !body.is_enabled()) {
                                     return false;
                                 }
                                 let other_motion = other_body.map_or_else(
                                     || NonlinearRigidMotion::constant_position(*other.position()),
-                                    |body| accepted_collider_motion(body, other, dt, &schedule),
+                                    |body| {
+                                        if !body.is_dynamic() {
+                                            return accepted_collider_motion(
+                                                body, other, dt, &schedule,
+                                            );
+                                        }
+                                        let predicted =
+                                            super::super::character_dynamics::predicted_pose(
+                                                body,
+                                                self.backend.gravity,
+                                                dt,
+                                            );
+                                        let local = other
+                                            .position_wrt_parent()
+                                            .copied()
+                                            .unwrap_or_default();
+                                        NonlinearRigidMotion::new(
+                                            *other.position(),
+                                            local.inverse() * body.local_center_of_mass(),
+                                            predicted * body.local_center_of_mass()
+                                                - *body.position() * body.local_center_of_mass(),
+                                            (predicted.rotation * body.rotation().inverse())
+                                                .to_scaled_axis(),
+                                        )
+                                    },
                                 );
+                                if let Some(body) = other_body.filter(|body| body.is_dynamic()) {
+                                    // Discrete contacts cover poses that arrive together. Hold a
+                                    // fast authored path that would cross a non-CCD body's whole shape.
+                                    if handle != native_id(id)
+                                        || prescribed.is_none()
+                                        || body.is_ccd_enabled() && self.config.solver.continuous
+                                        || !motion_bounds(other.shape(), &other_motion)
+                                            .intersects(&bounds)
+                                        || collider
+                                            .shape()
+                                            .compute_aabb(&motion.position_at_time(1.))
+                                            .intersects(
+                                                &other.shape().compute_aabb(
+                                                    &other_motion.position_at_time(1.),
+                                                ),
+                                            )
+                                    {
+                                        return false;
+                                    }
+                                }
+                                if motion.angvel == rp::Vector::ZERO
+                                    && other_motion.angvel == rp::Vector::ZERO
+                                    && motion.linvel == other_motion.linvel
+                                {
+                                    return false;
+                                }
+                                casts = casts.saturating_add(1);
                                 let hit = if motion.angvel == rp::Vector::ZERO
                                     && other_motion.angvel == rp::Vector::ZERO
                                 {
-                                    if motion.linvel == other_motion.linvel {
-                                        return false;
-                                    }
                                     cast_shapes(
                                         &motion.start,
                                         motion.linvel,
@@ -635,18 +686,34 @@ impl PhysicsWorld3d {
                                         false,
                                     )
                                 };
-                                hit.is_ok_and(|hit| hit.is_some_and(|hit| hit.time_of_impact < 1.))
+                                let is_blocked = match hit {
+                                    Ok(hit) => hit.is_some_and(|hit| hit.time_of_impact < 1.),
+                                    Err(_) => {
+                                        failures = failures.saturating_add(1);
+                                        true
+                                    }
+                                };
+                                if is_blocked && other_body.is_some_and(is_moving_kinematic) {
+                                    blocker = other.parent().map(|body| {
+                                        let (slot, generation) = body.into_raw_parts();
+                                        BodyId { slot, generation }
+                                    });
+                                }
+                                is_blocked
                             })
                     })
             });
             if blocked_group {
-                blocked.push(id);
+                blocked.insert(id);
+                // The rider and the incoming carrier share the same obstructed gap.
+                blocked.extend(blocker);
             }
         }
+        self.record_path_queries(casts, failures, false);
         for &id in &blocked {
             self.stop_prescribed_body(id);
         }
-        blocked
+        blocked.into_iter().collect()
     }
 
     fn separate_kcc_crowd(

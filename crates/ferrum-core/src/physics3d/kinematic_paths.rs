@@ -8,6 +8,7 @@ pub(super) mod wake_join;
 use super::world::{native_id, native_pose};
 use super::{BodyId, CharacterState, PhysicsError, PhysicsWorld3d, Pose};
 use rapier3d::prelude as rp;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct KinematicPath {
@@ -169,12 +170,123 @@ impl PhysicsWorld3d {
                 return Err(PhysicsError::InvalidBody);
             }
         }
-        #[cfg(test)]
-        if self.experimental_character_kcc_enabled() {
-            return self.step_character_kcc(paths);
+        if self.backend_motion_enabled() {
+            self.step_kinematic_tick(paths);
+            return self.actual_motion_result();
         }
-        self.step_kinematic_tick(paths);
+        self.step_rapier_kinematic_tick(paths)
+    }
+
+    fn step_rapier_kinematic_tick(&mut self, paths: &[KinematicPath]) -> Result<(), PhysicsError> {
+        let mut scratch = std::mem::take(&mut self.tick_outputs.paths);
+        self.prepare_path_scratch(paths, &mut scratch);
+        let native_dt = self.backend.integration_parameters.dt;
+        let mut slices = Vec::with_capacity(scratch.cuts.len());
+        let mut start = 0.;
+        for &end in &scratch.cuts {
+            let seconds = super::character_motion::backend::native_duration(
+                Time::from(native_dt) * (end - start),
+            );
+            let Ok(seconds) = seconds else {
+                self.tick_outputs.paths = scratch;
+                return Err(PhysicsError::InvalidBody);
+            };
+            slices.push((start, end, seconds));
+            start = end;
+        }
+        if !self.begin_fixed_step_with_paths(true) {
+            self.tick_outputs.paths = scratch;
+            return self.actual_motion_result();
+        }
+
+        let mut stopped = Vec::new();
+        let mut pushes = BTreeMap::new();
+        let velocity_starts: Vec<_> = self
+            .backend
+            .bodies
+            .iter()
+            .filter(|(_, body)| {
+                body.is_enabled() && body.body_type() == rp::RigidBodyType::KinematicVelocityBased
+            })
+            .map(|(handle, body)| (handle, *body.position()))
+            .collect();
+        for (start, end, seconds) in slices {
+            self.backend.integration_parameters.dt = seconds;
+            self.set_path_targets(paths, &scratch, end);
+            self.step_kcc_interval(paths, start, end, &mut stopped, Some(&mut pushes));
+            for body in stopped.drain(..) {
+                if let Some(index) = scratch.ids.iter().position(|&id| id == body) {
+                    scratch.stopped[index] = Some(0.);
+                }
+                if start > 0. {
+                    self.rewind_kinematic_path(&scratch, body, &pushes, &velocity_starts);
+                }
+                scratch.stopped_bodies.push(body);
+            }
+            self.accumulate_character_slice(&mut scratch);
+        }
+        self.backend.integration_parameters.dt = native_dt;
+        self.character_motion.backend_motion.committed_seconds = Time::from(native_dt);
+        self.publish_character_slices(&scratch, native_dt);
+        self.finish_fixed_step();
+        std::mem::swap(&mut self.path_scratch, &mut scratch);
+        self.tick_outputs.paths = scratch;
         self.actual_motion_result()
+    }
+
+    fn rewind_kinematic_path(
+        &mut self,
+        scratch: &PathScratch,
+        body: BodyId,
+        pushes: &BTreeMap<(BodyId, BodyId), rp::Vector>,
+        velocity_starts: &[(rp::RigidBodyHandle, rp::Pose)],
+    ) {
+        let handle = native_id(body);
+        let original = scratch
+            .targets
+            .iter()
+            .find(|(id, _, _)| *id == handle)
+            .map(|(_, start, _)| *start)
+            .or_else(|| {
+                velocity_starts
+                    .iter()
+                    .find(|(id, _)| *id == handle)
+                    .map(|(_, start)| *start)
+            });
+        if let Some(original) = original {
+            let platform = &mut self.backend.bodies[handle];
+            platform.set_position(original, true);
+            self.query_updates.extend_from_slice(platform.colliders());
+        }
+        for (id, total) in &scratch.characters {
+            let carry = if total.carried_by == Some(body) {
+                rp::Vector::from(total.carry_translation)
+            } else {
+                rp::Vector::ZERO
+            };
+            let pushed = pushes
+                .get(&(body, *id))
+                .copied()
+                .unwrap_or(rp::Vector::ZERO);
+            let undone = carry + pushed;
+            if undone == rp::Vector::ZERO {
+                continue;
+            }
+            let runtime = self.characters.get_mut(id).expect("live rider");
+            let rider = &mut self.backend.bodies[native_id(*id)];
+            rider.set_position(
+                rp::Pose::from_translation(-undone) * *rider.position(),
+                true,
+            );
+            self.query_updates.extend_from_slice(rider.colliders());
+            let translation = rp::Vector::from(runtime.state.translation) - undone;
+            runtime.state.translation = translation.to_array();
+            if carry != rp::Vector::ZERO {
+                runtime.state.carry_translation = (-carry).to_array();
+                runtime.state.carried_by = None;
+            }
+        }
+        self.refresh_queries();
     }
 
     pub(super) fn step_kinematic_tick(&mut self, paths: &[KinematicPath]) {
@@ -182,35 +294,7 @@ impl PhysicsWorld3d {
             return;
         }
         let mut scratch = std::mem::take(&mut self.tick_outputs.paths);
-        scratch.cuts.clear();
-        scratch.cuts.push(1.0);
-        scratch.stopped_bodies.clear();
-        scratch.targets.clear();
-        scratch.characters.clear();
-        scratch.ids.clear();
-        scratch.ids.extend(paths.iter().map(|p| p.body));
-        scratch.stopped.clear();
-        scratch.stopped.resize(paths.len(), None);
-        for path in paths {
-            scratch
-                .cuts
-                .extend(path.knots.iter().map(|k| Time::from(k.0)));
-        }
-        scratch.cuts.sort_unstable_by(Time::total_cmp);
-        scratch.cuts.dedup();
-        scratch
-            .targets
-            .extend(self.backend.bodies.iter().filter_map(|(id, body)| {
-                let (slot, generation) = id.into_raw_parts();
-                (body.body_type() == rp::RigidBodyType::KinematicPositionBased
-                    && !self.characters.contains_key(&BodyId { slot, generation }))
-                .then_some((id, *body.position(), *body.next_position()))
-            }));
-        scratch.characters.extend(
-            self.characters
-                .keys()
-                .map(|&id| (id, CharacterState::default())),
-        );
+        self.prepare_path_scratch(paths, &mut scratch);
         if self.configure_actual_paths(paths).is_err() {
             self.finish_fixed_step();
             self.tick_outputs.paths = scratch;
@@ -395,39 +479,7 @@ impl PhysicsWorld3d {
                     }
                     let progressed = self.actual_motion_completed_time() > credit_start;
                     if accepted || progressed {
-                        for (id, total) in &mut scratch.characters {
-                            if let Some(runtime) = self.characters.get(id) {
-                                let current = &runtime.state;
-                                for axis in 0..3 {
-                                    total.translation[axis] += current.translation[axis];
-                                    total.carry_translation[axis] +=
-                                        current.carry_translation[axis];
-                                }
-                                total.carried_by = current.carried_by.or(total.carried_by);
-                                total.hit_ceiling |= current.hit_ceiling;
-                                total.blocked_by_character |= current.blocked_by_character;
-                                total.character_pair_casts += current.character_pair_casts;
-                                total.character_pair_contact_checks +=
-                                    current.character_pair_contact_checks;
-                                total.character_coupling_iterations +=
-                                    current.character_coupling_iterations;
-                                total.character_coupling_iteration_limit |=
-                                    current.character_coupling_iteration_limit;
-                                total.failed_pair_casts += current.failed_pair_casts;
-                                total.moving_obstacle_casts += current.moving_obstacle_casts;
-                                total.failed_moving_obstacle_casts +=
-                                    current.failed_moving_obstacle_casts;
-                                total.moving_obstacle_contact_checks +=
-                                    current.moving_obstacle_contact_checks;
-                                total.failed_moving_obstacle_contacts +=
-                                    current.failed_moving_obstacle_contacts;
-                                total.blocked_by_moving_obstacle |=
-                                    current.blocked_by_moving_obstacle;
-                                total.moving_obstacle_iteration_limit |=
-                                    current.moving_obstacle_iteration_limit;
-                                total.dropped_contacts += current.dropped_contacts;
-                            }
-                        }
+                        self.accumulate_character_slice(&mut scratch);
                     }
                     if !accepted {
                         if progressed {
@@ -499,11 +551,81 @@ impl PhysicsWorld3d {
             }
         }
         self.backend.integration_parameters.dt = native_dt;
+        self.publish_character_slices(&scratch, native_dt);
+        self.finish_fixed_step();
+        if self.actual_motion_completed_time() > 0. || self.actual_motion_result().is_ok() {
+            std::mem::swap(&mut self.path_scratch, &mut scratch);
+        }
+        self.tick_outputs.paths = scratch;
+    }
+    fn prepare_path_scratch(&self, paths: &[KinematicPath], scratch: &mut PathScratch) {
+        scratch.cuts.clear();
+        scratch.cuts.push(1.0);
+        scratch.stopped_bodies.clear();
+        scratch.targets.clear();
+        scratch.characters.clear();
+        scratch.ids.clear();
+        scratch.ids.extend(paths.iter().map(|p| p.body));
+        scratch.stopped.clear();
+        scratch.stopped.resize(paths.len(), None);
+        for path in paths {
+            scratch
+                .cuts
+                .extend(path.knots.iter().map(|k| Time::from(k.0)));
+        }
+        scratch.cuts.sort_unstable_by(Time::total_cmp);
+        scratch.cuts.dedup();
+        scratch
+            .targets
+            .extend(self.backend.bodies.iter().filter_map(|(id, body)| {
+                let (slot, generation) = id.into_raw_parts();
+                (body.body_type() == rp::RigidBodyType::KinematicPositionBased
+                    && !self.characters.contains_key(&BodyId { slot, generation }))
+                .then_some((id, *body.position(), *body.next_position()))
+            }));
+        scratch.characters.extend(
+            self.characters
+                .keys()
+                .map(|&id| (id, CharacterState::default())),
+        );
+    }
+    fn accumulate_character_slice(&self, scratch: &mut PathScratch) {
+        for (id, total) in &mut scratch.characters {
+            if let Some(runtime) = self.characters.get(id) {
+                let current = &runtime.state;
+                for axis in 0..3 {
+                    total.translation[axis] += current.translation[axis];
+                    total.carry_translation[axis] += current.carry_translation[axis];
+                }
+                total.carried_by = current.carried_by.or(total.carried_by);
+                total.hit_ceiling |= current.hit_ceiling;
+                total.blocked_by_character |= current.blocked_by_character;
+                total.character_pair_casts += current.character_pair_casts;
+                total.character_pair_contact_checks += current.character_pair_contact_checks;
+                total.character_coupling_iterations += current.character_coupling_iterations;
+                total.character_coupling_iteration_limit |=
+                    current.character_coupling_iteration_limit;
+                total.failed_pair_casts += current.failed_pair_casts;
+                total.moving_obstacle_casts += current.moving_obstacle_casts;
+                total.failed_moving_obstacle_casts += current.failed_moving_obstacle_casts;
+                total.moving_obstacle_contact_checks += current.moving_obstacle_contact_checks;
+                total.failed_moving_obstacle_contacts += current.failed_moving_obstacle_contacts;
+                total.blocked_by_moving_obstacle |= current.blocked_by_moving_obstacle;
+                total.moving_obstacle_iteration_limit |= current.moving_obstacle_iteration_limit;
+                total.dropped_contacts += current.dropped_contacts;
+            }
+        }
+    }
+    fn publish_character_slices(&mut self, scratch: &PathScratch, native_dt: f32) {
         for (id, total) in &scratch.characters {
             if let Some(runtime) = self.characters.get_mut(id) {
                 runtime.state.translation = total.translation;
                 runtime.state.velocity = total.translation.map(|v| v / native_dt);
-                runtime.state.carried_by = total.carried_by;
+                runtime.state.carried_by = if total.carry_translation == [0.; 3] {
+                    None
+                } else {
+                    total.carried_by
+                };
                 runtime.state.carry_translation = total.carry_translation;
                 runtime.state.hit_ceiling = total.hit_ceiling;
                 runtime.state.blocked_by_character = total.blocked_by_character;
@@ -524,11 +646,6 @@ impl PhysicsWorld3d {
                 runtime.state.dropped_contacts = total.dropped_contacts;
             }
         }
-        self.finish_fixed_step();
-        if self.actual_motion_completed_time() > 0. || self.actual_motion_result().is_ok() {
-            std::mem::swap(&mut self.path_scratch, &mut scratch);
-        }
-        self.tick_outputs.paths = scratch;
     }
     fn set_path_targets(&mut self, paths: &[KinematicPath], scratch: &PathScratch, time: Time) {
         for &(id, original, target) in &scratch.targets {
@@ -626,6 +743,106 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    fn solid(w: &mut PhysicsWorld3d, kind: BodyKind, x: f32, shape: Shape) -> BodyId {
+        w.create_body(
+            BodyDesc {
+                kind,
+                pose: pose(x, 0.),
+                ..Default::default()
+            },
+            ColliderDesc::new(shape),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn rapier_path_pushes_at_a_turnaround_and_holds_at_a_late_squeeze() {
+        for blocked in [false, true] {
+            let mut w = PhysicsWorld3d::new(WorldConfig {
+                gravity: [0.; 3],
+                step_seconds: 0.1,
+                ..Default::default()
+            })
+            .unwrap();
+            let wall = Shape::Box {
+                half_extents: [0.25, 2., 2.],
+            };
+            let moving = solid(&mut w, BodyKind::KinematicPosition, 3., wall.clone());
+            let actor = solid(
+                &mut w,
+                BodyKind::KinematicPosition,
+                0.,
+                Shape::Capsule {
+                    half_height: 0.25,
+                    radius: 0.25,
+                },
+            );
+            w.enable_character(actor, Default::default()).unwrap();
+            let knots = if blocked {
+                solid(&mut w, BodyKind::Fixed, -1.5, wall);
+                vec![(0.5, pose(-0.3, 0.)), (1., pose(-3., 0.))]
+            } else {
+                vec![(0.5, pose(-3., 0.)), (1., pose(3., 0.))]
+            };
+            w.step_with_kinematic_paths(&[KinematicPath {
+                body: moving,
+                sweep_sensors: false,
+                knots,
+            }])
+            .unwrap();
+            let x = w.body_state(actor).unwrap().pose.position[0];
+            assert_eq!(w.body_state(moving).unwrap().pose.position[0], 3.);
+            assert_eq!(w.step_statistics().backend_steps, 2);
+            if blocked {
+                assert_eq!(x, 0.);
+                assert_eq!(w.kinematic_path_progress(moving), (0., true));
+                assert_eq!(w.step_statistics().kinematic_path_stops, 1);
+            } else {
+                assert!((x + 3.51).abs() <= 0.005, "x={x}");
+                assert_eq!(w.kinematic_path_progress(moving), (1., false));
+                assert_eq!(w.step_statistics().kinematic_path_stops, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn fast_rapier_path_cannot_pass_through_a_dynamic_body_without_ccd() {
+        let mut w = PhysicsWorld3d::new(WorldConfig {
+            gravity: [0.; 3],
+            step_seconds: 0.1,
+            ..Default::default()
+        })
+        .unwrap();
+        let platform = solid(
+            &mut w,
+            BodyKind::KinematicPosition,
+            3.,
+            Shape::Box {
+                half_extents: [0.1, 2., 2.],
+            },
+        );
+        let object = solid(
+            &mut w,
+            BodyKind::Dynamic,
+            0.,
+            Shape::Box {
+                half_extents: [0.1; 3],
+            },
+        );
+        w.step_with_kinematic_paths(&[KinematicPath {
+            body: platform,
+            sweep_sensors: false,
+            knots: vec![(1., pose(-3., 0.))],
+        }])
+        .unwrap();
+        let platform_x = w.body_state(platform).unwrap().pose.position[0];
+        let object_x = w.body_state(object).unwrap().pose.position[0];
+        assert!(
+            platform_x - object_x >= 0.195,
+            "platform={platform_x}; object={object_x}"
+        );
     }
     #[test]
     fn stationary_kinematic_targets_preserve_pose_bits_at_fractional_cuts() {

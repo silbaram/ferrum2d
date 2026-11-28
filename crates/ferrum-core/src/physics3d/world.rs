@@ -335,7 +335,7 @@ impl PhysicsWorld3d {
     /// actual-motion suffix is never an instruction to run a second solver.
     pub(crate) fn step_checked(&mut self) -> Result<(), PhysicsError> {
         if !self.characters.is_empty() && !self.backend_motion_enabled() {
-            return self.step_character_kcc(&[]);
+            return self.step_character_kcc();
         }
         if self.has_moving_character_obstacles() || self.backend_motion_enabled() {
             self.step_kinematic_tick(&[]);

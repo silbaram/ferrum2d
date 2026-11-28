@@ -24,6 +24,8 @@ impl PhysicsWorld3d {
         &mut self,
         plans: &mut [MovePlan],
         characters: &mut BTreeMap<BodyId, CharacterRuntime>,
+        blocked: &mut Vec<BodyId>,
+        mut pushes: Option<&mut BTreeMap<(BodyId, BodyId), rp::Vector>>,
     ) {
         let movers: Vec<_> = self
             .backend
@@ -47,11 +49,17 @@ impl PhysicsWorld3d {
                 .is_err()
                 || !self.try_kinematic_pushes(mover, plans, characters, &hits, &mut accepted);
             if stopped {
-                self.stop_prescribed_body(body_id(mover));
+                let body = body_id(mover);
+                self.stop_prescribed_body(body);
                 self.record_character_stop();
                 self.record_path_stop();
+                blocked.push(body);
             } else {
                 for (actor, translation) in accepted.drain(..) {
+                    if let Some(steps) = pushes.as_deref_mut() {
+                        *steps.entry((body_id(mover), plans[actor].id)).or_default() +=
+                            translation - plans[actor].translation;
+                    }
                     plans[actor].translation = translation;
                 }
             }
