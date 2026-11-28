@@ -6,11 +6,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
 import { clickPlacementControl, showPlacementAssetPanel, showPlacementBottom, showPlacementInspector } from "./placement-panel-navigation.mjs";
+import { prepareStudioDemoBuild } from "./placement-test-build.mjs";
 
-// Build the opt-in QA host separately: VITE_FERRUM_STUDIO_SAVE=true vite build --outDir <artifact>.
+// Build the opt-in QA host separately: VITE_FERRUM_STUDIO_SAVE=true vite build --mode demo --outDir <artifact>.
+// The fixture replaces the default garden scene, which only the web demo build opens.
 // This runner never rebuilds or changes product output. Its save host writes only evidence here.
 const out = resolve("artifacts/physics-3d/goal-closure/studio-native-authoring/browser");
-const root = resolve(process.env.FERRUM_NATIVE_TEMPLATE_STUDIO_ROOT ?? "apps/studio/dist");
+const root = process.env.FERRUM_NATIVE_TEMPLATE_STUDIO_ROOT
+  ? resolve(process.env.FERRUM_NATIVE_TEMPLATE_STUDIO_ROOT) : await prepareStudioDemoBuild({ save: true });
 const fixturePath = resolve("tests/fixtures/placement.native-templates.scene-authoring.json");
 const fixtureBytes = await readFile(fixturePath), fixture = JSON.parse(fixtureBytes);
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");

@@ -1,8 +1,46 @@
 import assert from "node:assert/strict";
 import { showPlacementMenu } from "./placement-panel-navigation.mjs";
 
-/** Always exercise the real production bundle/assets, independently of private regression builds. */
+const exampleFiles = [
+  "/placement.garden.scene-authoring.json",
+  "/placement.village.scene-authoring.json",
+  "/assets/lantern-garden/manifest.json",
+  "/assets/rpg-village/manifest.json",
+];
+
+/** The real product bundle (installed desktop Studio) ships no examples and starts from a new 2D scene. */
 export async function smokePlacementProductionDefault(browser, origin, timeoutMs) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }), errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  try {
+    for (const file of ["/placement.scene-authoring.json", "/placement.hd2d.scene-authoring.json", ...exampleFiles])
+      assert.equal((await page.request.get(origin + file)).status(), 404, `${file} must not ship in the product build`);
+    const catalog = await (await page.request.get(origin + "/placement-scenes.json")).json();
+    assert.deepEqual(catalog.scenes, [], "the product build lists no project scenes");
+    const requests = [];
+    page.on("request", request => requests.push(new URL(request.url()).pathname));
+    for (const [route, notice] of [["/", false], ["/?scene=default", false], ["/?scene=2d", true], ["/?scene=garden", true], ["/?scene=village", true], ["/?scene=hd2d", true]]) {
+      requests.length = 0;
+      await page.goto(origin + route, { waitUntil: "networkidle" });
+      await page.waitForFunction(() => window.ferrumPlacementViewerRuntimeFrame !== undefined
+        && window.ferrumPlacementViewerState?.instances !== undefined, undefined, { timeout: timeoutMs });
+      assert.equal(await page.evaluate(() => window.ferrumPlacementViewerState.instances.length), 0, `${route} starts with an empty scene`);
+      assert.equal(await page.evaluate(() => window.ferrumPlacementWorkspaceMode), "2d", `${route} starts in 2D`);
+      assert(!requests.some(path => exampleFiles.includes(path) || path.startsWith("/assets/lantern-garden/") || path.startsWith("/assets/rpg-village/")),
+        `${route} must not request example files: ${requests.join(", ")}`);
+      assert.equal(await page.locator("[data-placement-examples-unavailable]").count(), notice ? 1 : 0, `${route} example notice`);
+    }
+    await page.locator("[data-placement-language]").selectOption("en");
+    await showPlacementMenu(page, "file");
+    assert.equal(await page.locator("[data-placement-example]").count(), 0, "the File menu has no Examples entry");
+    assert.equal(await page.locator(".placement-file-examples").count(), 0);
+    assert.deepEqual(errors, []);
+    return { realProductionBundle: true, defaultScene: "new 2D scene", instances: 0, publicScenes: 0, examplesAbsent: true, exampleAliasesStartBlank: true, examplesMenuAbsent: true };
+  } finally { await page.close(); }
+}
+
+/** The web demo build (`--mode demo`, published on Pages) opens the bundled examples as before. */
+export async function smokePlacementDemoDefault(browser, origin, timeoutMs) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }), errors = [];
   page.on("pageerror", error => errors.push(error.message));
   try {
@@ -51,6 +89,6 @@ export async function smokePlacementProductionDefault(browser, origin, timeoutMs
       assert.equal(await page.evaluate(() => window.ferrumPlacementViewerState.instances.some(i => i.instanceId === "crate_ground")), false);
     }
     assert.deepEqual(errors, []);
-    return { realProductionBundle: true, defaultScene: "garden", instances: 465, publicScenes: 2, basicExampleAbsent: true, basicHd2dExampleAbsent: true, hd2dAlias: "village", aliases: true, sceneTabsUnclipped: true, exampleDeduplication: true, playStop: true };
+    return { demoBundle: true, defaultScene: "garden", instances: 465, publicScenes: 2, basicExampleAbsent: true, basicHd2dExampleAbsent: true, hd2dAlias: "village", aliases: true, sceneTabsUnclipped: true, exampleDeduplication: true, playStop: true };
   } finally { await page.close(); }
 }
