@@ -1,6 +1,6 @@
 //! Cold saved-payload contracts. No solver state, input or force is consumed.
 use super::{CharacterInput, CharacterPreview, CharacterRuntime, CharacterState};
-use crate::physics3d::{solver_trajectory::Time, types::valid_vector, Space};
+use crate::physics3d::{motion_time::Time, types::valid_vector, Space};
 use rapier3d::prelude as rp;
 
 fn normalized_time(value: Time) -> bool {

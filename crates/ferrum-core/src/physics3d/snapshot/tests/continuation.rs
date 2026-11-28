@@ -153,15 +153,33 @@ fn native_snapshot_preserves_floor_one_way_conveyor_and_correction_policies() {
 }
 
 #[test]
-fn native_snapshot_retains_path_stop_and_rotating_piecewise_motion_queries() {
+fn native_snapshot_replays_path_stop_carry_and_interpolated_motion_queries() {
     let mut w = PhysicsWorld3d::new(WorldConfig {
         gravity: [0.; 3],
         step_seconds: 0.1,
         ..WorldConfig::default()
     })
     .unwrap();
-    let p = cube(&mut w, BodyKind::KinematicPosition, [0.; 3]);
-    cube(&mut w, BodyKind::Fixed, [3., 0., 0.]);
+    let platform = body(
+        &mut w,
+        BodyKind::KinematicPosition,
+        [0.; 3],
+        Shape::Box {
+            half_extents: [0.5, 0.2, 2.],
+        },
+    );
+    let rider = body(
+        &mut w,
+        BodyKind::KinematicPosition,
+        [0., 0.71, 0.],
+        Shape::Capsule {
+            half_height: 0.25,
+            radius: 0.25,
+        },
+    );
+    w.enable_character(rider, CharacterConfig::default())
+        .unwrap();
+    let wall = cube(&mut w, BodyKind::Fixed, [2., 0., 0.]);
     let rotor = body(
         &mut w,
         BodyKind::KinematicPosition,
@@ -170,63 +188,105 @@ fn native_snapshot_retains_path_stop_and_rotating_piecewise_motion_queries() {
             half_extents: [2., 0.1, 0.1],
         },
     );
-    let rotated = Pose {
-        position: [0., 10., 0.],
-        rotation: rp::Rotation::from_rotation_z(std::f32::consts::FRAC_PI_2).to_array(),
-    };
-    w.force_character_motion_proof();
+    w.step_checked().unwrap();
+    assert_eq!(
+        w.character_state(rider).unwrap().ground.unwrap().body,
+        platform
+    );
     w.set_step_motion_enabled(true);
+    let pose_at = |x| Pose {
+        position: [x, 0., 0.],
+        ..Pose::default()
+    };
+    let rotor_pose = |angle| Pose {
+        position: [0., 10., 0.],
+        rotation: rp::Rotation::from_rotation_z(angle).to_array(),
+    };
     w.step_with_kinematic_paths(&[
         KinematicPath {
-            body: p,
+            body: platform,
             sweep_sensors: false,
-            knots: vec![(
-                1.,
-                Pose {
-                    position: [10., 0., 0.],
-                    ..Pose::default()
-                },
-            )],
+            knots: vec![(0.5, pose_at(0.5)), (1., pose_at(3.))],
         },
         KinematicPath {
             body: rotor,
             sweep_sensors: false,
             knots: vec![
-                (0.5, rotated),
-                (
-                    1.,
-                    Pose {
-                        position: [0., 10., 0.],
-                        ..Pose::default()
-                    },
-                ),
+                (0.5, rotor_pose(std::f32::consts::FRAC_PI_6)),
+                (1., rotor_pose(std::f32::consts::FRAC_PI_2)),
             ],
         },
     ])
     .unwrap();
-    let progress = w.kinematic_path_progress(p);
-    assert!(progress.1 && progress.0 > 0. && progress.0 < 1.);
+    assert_eq!(w.kinematic_path_progress_precise(platform), (0.5, true));
+    assert_eq!(w.body_state(platform).unwrap().pose, pose_at(0.5));
+    assert_eq!(w.character_state(rider).unwrap().carried_by, Some(platform));
+    assert!((w.character_state(rider).unwrap().carry_translation[0] - 0.5).abs() < 0.005);
+
     let mut restored = PhysicsWorld3d::from_snapshot(&w.capture_snapshot().unwrap()).unwrap();
-    restored.force_character_motion_proof();
-    assert_eq!(restored.kinematic_path_progress(p), progress);
-    same(&w, &restored, &[p, rotor]);
-    let (mut a, mut b) = (Vec::new(), Vec::new());
-    for point in [[1., 0., 0.], [0., 11., 0.]] {
-        let pose = Pose {
-            position: point,
-            ..Pose::default()
-        };
-        let shape = Shape::Sphere { radius: 0.1 };
-        assert_eq!(
-            w.sweep_step_motion(&shape, pose, [0.; 3], &QueryFilter::default(), &mut a, 64),
-            restored.sweep_step_motion(&shape, pose, [0.; 3], &QueryFilter::default(), &mut b, 64)
-        );
-        assert!(!a.is_empty(), "{point:?}");
-        assert_eq!(a, b);
+    let query = |world: &PhysicsWorld3d, position, delta| {
+        let mut hits = Vec::new();
+        world
+            .sweep_step_motion(
+                &Shape::Sphere { radius: 0.1 },
+                Pose {
+                    position,
+                    ..Pose::default()
+                },
+                delta,
+                &QueryFilter::default(),
+                &mut hits,
+                16,
+            )
+            .unwrap();
+        hits
+    };
+    let hits = |world: &PhysicsWorld3d, x| {
+        let hits = query(world, [x, 0., 2.5], [0., 0., -5.]);
+        assert!(hits.iter().any(|hit| hit.target.body == platform));
+        hits
+    };
+    assert_eq!(
+        restored.kinematic_path_progress_precise(platform),
+        (0.5, true)
+    );
+    assert_eq!(hits(&w, 0.25), hits(&restored, 0.25));
+    // This point is clear at both endpoints and the turn reaches it in between.
+    let rotor_hits = query(&w, [1., 11., 0.], [0.; 3]);
+    assert!(rotor_hits
+        .iter()
+        .any(|hit| hit.target.body == rotor && (0.2..0.8).contains(&hit.fraction)));
+    assert_eq!(rotor_hits, query(&restored, [1., 11., 0.], [0.; 3]));
+    same(&w, &restored, &[platform, rider, rotor]);
+
+    for world in [&mut w, &mut restored] {
+        world.remove_body(wall).unwrap();
     }
-    w.step();
-    restored.step();
-    same(&w, &restored, &[p, rotor]);
+    for tick in 1..=6 {
+        let from = 0.5 + (tick - 1) as f32 * 0.25;
+        let to = from + 0.25;
+        let continuation = KinematicPath {
+            body: platform,
+            sweep_sensors: false,
+            knots: vec![(0.5, pose_at(f32::midpoint(from, to))), (1., pose_at(to))],
+        };
+        for world in [&mut w, &mut restored] {
+            world
+                .step_with_kinematic_paths(std::slice::from_ref(&continuation))
+                .unwrap();
+            assert_eq!(world.kinematic_path_progress_precise(platform), (1., false));
+            assert_eq!(world.body_state(platform).unwrap().pose, pose_at(to));
+            let state = world.character_state(rider).unwrap();
+            assert_eq!(state.ground.unwrap().body, platform);
+            assert_eq!(state.carried_by, Some(platform));
+            assert!((state.carry_translation[0] - 0.25).abs() < 0.005);
+        }
+        assert_eq!(
+            hits(&w, f32::midpoint(from, to)),
+            hits(&restored, f32::midpoint(from, to))
+        );
+        same(&w, &restored, &[platform, rider, rotor]);
+    }
 }
 
 #[test]

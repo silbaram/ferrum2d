@@ -101,97 +101,68 @@ fn character_external_impulse_is_consumed_once() {
 }
 
 #[test]
-#[ignore = "P2b measures the finite-mass reaction in the trial and baseline"]
-fn p2b_compare_finite_mass_push() {
-    for mode in super::p1b_tests::MODES {
-        let mut w = world();
-        let a = actor(&mut w, 0., 2.);
-        let b = dynamic(&mut w, 1.);
-        mode.configure(&mut w);
-        w.set_character_input(
+fn game_impulse_preserves_momentum_when_the_character_pushes_a_box() {
+    for space in [Space::PlanarXy, Space::Spatial] {
+        let mut w = PhysicsWorld3d::new(WorldConfig {
+            space,
+            gravity: [0.; 3],
+            step_seconds: 0.01,
+            ..WorldConfig::default()
+        })
+        .unwrap();
+        let a = w
+            .create_body(
+                BodyDesc {
+                    kind: BodyKind::KinematicPosition,
+                    pose: Pose {
+                        position: [-2., 0., 0.],
+                        ..Pose::default()
+                    },
+                    ..BodyDesc::default()
+                },
+                ColliderDesc::new(Shape::Capsule {
+                    half_height: 0.5,
+                    radius: 0.25,
+                }),
+            )
+            .unwrap();
+        w.enable_character(
             a,
-            CharacterInput {
-                velocity: [10., 0., 0.],
-                ..Default::default()
+            CharacterConfig {
+                push_mass: 2.,
+                step_height: 0.,
+                snap_distance: 0.,
+                ..CharacterConfig::default()
             },
         )
         .unwrap();
-        let result = w.step_checked();
-        let actor = w.body_state(a).unwrap();
-        let dynamic = w.body_state(b).unwrap();
-        let momentum = 2. * (actor.linear_velocity[0] + dynamic.linear_velocity[0]);
-        println!("P2B_FINITE_PUSH mode={mode:?} result={result:?} actor_x={} actor_vx={} dynamic_x={} dynamic_vx={} momentum={momentum}",
-            actor.pose.position[0], actor.linear_velocity[0],
-            dynamic.pose.position[0], dynamic.linear_velocity[0]);
-    }
-}
-
-#[test]
-fn p2b_compare_passive_knockback() {
-    for space in [Space::PlanarXy, Space::Spatial] {
-        for mode in super::p1b_tests::MODES {
-            let mut w = PhysicsWorld3d::new(WorldConfig {
-                space,
-                gravity: [0.; 3],
-                step_seconds: 0.01,
-                ..WorldConfig::default()
-            })
-            .unwrap();
-            let a = w
-                .create_body(
-                    BodyDesc {
-                        kind: BodyKind::KinematicPosition,
-                        pose: Pose {
-                            position: [-2., 0., 0.],
-                            ..Pose::default()
-                        },
-                        ..BodyDesc::default()
-                    },
-                    ColliderDesc::new(Shape::Capsule {
-                        half_height: 0.5,
-                        radius: 0.25,
-                    }),
-                )
-                .unwrap();
-            w.enable_character(
-                a,
-                CharacterConfig {
-                    push_mass: 2.,
-                    step_height: 0.,
-                    snap_distance: 0.,
-                    ..CharacterConfig::default()
+        let mut fixture = ColliderDesc::new(Shape::Box {
+            half_extents: [0.5; 3],
+        });
+        fixture.density = 2.;
+        fixture.friction = 0.;
+        let b = w
+            .create_body(
+                BodyDesc {
+                    can_sleep: false,
+                    ..BodyDesc::default()
                 },
+                fixture,
             )
             .unwrap();
-            let mut fixture = ColliderDesc::new(Shape::Box {
-                half_extents: [0.5; 3],
-            });
-            fixture.density = 2.;
-            fixture.friction = 0.;
-            let b = w
-                .create_body(
-                    BodyDesc {
-                        can_sleep: false,
-                        ..BodyDesc::default()
-                    },
-                    fixture,
-                )
-                .unwrap();
-            mode.configure(&mut w);
-            w.apply_character_impulse(a, [10., 0., 0.]).unwrap();
-            for _ in 0..50 {
-                w.step_checked().unwrap();
-            }
-            let actor = w.character_state(a).unwrap();
-            let dynamic = w.body_state(b).unwrap();
-            let momentum = 2. * (actor.velocity[0] + dynamic.linear_velocity[0]);
-            println!("P2B_PASSIVE space={space:?} mode={mode:?} actor_vx={} box_vx={} box_x={} momentum={momentum}",
-                actor.velocity[0], dynamic.linear_velocity[0], dynamic.pose.position[0]);
-            assert!(
-                (momentum - 10.).abs() < 0.1,
-                "{space:?} {mode:?}: momentum={momentum}"
-            );
+        w.apply_character_impulse(a, [10., 0., 0.]).unwrap();
+        for _ in 0..50 {
+            w.step_checked().unwrap();
         }
+        let actor = w.character_state(a).unwrap();
+        let dynamic = w.body_state(b).unwrap();
+        let momentum = 2. * (actor.velocity[0] + dynamic.linear_velocity[0]);
+        assert!(dynamic.pose.position[0] > 0. && dynamic.linear_velocity[0] > 0.);
+        assert!(actor.velocity[0] < 5.);
+        assert!(
+            (momentum - 10.).abs() < 0.1,
+            "{space:?}: momentum={momentum}"
+        );
     }
 }
 
@@ -276,10 +247,7 @@ fn dynamic_force_is_never_consumed_or_applied_twice_by_character_previews() {
     }
 }
 
-fn dynamic_support_fixture(
-    rotate: bool,
-    mode: super::p1b_tests::Mode,
-) -> (PhysicsWorld3d, BodyId, BodyId) {
+fn dynamic_support_fixture(rotate: bool) -> (PhysicsWorld3d, BodyId, BodyId) {
     let mut w = world();
     let p = w
         .create_body(
@@ -306,7 +274,6 @@ fn dynamic_support_fixture(
         },
     )
     .unwrap();
-    mode.configure(&mut w);
     c12_checked_motion(
         &mut w,
         "dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor",
@@ -345,31 +312,9 @@ fn dynamic_support_fixture(
 }
 
 #[test]
-#[ignore = "P2b compares incoming dynamic contact and dynamic support on both paths"]
-fn p2b_compare_incoming_impact_and_dynamic_support() {
-    for mode in super::p1b_tests::MODES {
-        let (mut w, a, b) = incoming_dynamic_impact_fixture();
-        mode.configure(&mut w);
-        w.step_checked().unwrap();
-        let actor_x_velocity = w.body_state(a).unwrap().linear_velocity[0];
-        let box_x_velocity = w.body_state(b).unwrap().linear_velocity[0];
-        let (mut w, p, a) = dynamic_support_fixture(false, mode);
-        let start = w.body_state(p).unwrap().pose.position[0];
-        w.step_checked().unwrap();
-        let platform_delta = w.body_state(p).unwrap().pose.position[0] - start;
-        let carry = w.character_state(a).unwrap().carry_translation[0];
-        println!("P2B_INCOMING mode={mode:?} actor_vx={actor_x_velocity} box_vx={box_x_velocity} support_delta={platform_delta} carry={carry}");
-    }
-}
-
-#[test]
 fn dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor() {
-    check_dynamic_support_carry(super::p1b_tests::Mode::Kcc);
-}
-
-fn check_dynamic_support_carry(mode: super::p1b_tests::Mode) {
     for rotate in [false, true] {
-        let (mut w, p, a) = dynamic_support_fixture(rotate, mode);
+        let (mut w, p, a) = dynamic_support_fixture(rotate);
         let start = super::world::native_pose(w.body_state(p).unwrap().pose);
         let mut anchor = rapier3d::prelude::Vector::new(1., 0., 0.);
         let local_anchor = start.inverse_transform_point(anchor);
@@ -583,13 +528,8 @@ fn finite_mass_bounds_distinguish_zero_minimum_and_invalid_values() {
 
 #[test]
 fn external_knockback_is_consumed_at_walls_and_does_not_relaunch_after_landing() {
-    check_external_knockback(super::p1b_tests::Mode::Kcc);
-}
-
-fn check_external_knockback(mode: super::p1b_tests::Mode) {
     let mut w = world();
     let a = actor(&mut w, 0., 2.);
-    mode.configure(&mut w);
     let wall = w
         .create_body(
             BodyDesc {
@@ -614,7 +554,6 @@ fn check_external_knockback(mode: super::p1b_tests::Mode) {
 
     let mut w = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
     let a = actor(&mut w, 0., 2.);
-    mode.configure(&mut w);
     w.set_pose(
         a,
         Pose {

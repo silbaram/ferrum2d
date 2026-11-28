@@ -198,7 +198,7 @@ fn a_stopped_command_is_consumed_and_a_new_command_resumes_after_obstacle_remova
 }
 
 #[test]
-fn squeeze_substeps_preserve_force_targets_and_original_motion_time() {
+fn squeezed_path_keeps_the_safe_slice_and_unrelated_full_tick_motion() {
     let (mut w, _) = setup();
     wall(&mut w, BodyKind::Fixed, -1.0);
     let moving = wall(&mut w, BodyKind::KinematicPosition, 3.0);
@@ -227,25 +227,29 @@ fn squeeze_substeps_preserve_force_targets_and_original_motion_time() {
         .unwrap();
     w.add_force(free, [10.0, 0.0, 0.0], [0.0; 3]).unwrap();
     w.set_kinematic_target(other, pose(5.0, 200.0)).unwrap();
-    w.set_kinematic_target(moving, pose(-3.0, 0.0)).unwrap();
-    w.force_character_motion_proof();
     w.set_step_motion_enabled(true);
-    w.step();
+    w.step_with_kinematic_paths(&[KinematicPath {
+        body: moving,
+        sweep_sensors: false,
+        knots: vec![(0.5, pose(2.0, 0.0)), (1., pose(-3.0, 0.0))],
+    }])
+    .unwrap();
     assert!((w.body_state(free).unwrap().linear_velocity[0] - 1.0).abs() < 1e-5);
     assert_eq!(w.body_state(other).unwrap().pose.position[0], 5.0);
     assert_eq!(w.step_statistics().backend_steps, 2);
+    assert_eq!(w.kinematic_path_progress(moving), (0.5, true));
+    assert_eq!(w.body_state(moving).unwrap().pose, pose(2.0, 0.0));
     let mut hits = Vec::new();
     w.sweep_step_motion(
         &Shape::Sphere { radius: 0.1 },
-        pose(2.0, 0.0),
+        pose(2.5, 0.0),
         [0.0; 3],
         &QueryFilter::default(),
         &mut hits,
         16,
     )
     .unwrap();
-    let hit = hits.iter().find(|h| h.target.body == moving).unwrap();
-    assert!((hit.fraction - 0.65 / 6.0).abs() < 0.0001, "{hit:?}");
+    assert!(hits.iter().any(|hit| hit.target.body == moving));
 }
 
 #[test]

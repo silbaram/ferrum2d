@@ -1,7 +1,7 @@
 //! Earliest obstruction of prescribed paths. Dynamic bodies remain solver-driven.
 use super::character::CharacterPreview;
 use super::kinematic_motion::{accepted_collider_motion, motion_bounds};
-use super::solver_trajectory::Time;
+use super::motion_time::Time;
 use super::world::native_id;
 use super::{BodyId, KinematicPath, PhysicsWorld3d};
 use rapier3d::parry::bounding_volume::BoundingVolume;

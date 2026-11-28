@@ -1,5 +1,5 @@
 //! Piecewise prescribed motion inside one fixed tick, including turnarounds.
-use super::solver_trajectory::Time;
+use super::motion_time::Time;
 use super::types::{valid_pose, validate_plane};
 
 mod character_admission;
@@ -183,9 +183,8 @@ impl PhysicsWorld3d {
         let mut slices = Vec::with_capacity(scratch.cuts.len());
         let mut start = 0.;
         for &end in &scratch.cuts {
-            let seconds = super::character_motion::backend::native_duration(
-                Time::from(native_dt) * (end - start),
-            );
+            let seconds =
+                super::motion_time::native_duration(Time::from(native_dt) * (end - start));
             let Ok(seconds) = seconds else {
                 self.tick_outputs.paths = scratch;
                 return Err(PhysicsError::InvalidBody);
@@ -247,7 +246,7 @@ impl PhysicsWorld3d {
                 let end = retry_end.unwrap_or(cut_end).min(cut_end);
                 self.character_dynamics.invalidate();
                 self.backend.integration_parameters.dt =
-                    match super::character_motion::backend::native_duration(dt * (end - start)) {
+                    match super::motion_time::native_duration(dt * (end - start)) {
                         Ok(seconds) => seconds,
                         Err(error) => {
                             self.character_motion.backend_motion.fail(error);
@@ -377,9 +376,7 @@ impl PhysicsWorld3d {
                 }
                 if impact > start {
                     self.backend.integration_parameters.dt =
-                        match super::character_motion::backend::native_duration(
-                            dt * (impact - start),
-                        ) {
+                        match super::motion_time::native_duration(dt * (impact - start)) {
                             Ok(seconds) => seconds,
                             Err(error) => {
                                 self.character_motion.backend_motion.fail(error);
@@ -441,9 +438,9 @@ impl PhysicsWorld3d {
                             ))) => {
                                 let next = start + seconds / dt;
                                 if next <= start || next > cut_end {
-                                    self.character_motion.backend_motion.fail(
-                                        super::solver_trajectory::TrajectoryError::InvalidTime,
-                                    );
+                                    self.character_motion
+                                        .backend_motion
+                                        .fail(super::motion_error::TrajectoryError::InvalidTime);
                                     break 'cuts;
                                 }
                                 retry_end = Some(next);
@@ -636,7 +633,7 @@ pub(super) fn interpolate_kinematic_pose(
     // A stationary target can be revisited at any fractional TOI cut.
     // Interpolating two equal f32 values can move it by one representable
     // position and feed a spurious surface velocity to the next contact.
-    if crate::physics3d::solver_trajectory::same_pose_bits(start, target) {
+    if crate::physics3d::geometry::same_pose_bits(start, target) {
         return start;
     }
     rp::Pose::from_parts(
@@ -667,7 +664,7 @@ fn path_pose(original: rp::Pose, path: &KinematicPath, time: Time) -> rp::Pose {
 mod tests {
     use super::*;
     use crate::physics3d::{
-        BodyDesc, BodyKind, ColliderDesc, JointDesc, JointKind, QueryFilter, Shape, WorldConfig,
+        BodyDesc, BodyKind, ColliderDesc, JointDesc, JointKind, Shape, WorldConfig,
     };
     fn pose(x: f32, y: f32) -> Pose {
         Pose {
@@ -873,7 +870,7 @@ mod tests {
             rp::Rotation::from_rotation_x(0.3),
         );
         for cut in [0., 0.002, 0.25, 0.73, 1.] {
-            assert!(crate::physics3d::solver_trajectory::same_pose_bits(
+            assert!(crate::physics3d::geometry::same_pose_bits(
                 interpolate_kinematic_pose(start, start, cut),
                 start,
             ));
@@ -899,38 +896,31 @@ mod tests {
         w.add_force(free, [10.0, 0.0, 0.0], [0.0; 3]).unwrap();
         w.add_force(attached, [0.0, 10.0, 0.0], [0.0; 3]).unwrap();
         w.set_kinematic_target(other, pose(1.0, 5.0)).unwrap();
-        // This query inspects original mid-tick solver fragments. The ordinary
-        // turn and squeeze tests exercise the product's two accepted cuts.
-        w.force_character_motion_proof();
-        w.set_step_motion_enabled(true);
         let path = KinematicPath {
             sweep_sensors: false,
             body: platform,
-            knots: vec![(0.5, pose(2.0, 0.0)), (1.0, pose(-2.0, 0.0))],
+            knots: vec![
+                (0.25, pose(-1.0, 0.0)),
+                (0.5, pose(2.0, 0.0)),
+                (1.0, pose(-2.0, 0.0)),
+            ],
         };
+        let passes_per_slice = w.backend_pass_schedule().1;
         w.step_with_kinematic_paths(&[path]).unwrap();
         assert!((w.body_state(other).unwrap().pose.position[0] - 1.0).abs() < 1e-6);
         assert!((w.body_state(free).unwrap().linear_velocity[0] - 1.0).abs() < 1e-5);
         assert!((w.joint_state(joint).unwrap().force - 10.0).abs() < 0.05);
-        assert_eq!(w.step_statistics().backend_steps, 8);
+        assert_eq!(
+            w.step_statistics().backend_steps,
+            3 * passes_per_slice as u32
+        );
         assert_eq!(w.config.step_seconds, 0.1);
         assert_eq!(w.backend.integration_parameters.dt, 0.1);
-        let mut hits = Vec::new();
-        w.sweep_step_motion(
-            &Shape::Sphere { radius: 0.1 },
-            pose(0.0, 0.0),
-            [0.0; 3],
-            &QueryFilter {
-                include_sensors: true,
-                ..QueryFilter::default()
-            },
-            &mut hits,
-            32,
-        )
-        .unwrap();
-        let hit = hits.iter().find(|h| h.target.body == platform).unwrap();
-        assert!((hit.fraction - 0.175).abs() < 0.001, "{hit:?}");
-        w.step();
+        assert_eq!(w.kinematic_path_progress(platform), (1., false));
+        assert_eq!(w.body_state(platform).unwrap().pose, pose(-2.0, 0.0));
+        let mut joint_events = Vec::new();
+        assert_eq!(w.drain_joint_events(&mut joint_events), 0);
+        w.step_checked().unwrap();
         assert!((w.body_state(free).unwrap().linear_velocity[0] - 2.0).abs() < 1e-5);
         assert!((w.body_state(other).unwrap().pose.position[0] - 1.0).abs() < 1e-6);
     }

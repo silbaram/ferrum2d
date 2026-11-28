@@ -1,5 +1,6 @@
+use super::motion_error::TrajectoryError;
+use super::motion_time::{Domain, Time};
 use super::ratio_joints::ConstraintPass;
-use super::solver_trajectory::Time;
 use super::types::{valid_pose, valid_vector};
 use super::world::{native_id, native_pose};
 use super::{
@@ -177,7 +178,7 @@ impl PhysicsWorld3d {
         &self,
         start_fraction: Time,
         end_fraction: Time,
-    ) -> Result<super::solver_trajectory::Domain, super::solver_trajectory::TrajectoryError> {
+    ) -> Result<Domain, TrajectoryError> {
         let tick = Time::from(self.config.step_seconds);
         let start = if self.backend_motion_enabled() {
             // A previously committed CCD boundary already has authoritative
@@ -187,7 +188,7 @@ impl PhysicsWorld3d {
         } else {
             tick * start_fraction
         };
-        super::solver_trajectory::Domain::new(start, tick * end_fraction)
+        Domain::new(start, tick * end_fraction)
     }
 
     fn record_committed_backend_prefix(&mut self, before: Time) {
@@ -214,7 +215,7 @@ impl PhysicsWorld3d {
             _ => {
                 self.character_motion
                     .backend_motion
-                    .fail(super::solver_trajectory::TrajectoryError::InvalidTime);
+                    .fail(TrajectoryError::InvalidTime);
                 return;
             }
         };
@@ -306,7 +307,7 @@ impl PhysicsWorld3d {
                 _ => {
                     self.character_motion
                         .backend_motion
-                        .fail(super::solver_trajectory::TrajectoryError::InvalidTime);
+                        .fail(TrajectoryError::InvalidTime);
                     break;
                 }
             };

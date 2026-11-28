@@ -57,7 +57,7 @@ pub(super) fn vector(a: rp::Vector, b: rp::Vector) -> bool {
 }
 
 use super::solver_trajectory::constant_pose;
-pub(super) use super::solver_trajectory::same_pose_bits as pose;
+pub(super) use crate::physics3d::geometry::same_pose_bits as pose;
 
 fn kernel(a: super::solver_trajectory::Kernel, b: super::solver_trajectory::Kernel) -> bool {
     let (a_native, b_native) = (a.native, b.native);

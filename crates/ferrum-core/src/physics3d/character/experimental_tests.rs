@@ -41,3 +41,12 @@ impl PhysicsWorld3d {
         self.character_motion.experiment == Experiment::CharacterKcc && !self.characters.is_empty()
     }
 }
+
+#[test]
+fn kcc_experiment_clears_a_forced_character_proof() {
+    let mut world = PhysicsWorld3d::new(crate::physics3d::WorldConfig::default()).unwrap();
+    world.force_character_motion_proof();
+    assert!(world.character_motion_proof_is_forced());
+    world.enable_experimental_character_kcc();
+    assert!(!world.character_motion_proof_is_forced());
+}

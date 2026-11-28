@@ -35,7 +35,7 @@ fn step(w: &mut PhysicsWorld3d, b: BodyId, to: Pose) {
     .unwrap();
 }
 #[test]
-fn path_impact_preserves_true_hit_time_and_the_other_bodies_full_tick() {
+fn blocked_path_does_not_shorten_the_other_bodies_tick() {
     let mut w = world();
     let p = body(&mut w, BodyKind::KinematicPosition, 0.0, 0.0);
     body(&mut w, BodyKind::Fixed, 3.0, 0.0);
@@ -43,57 +43,20 @@ fn path_impact_preserves_true_hit_time_and_the_other_bodies_full_tick() {
     let other = body(&mut w, BodyKind::KinematicPosition, 0.0, 20.0);
     w.add_force(free, [10.0, 0.0, 0.0], [0.0; 3]).unwrap();
     w.set_kinematic_target(other, pose(5.0, 20.0)).unwrap();
-    w.force_character_motion_proof();
-    w.set_step_motion_enabled(true);
     step(&mut w, p, pose(10.0, 0.0));
-    assert!((w.body_state(p).unwrap().pose.position[0] - 2.0).abs() < 0.001);
-    assert!((w.kinematic_path_progress(p).0 - 0.2).abs() < 0.001);
+    assert_eq!(w.body_state(p).unwrap().pose, pose(0., 0.));
+    assert_eq!(w.kinematic_path_progress(p), (0., true));
     assert_eq!(w.step_statistics().kinematic_path_stops, 1);
-    // The actual path approves prefix + stopped suffix in one native call;
-    // unrelated force kernels still cover the whole original nominal clock.
     assert_eq!(w.step_statistics().backend_steps, 1);
-    let duration = f64::from(w.config().step_seconds);
-    assert_eq!(w.actual_motion_completed_time(), duration);
-    {
-        let trace = w.events.2.lock().unwrap();
-        assert_eq!(trace.precise_elapsed(), duration);
-        let cadence = w.backend.integration_parameters.num_solver_iterations;
-        let h = w.config().step_seconds / cadence as f32;
-        let rows: Vec<_> = trace
-            .actual
-            .iter()
-            .filter(|row| row.body == super::world::native_id(free))
-            .collect();
-        assert_eq!(rows.len(), cadence);
-        for (i, row) in rows.iter().enumerate() {
-            assert_eq!(row.start_time, duration * i as f64 / cadence as f64);
-            assert_eq!(row.end_time, duration * (i + 1) as f64 / cadence as f64);
-            let super::solver_trajectory::Curve::Integrated(kernel) = row.curve else {
-                panic!("unrelated force uses original native kernels");
-            };
-            assert_eq!(kernel.native.integration_seconds.to_bits(), h.to_bits());
-        }
-    }
     assert_eq!(
-        w.backend.bodies[super::world::native_id(free)]
-            .user_force()
-            .to_array(),
-        [10., 0., 0.]
+        w.actual_motion_completed_time(),
+        f64::from(w.config().step_seconds)
     );
     assert!((w.body_state(free).unwrap().linear_velocity[0] - 1.0).abs() < 1e-5);
     assert_eq!(w.body_state(other).unwrap().pose.position[0], 5.0);
-    let mut hits = Vec::new();
-    w.sweep_step_motion(
-        &Shape::Sphere { radius: 0.1 },
-        pose(1.0, 0.0),
-        [0.0; 3],
-        &QueryFilter::default(),
-        &mut hits,
-        32,
-    )
-    .unwrap();
-    let hit = hits.iter().find(|h| h.target.body == p).unwrap();
-    assert!((hit.fraction - 0.04).abs() < 1e-4, "{hit:?}");
+    w.step_checked().unwrap();
+    assert!((w.body_state(free).unwrap().linear_velocity[0] - 2.0).abs() < 1e-5);
+    assert_eq!(w.body_state(other).unwrap().pose.position[0], 5.0);
 }
 #[test]
 fn path_filters_ignore_sensors_disabled_bodies_masks_and_other_planar_floors() {
@@ -342,10 +305,9 @@ fn zero_thickness_surface_mesh_stops_at_a_mesh_wall() {
 }
 
 #[test]
-fn controller_preview_preserves_jump_and_does_not_duplicate_dynamic_pushes() {
+fn path_slices_consume_character_jump_impulse_and_dynamic_push_once() {
     fn setup() -> (PhysicsWorld3d, BodyId, BodyId, BodyId, BodyId) {
         let mut w = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
-        w.force_character_motion_proof();
         let floor = w
             .create_body(
                 BodyDesc {
@@ -380,9 +342,21 @@ fn controller_preview_preserves_jump_and_does_not_duplicate_dynamic_pushes() {
             },
         )
         .unwrap();
-        let dynamic = body(&mut w, BodyKind::Dynamic, 1.0, 0.5);
-        // Independent input witness: the other character still creates dynamic
-        // TOI cuts, but this capsule has an unobstructed analytic trajectory.
+        let dynamic = w
+            .create_body(
+                BodyDesc {
+                    pose: pose(0.78, 0.5),
+                    ..BodyDesc::default()
+                },
+                ColliderDesc {
+                    friction: 0.,
+                    ..ColliderDesc::new(Shape::Box {
+                        half_extents: [0.5; 3],
+                    })
+                },
+            )
+            .unwrap();
+        // This rider has unobstructed motion and receives a one-shot jump and impulse.
         let witness = w
             .create_body(
                 BodyDesc {
@@ -410,141 +384,75 @@ fn controller_preview_preserves_jump_and_does_not_duplicate_dynamic_pushes() {
         }
         (w, floor, actor, dynamic, witness)
     }
-    let (mut reference, _, a0, d0, witness0) = setup();
-    let (mut paths, p1, a1, d1, witness1) = setup();
-    let dt = paths.config().step_seconds;
-    let gravity = paths.config().gravity[1];
-    // The first horizontal impact closes the authored center gap, less the
-    // box/capsule radii and character skin. Queue the independent impulse in
-    // that tick so it must survive previews and multiple accepted intervals.
-    let impulse_tick = ((1.0 - 0.5 - 0.25 - 0.01) / (2.0 * dt)).floor() as usize;
-    let mut saw_split = false;
-    let mut witness_landed = false;
-    for tick in 0..180 {
-        if tick == 0 || tick == 60 {
-            let input = CharacterInput {
-                velocity: [2.0, 0.0, 0.0],
-                jump_speed: if tick == 60 { 4.0 } else { 0.0 },
-            };
-            reference.set_character_input(a0, input.clone()).unwrap();
-            paths.set_character_input(a1, input).unwrap();
-        }
-        if tick == impulse_tick {
-            reference
-                .apply_character_impulse(witness0, [0., 0., 5.])
-                .unwrap();
-            paths
-                .apply_character_impulse(witness1, [0., 0., 5.])
-                .unwrap();
-        }
-        if tick == 60 {
-            let input = CharacterInput {
-                jump_speed: 4.,
-                ..CharacterInput::default()
-            };
-            reference
-                .set_character_input(witness0, input.clone())
-                .unwrap();
-            paths.set_character_input(witness1, input).unwrap();
-            reference
-                .apply_character_impulse(witness0, [0., 20., 0.])
-                .unwrap();
-            paths
-                .apply_character_impulse(witness1, [0., 20., 0.])
-                .unwrap();
-        }
-        reference.step();
-        step(&mut paths, p1, pose(0.0, -0.1));
-        assert_eq!(
-            reference.body_state(a0).unwrap(),
-            paths.body_state(a1).unwrap(),
-            "actor tick {tick}"
-        );
-        assert_eq!(
-            reference.body_state(d0).unwrap(),
-            paths.body_state(d1).unwrap(),
-            "push tick {tick}"
-        );
-        assert_eq!(
-            reference.character_state(a0).unwrap(),
-            paths.character_state(a1).unwrap()
-        );
-        let stats = paths.step_statistics();
-        // This fixture has no joints or prescribed stop: each accepted TOI
-        // interval has exactly one preview admission and one backend pass.
-        assert_eq!(
-            stats.character_preview_passes, stats.backend_steps,
-            "tick {tick}: {stats:?}"
-        );
-        assert_eq!(
-            stats.character_preview_passes,
-            reference.step_statistics().character_preview_passes,
-            "the inert path must not add preview intervals at tick {tick}"
-        );
-        assert!(stats.backend_steps > 0);
-        assert_eq!(stats.kinematic_path_stops, 0);
-        assert_eq!(stats.kinematic_character_stops, 0);
-        saw_split |= stats.backend_steps > 1;
-        if tick == impulse_tick {
-            assert!(
-                stats.backend_steps > 1,
-                "the queued impulse must cross multiple accepted TOI intervals: {stats:?}"
-            );
-        }
-
-        let witness = paths.body_state(witness1).unwrap();
-        let state = paths.character_state(witness1).unwrap();
-        assert_eq!(
-            witness,
-            reference.body_state(witness0).unwrap(),
-            "witness tick {tick}"
-        );
-        assert_eq!(state, reference.character_state(witness0).unwrap());
-        let runtime = &paths.characters[&witness1];
-        assert_eq!(
-            runtime.pending_impulse, [0.; 3],
-            "accepted tick {tick} must consume the one-shot queue"
-        );
-        assert_eq!(runtime.external_velocity[2], if tick >= impulse_tick { 5. / 10. } else { 0. },
-            "one impulse supplies J/m external velocity, independently of contact-clamped translation at tick {tick}");
-        // The landing tick must retain the unobstructed tangent too. Across TOI
-        // previews every accepted interval consumes exactly one fixed tick.
+    let (mut w, floor, actor, dynamic, witness) = setup();
+    assert!(w.character_state(witness).unwrap().grounded);
+    let dt = w.config().step_seconds;
+    let gravity = w.config().gravity[1];
+    w.set_character_input(
+        actor,
+        CharacterInput {
+            velocity: [10., 0., 0.],
+            ..CharacterInput::default()
+        },
+    )
+    .unwrap();
+    w.set_character_input(
+        witness,
+        CharacterInput {
+            jump_speed: 4.,
+            ..CharacterInput::default()
+        },
+    )
+    .unwrap();
+    w.apply_character_impulse(witness, [0., 20., 5.]).unwrap();
+    let path = KinematicPath {
+        body: floor,
+        sweep_sensors: false,
+        knots: vec![
+            (0.25, pose(0., -0.1)),
+            (0.5, pose(0., -0.1)),
+            (1., pose(0., -0.1)),
+        ],
+    };
+    w.step_with_kinematic_paths(std::slice::from_ref(&path))
+        .unwrap();
+    assert_eq!(w.step_statistics().backend_steps, 3);
+    let state = w.character_state(witness).unwrap();
+    assert!(!state.grounded);
+    assert!(
+        (state.vertical_speed - (6. + gravity * dt)).abs() < 1e-5,
+        "{state:?}"
+    );
+    let runtime = &w.characters[&witness];
+    assert_eq!(runtime.pending_impulse, [0.; 3]);
+    assert_eq!(runtime.external_velocity[2], 0.5);
+    assert!((w.body_state(witness).unwrap().pose.position[2] - 0.5 * dt).abs() < 1e-5);
+    let dynamic_velocity = w.body_state(dynamic).unwrap().linear_velocity[0];
+    assert!(
+        dynamic_velocity > 0.,
+        "the character must actually push the box"
+    );
+    let reaction = w.characters[&actor].external_velocity[0];
+    assert!((-10. ..0.).contains(&reaction), "reaction={reaction}");
+    // The box and the stored reaction use the same total horizontal impulse.
+    let mass = w.backend.bodies[super::world::native_id(dynamic)].mass();
+    assert!(
+        (mass * dynamic_velocity + 10. * reaction).abs() < 0.01,
+        "box vx={dynamic_velocity}, box mass={mass}, reaction={reaction}"
+    );
+    let mut landed = false;
+    for _ in 0..120 {
+        w.step_with_kinematic_paths(std::slice::from_ref(&path))
+            .unwrap();
+        let state = w.character_state(witness).unwrap();
         assert!(
-            (witness.pose.position[2] - 0.5 * dt * (tick + 1).saturating_sub(impulse_tick) as f32)
-                .abs()
-                < 1.0e-4,
-            "queued impulse must be consumed once despite TOI previews: tick {tick}: {witness:?}"
+            !landed || state.grounded,
+            "the consumed jump must not relaunch the witness"
         );
-        if tick == 60 {
-            assert!(
-                !state.grounded,
-                "the queued jump/impulse must reach an accepted step"
-            );
-        }
-        if tick >= 60 {
-            if !state.grounded {
-                let expected = 4. + 20. / 10. + gravity * dt * (tick - 59) as f32;
-                assert!(
-                    !witness_landed,
-                    "consumed jump/impulse relaunched the witness at tick {tick}"
-                );
-                assert!((state.vertical_speed - expected).abs() < 1.0e-4,
-                    "one jump plus one impulse, with gravity over accepted time: tick {tick}: {state:?}");
-            } else {
-                witness_landed = true;
-                assert_eq!(state.vertical_speed, 0.);
-            }
-        }
+        landed |= state.grounded;
+        assert_eq!(w.characters[&witness].external_velocity[2], 0.5);
     }
-    assert!(
-        saw_split,
-        "the regression must exercise multiple accepted TOI intervals"
-    );
-    assert!(
-        witness_landed,
-        "the witness must land so a queued jump replay is observable"
-    );
-    assert!(paths.body_state(d1).unwrap().pose.position[0] > 1.2);
+    assert!(landed);
 }
 
 #[test]

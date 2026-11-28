@@ -293,20 +293,28 @@ fn sandbox_step(e: &mut Engine, gravity: f32, iterations: [u32; 2]) {
     );
 }
 
-/// Run the authored scene and return the first frame that stops the world.
-fn first_failure(bodies: &[Body], gravity: f32, iterations: [u32; 2], frames: u32) -> Option<u32> {
-    let (mut e, _) = sandbox_engine(bodies, gravity, iterations);
-    (0..frames).find(|_| {
-        e.update(1. / 60.);
-        sandbox_step(&mut e, gravity, iterations);
-        e.take_unified_physics_error().is_some()
-    })
+fn assert_sandbox_advances(bodies: &[Body], gravity: f32, iterations: [u32; 2]) {
+    let (mut engine, entities) = sandbox_engine(bodies, gravity, iterations);
+    let dynamic: Vec<_> = bodies
+        .iter()
+        .zip(entities)
+        .filter_map(|(body, entity)| body.dynamic.then_some(entity))
+        .collect();
+    for tick in 0..300 {
+        engine.update(1. / 60.);
+        sandbox_step(&mut engine, gravity, iterations);
+        assert_eq!(engine.take_unified_physics_error(), None, "tick {tick}");
+        assert!(
+            !p1a_tests::past_sandbox_floor(&engine, &dynamic),
+            "tick {tick}"
+        );
+    }
 }
 
 // The old proof path stopped when a metal slider reached a sleeping block.
 #[test]
 fn sandbox_rigid_materials_runs_without_stopping_the_world() {
-    assert_eq!(first_failure(&rigid_materials(), 860., [8, 6], 300), None);
+    assert_sandbox_advances(&rigid_materials(), 860., [8, 6]);
 }
 
 fn rigid_materials() -> [Body<'static>; 8] {
@@ -342,7 +350,7 @@ fn rigid_materials() -> [Body<'static>; 8] {
 // The old proof path stopped at a near-contact after the spinning box left the sensor.
 #[test]
 fn sandbox_contacts_sensors_runs_without_stopping_the_world() {
-    assert_eq!(first_failure(&contacts_sensors(), 820., [8, 7], 300), None);
+    assert_sandbox_advances(&contacts_sensors(), 820., [8, 7]);
 }
 
 fn contacts_sensors() -> [Body<'static>; 6] {
@@ -388,7 +396,7 @@ fn contacts_sensors() -> [Body<'static>; 6] {
 // The old proof path stopped after the rotated box first hit the chain terrain.
 #[test]
 fn sandbox_collider_gallery_runs_without_stopping_the_world() {
-    assert_eq!(first_failure(&collider_gallery(), 640., [8, 6], 300), None);
+    p1a_tests::assert_gallery_advances_without_crossing_the_chain();
 }
 
 fn collider_gallery() -> [Body<'static>; 8] {

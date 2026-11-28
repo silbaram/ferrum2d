@@ -182,6 +182,82 @@ fn native_dash_sweeps_solids_even_when_the_actor_is_a_sensor() {
     }
 }
 #[test]
+fn sensor_dash_and_native_ccd_each_respect_collision_filters() {
+    let mut e = engine(Space::Spatial);
+    let dash = body(
+        &mut e,
+        BodyKind::KinematicVelocity,
+        [0., 1., 0.],
+        true,
+        1,
+        [0.; 3],
+        [0.; 3],
+    );
+    for (z, category, mask, sensor, x) in [
+        (0., 1, 0, false, 1.),
+        (0., 1, 1, true, 1.3),
+        (0., 1, 1, false, 2.),
+        (4., 2, 0, false, 1.),
+        (4., 2, 2, true, 1.3),
+        (4., 2, 2, false, 2.),
+    ] {
+        e.create_unified_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                pose: Pose {
+                    position: [x, 1., z],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc {
+                category,
+                mask,
+                sensor,
+                ..ColliderDesc::new(Shape::Box {
+                    half_extents: [0.1, 1., 0.5],
+                })
+            },
+            [0.; 3],
+        )
+        .unwrap();
+    }
+    let ball = e
+        .create_unified_body(
+            BodyDesc {
+                pose: Pose {
+                    position: [0., 1., 4.],
+                    ..Pose::default()
+                },
+                linear_velocity: [300., 0., 0.],
+                ccd: true,
+                ..BodyDesc::default()
+            },
+            ColliderDesc {
+                category: 2,
+                mask: 2,
+                ..ColliderDesc::new(Shape::Sphere { radius: 0.25 })
+            },
+            [0.; 3],
+        )
+        .unwrap();
+
+    bind(&mut e, dash, 4.);
+    fire(&mut e);
+    assert_eq!(e.unified_physics_error(), None);
+    assert!(
+        (1.6..1.651).contains(&x(&e, dash)),
+        "dash x={}",
+        x(&e, dash)
+    );
+    assert!(remaining(&e, dash) > 0.9);
+    assert!((1.6..1.66).contains(&x(&e, ball)), "ball x={}", x(&e, ball));
+    let clamps = e.unified_ccd_clamps().unwrap();
+    assert_eq!(clamps.len(), 1);
+    assert_eq!(clamps[0].moving, ball);
+}
+
+#[test]
 fn native_dash_uses_relative_motion_of_an_incoming_wall() {
     let mut e = engine(Space::Spatial);
     let a = body(

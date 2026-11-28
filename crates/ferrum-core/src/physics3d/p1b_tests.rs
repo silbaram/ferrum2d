@@ -1,82 +1,12 @@
-//! Rust-only platform and capsule experiment, with shared per-tick observations.
+//! Product KCC regressions for platform support and character obstruction.
 use super::{colliders::native_collider, world::native_id};
 use super::{
     BodyDesc, BodyId, BodyKind, CharacterConfig, CharacterInput, ColliderDesc, KinematicPath,
     PhysicsError, PhysicsWorld3d, Pose, Shape, WorldConfig,
 };
 use rapier3d::prelude as rp;
-use std::collections::BTreeMap;
-use std::time::Instant;
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Mode {
-    Current,
-    Kcc,
-}
-
-pub(crate) const MODES: [Mode; 2] = [Mode::Current, Mode::Kcc];
-
-impl Mode {
-    pub(crate) fn configure(self, world: &mut PhysicsWorld3d) {
-        if matches!(self, Self::Kcc) {
-            world.enable_experimental_character_kcc();
-        } else {
-            world.force_character_motion_proof();
-        }
-        assert_eq!(
-            world.backend_motion_enabled(),
-            matches!(self, Self::Current)
-        );
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct TickSample {
-    error: Option<PhysicsError>,
-    completed: f64,
-    overlap: f32,
-    time_us: Option<f64>,
-}
 
 impl PhysicsWorld3d {
-    pub(crate) fn observe_p1b_ticks(&mut self) {
-        self.character_motion.p1b_ticks = Some(Vec::new());
-    }
-
-    pub(crate) fn take_p1b_ticks(&mut self) -> Vec<TickSample> {
-        self.character_motion.p1b_ticks.take().unwrap()
-    }
-
-    pub(crate) fn p1b_step_observed(
-        &mut self,
-        paths: &[KinematicPath],
-    ) -> Result<(), PhysicsError> {
-        if self.character_motion.p1b_ticks.is_none() {
-            return self.step_with_kinematic_paths(paths);
-        }
-        // Path validation can return before the physics clock is reset for this attempt.
-        self.character_motion.p1b_tick_started = false;
-        let start = (!cfg!(debug_assertions)).then(Instant::now);
-        let result = self.step_with_kinematic_paths(paths);
-        let time_us = start.map(|t| t.elapsed().as_secs_f64() * 1e6);
-        let sample = TickSample {
-            error: result.err(),
-            completed: if self.character_motion.p1b_tick_started {
-                self.actual_motion_completed_time()
-            } else {
-                0.
-            },
-            overlap: self.p1b_character_overlap(),
-            time_us,
-        };
-        self.character_motion
-            .p1b_ticks
-            .as_mut()
-            .unwrap()
-            .push(sample);
-        result
-    }
-
     fn p1b_character_overlap(&self) -> f32 {
         let mut max_overlap = 0_f32;
         let capsules: Vec<_> = self
@@ -159,23 +89,6 @@ impl TraceHash {
     }
 }
 
-pub(crate) fn report(scene: &str, mode: Mode, samples: &[TickSample], hash: u64) {
-    let mut errors = BTreeMap::new();
-    for error in samples.iter().filter_map(|s| s.error) {
-        *errors.entry(format!("{error:?}")).or_insert(0) += 1;
-    }
-    let first_error = samples.iter().position(|s| s.error.is_some());
-    let stalls = samples.iter().filter(|s| s.completed == 0.).count();
-    let first_stall = samples.iter().position(|s| s.completed == 0.);
-    let overlap = samples.iter().map(|s| s.overlap).fold(0., f32::max);
-    let times = samples.iter().filter_map(|s| s.time_us);
-    let timing = times
-        .clone()
-        .reduce(f64::max)
-        .map(|max| (times.sum::<f64>() / samples.len() as f64, max));
-    println!("P1B scene={scene} mode={mode:?} ticks={} errors={errors:?} first_error={first_error:?} stalls={stalls} first_stall={first_stall:?} overlap={overlap:.7} hash={hash:016x} timing_us={timing:?}", samples.len());
-}
-
 fn body(world: &mut PhysicsWorld3d, kind: BodyKind, position: [f32; 3], shape: Shape) -> BodyId {
     world
         .create_body(
@@ -220,7 +133,6 @@ fn p1b_kcc_keeps_support_when_the_platform_descends_and_reverses() {
         },
     );
     let rider = character(&mut world, [0., 0.959, 0.]);
-    Mode::Kcc.configure(&mut world);
     for _ in 0..4 {
         world.step_checked().unwrap();
     }
@@ -272,7 +184,6 @@ fn p1b_kcc_preserves_walkable_ground_when_a_wall_pushes_the_rider() {
         },
     );
     let rider = character(&mut world, [0., 0.759, 0.]);
-    Mode::Kcc.configure(&mut world);
     for _ in 0..4 {
         world.step_checked().unwrap();
     }
@@ -302,38 +213,36 @@ fn p1b_kcc_preserves_walkable_ground_when_a_wall_pushes_the_rider() {
 }
 
 #[test]
-fn p1b_observer_records_zero_time_for_an_invalid_path() {
-    for mode in MODES {
-        let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
-        let platform = body(
-            &mut world,
-            BodyKind::KinematicPosition,
-            [0.; 3],
-            Shape::Box {
-                half_extents: [2.5, 0.2, 2.5],
-            },
-        );
-        character(&mut world, [0., 0.959, 0.]);
-        mode.configure(&mut world);
-        world.observe_p1b_ticks();
-        world.p1b_step_observed(&[]).unwrap();
-        let invalid = KinematicPath {
-            body: platform,
-            sweep_sensors: false,
-            knots: vec![(0.5, Pose::default())],
-        };
-        assert_eq!(
-            world.p1b_step_observed(&[invalid]),
-            Err(PhysicsError::InvalidBody)
-        );
-        world.p1b_step_observed(&[]).unwrap();
-        let samples = world.take_p1b_ticks();
-        let dt = f64::from(world.config().step_seconds);
-        assert_eq!(samples[0].completed, dt);
-        assert_eq!(samples[1].error, Some(PhysicsError::InvalidBody));
-        assert_eq!(samples[1].completed, 0.);
-        assert_eq!(samples[2].completed, dt);
-    }
+fn invalid_platform_path_preserves_the_previous_step_and_can_retry() {
+    let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+    let platform = body(
+        &mut world,
+        BodyKind::KinematicPosition,
+        [0.; 3],
+        Shape::Box {
+            half_extents: [2.5, 0.2, 2.5],
+        },
+    );
+    let rider = character(&mut world, [0., 0.959, 0.]);
+    world.step_checked().unwrap();
+    let state = world.character_state(rider).unwrap().clone();
+    let stats = world.step_statistics();
+    let invalid = KinematicPath {
+        body: platform,
+        sweep_sensors: false,
+        knots: vec![(0.5, Pose::default())],
+    };
+    assert_eq!(
+        world.step_with_kinematic_paths(&[invalid]),
+        Err(PhysicsError::InvalidBody)
+    );
+    assert_eq!(world.character_state(rider).unwrap(), &state);
+    assert_eq!(world.step_statistics(), stats);
+    world.step_checked().unwrap();
+    assert_eq!(
+        world.character_state(rider).unwrap().ground.unwrap().body,
+        platform
+    );
 }
 
 #[test]
@@ -349,7 +258,6 @@ fn p1b_kcc_resolves_peer_contacts_and_keeps_the_ordinary_step() {
     );
     let left = character(&mut world, [-0.26, 0.759, 0.]);
     let right = character(&mut world, [0.26, 0.759, 0.]);
-    Mode::Kcc.configure(&mut world);
     for (id, vx) in [(left, 1.), (right, -1.)] {
         world
             .set_character_input(
@@ -403,7 +311,6 @@ fn p2b_kcc_capsules_cannot_swap_places_in_one_tick() {
     .unwrap();
     let left = character(&mut world, [-1., 0., 0.]);
     let right = character(&mut world, [1., 0., 0.]);
-    Mode::Kcc.configure(&mut world);
     for (id, vx) in [(left, 20.), (right, -20.)] {
         world
             .set_character_input(
@@ -424,27 +331,78 @@ fn p2b_kcc_capsules_cannot_swap_places_in_one_tick() {
 }
 
 #[test]
-fn p2b_compare_platform_and_rider_at_wall() {
-    for mode in MODES {
+fn platform_and_rider_stop_together_at_a_wall() {
+    let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+    let platform = body(
+        &mut world,
+        BodyKind::KinematicPosition,
+        [0.; 3],
+        Shape::Box {
+            half_extents: [0.5, 0.2, 2.],
+        },
+    );
+    body(
+        &mut world,
+        BodyKind::Fixed,
+        [1.4, 1., 0.],
+        Shape::Box {
+            half_extents: [0.1, 2., 2.],
+        },
+    );
+    let rider = character(&mut world, [0.28, 0.959, 0.]);
+    for _ in 0..4 {
+        world.step_checked().unwrap();
+    }
+    assert_eq!(
+        world.character_state(rider).unwrap().ground.unwrap().body,
+        platform
+    );
+    let path = KinematicPath {
+        body: platform,
+        sweep_sensors: false,
+        knots: vec![(
+            1.,
+            Pose {
+                position: [1.5, 0., 0.],
+                ..Pose::default()
+            },
+        )],
+    };
+    let before_rider = world.body_state(rider).unwrap().pose;
+    world.step_with_kinematic_paths(&[path]).unwrap();
+    let platform_x = world.body_state(platform).unwrap().pose.position[0];
+    let ground = world.character_state(rider).unwrap().grounded;
+    let overlap = ((platform_x + 0.5).min(1.5) - (platform_x - 0.5).max(1.3)).max(0.);
+    assert!(
+        overlap <= 0.005 && ground,
+        "overlap={overlap}, grounded={ground}"
+    );
+    assert_eq!(world.step_statistics().kinematic_path_stops, 1);
+    assert_eq!(platform_x, 0.);
+    assert_eq!(world.body_state(rider).unwrap().pose, before_rider);
+    let state = world.character_state(rider).unwrap();
+    assert_eq!(state.carried_by, None);
+    assert_eq!(state.carry_translation, [0.; 3]);
+}
+
+fn check_platform_carry(rotates: bool) {
+    let name = if rotates {
+        "rotating-platform"
+    } else {
+        "moving-platform"
+    };
+    let mut hashes = Vec::new();
+    for _ in 0..2 {
         let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
         let platform = body(
             &mut world,
             BodyKind::KinematicPosition,
             [0.; 3],
             Shape::Box {
-                half_extents: [0.5, 0.2, 2.],
+                half_extents: [2.5, 0.2, 2.5],
             },
         );
-        body(
-            &mut world,
-            BodyKind::Fixed,
-            [1.4, 1., 0.],
-            Shape::Box {
-                half_extents: [0.1, 2., 2.],
-            },
-        );
-        let rider = character(&mut world, [0.28, 0.959, 0.]);
-        mode.configure(&mut world);
+        let rider = character(&mut world, [1.2, 0.959, 0.4]);
         for _ in 0..4 {
             world.step_checked().unwrap();
         }
@@ -452,215 +410,140 @@ fn p2b_compare_platform_and_rider_at_wall() {
             world.character_state(rider).unwrap().ground.unwrap().body,
             platform
         );
-        let path = KinematicPath {
-            body: platform,
-            sweep_sensors: false,
-            knots: vec![(
-                1.,
+        let start = rp::Vector::from(world.body_state(rider).unwrap().pose.position);
+        let mut hash = TraceHash::new();
+        let mut slip = 0_f32;
+        for tick in 0_usize..300 {
+            let phase = (tick + 1) as f32 * 0.015;
+            let target = if rotates {
+                let (sin, cos) = (phase * 0.5).sin_cos();
                 Pose {
-                    position: [1.5, 0., 0.],
+                    rotation: [0., sin, 0., cos],
                     ..Pose::default()
-                },
-            )],
-        };
-        let before_rider = world.body_state(rider).unwrap().pose;
-        let result = world.step_with_kinematic_paths(&[path]);
-        let platform_x = world.body_state(platform).unwrap().pose.position[0];
-        let rider_x = world.body_state(rider).unwrap().pose.position[0];
-        let ground = world.character_state(rider).unwrap().grounded;
-        let overlap = ((platform_x + 0.5).min(1.5) - (platform_x - 0.5).max(1.3)).max(0.);
-        println!("P2B_PLATFORM_WALL mode={mode:?} result={result:?} platform_x={platform_x} rider_x={rider_x} grounded={ground} overlap={overlap}");
-        result.unwrap();
-        assert!(
-            overlap <= 0.005 && ground,
-            "{mode:?}: overlap={overlap}, grounded={ground}"
-        );
-        assert_eq!(world.step_statistics().kinematic_path_stops, 1);
-        if matches!(mode, Mode::Kcc) {
-            assert_eq!(platform_x, 0.);
-            assert_eq!(world.body_state(rider).unwrap().pose, before_rider);
-        }
-    }
-}
-
-fn compare_platform(rotates: bool) {
-    let name = if rotates {
-        "rotating-platform"
-    } else {
-        "moving-platform"
-    };
-    for mode in MODES {
-        let mut hashes = Vec::new();
-        for repeat in 0..2 {
-            let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
-            let platform = body(
-                &mut world,
-                BodyKind::KinematicPosition,
-                [0.; 3],
-                Shape::Box {
-                    half_extents: [2.5, 0.2, 2.5],
-                },
-            );
-            let rider = character(&mut world, [1.2, 0.959, 0.4]);
-            mode.configure(&mut world);
-            for _ in 0..4 {
-                world.step_checked().unwrap();
-            }
-            assert_eq!(
-                world.character_state(rider).unwrap().ground.unwrap().body,
-                platform
-            );
-            let start = rp::Vector::from(world.body_state(rider).unwrap().pose.position);
-            let mut hash = TraceHash::new();
-            let mut slip = 0_f32;
-            let mut loss = 0;
-            let mut first_loss = None;
-            world.observe_p1b_ticks();
-            for tick in 0_usize..300 {
-                let phase = (tick + 1) as f32 * 0.015;
-                let target = if rotates {
-                    let (sin, cos) = (phase * 0.5).sin_cos();
-                    Pose {
-                        rotation: [0., sin, 0., cos],
-                        ..Pose::default()
-                    }
-                } else {
-                    Pose {
-                        position: [phase.sin() * 2.5, 0., 0.],
-                        ..Pose::default()
-                    }
-                };
-                let path = KinematicPath {
-                    body: platform,
-                    sweep_sensors: false,
-                    knots: vec![(1., target)],
-                };
-                let _ = world.p1b_step_observed(&[path]);
-                let base = super::world::native_pose(world.body_state(platform).unwrap().pose);
-                let at = rp::Vector::from(world.body_state(rider).unwrap().pose.position);
-                let drift = base.inverse_transform_point(at) - start;
-                slip = slip.max(drift.x.hypot(drift.z));
-                if world
-                    .character_state(rider)
-                    .unwrap()
-                    .ground
-                    .is_none_or(|ground| ground.body != platform)
-                {
-                    loss += 1;
-                    first_loss.get_or_insert(tick);
                 }
-                hash.body(&world, rider);
-                hash.body(&world, platform);
-            }
-            let hash = hash.finish();
-            hashes.push(hash);
-            if repeat == 0 {
-                println!("P1B_PLATFORM scene={name} mode={mode:?} ground_loss={loss} first_loss={first_loss:?} slip={slip:.7}");
-                report(name, mode, &world.take_p1b_ticks(), hash);
-            }
-        }
-        assert_eq!(hashes[0], hashes[1], "{name} {mode:?}");
-    }
-}
-
-#[test]
-#[ignore = "P1b compares two 300-tick replays in both modes"]
-fn p1b_compare_rotating_platform() {
-    compare_platform(true);
-}
-
-#[test]
-#[ignore = "P1b compares two 300-tick replays in both modes"]
-fn p1b_compare_moving_platform() {
-    compare_platform(false);
-}
-
-#[test]
-#[ignore = "P1b compares two 300-tick replays in both modes"]
-fn p1b_compare_squeeze_release() {
-    for mode in MODES {
-        let mut hashes = Vec::new();
-        for repeat in 0..2 {
-            let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
-            body(
-                &mut world,
-                BodyKind::Fixed,
-                [0., -0.1, 0.],
-                Shape::Box {
-                    half_extents: [8., 0.1, 8.],
-                },
-            );
-            let wall = || Shape::Box {
-                half_extents: [0.25, 2., 2.],
+            } else {
+                Pose {
+                    position: [phase.sin() * 2.5, 0., 0.],
+                    ..Pose::default()
+                }
             };
-            let left = body(
-                &mut world,
-                BodyKind::KinematicPosition,
-                [-0.54, 1., 0.],
-                wall(),
-            );
-            let right = body(
-                &mut world,
-                BodyKind::KinematicPosition,
-                [0.54, 1., 0.],
-                wall(),
-            );
-            let actor = character(&mut world, [0., 0.759, 0.]);
-            mode.configure(&mut world);
-            for _ in 0..4 {
-                world.step_checked().unwrap();
+            let path = KinematicPath {
+                body: platform,
+                sweep_sensors: false,
+                knots: vec![(1., target)],
+            };
+            world.step_with_kinematic_paths(&[path]).unwrap();
+            let base = super::world::native_pose(world.body_state(platform).unwrap().pose);
+            let at = rp::Vector::from(world.body_state(rider).unwrap().pose.position);
+            let drift = base.inverse_transform_point(at) - start;
+            slip = slip.max(drift.x.hypot(drift.z));
+            let state = world.character_state(rider).unwrap();
+            assert_eq!(state.ground.unwrap().body, platform, "{name}, tick {tick}");
+            hash.body(&world, rider);
+            hash.body(&world, platform);
+        }
+        let hash = hash.finish();
+        hashes.push(hash);
+        assert!(slip < 0.005, "{name}: slip={slip}");
+    }
+    assert_eq!(hashes[0], hashes[1], "{name}");
+}
+
+#[test]
+fn rotating_platform_carries_the_rider_without_drift() {
+    check_platform_carry(true);
+}
+
+#[test]
+fn moving_platform_carries_the_rider_without_drift() {
+    check_platform_carry(false);
+}
+
+#[test]
+fn squeezed_character_moves_again_when_the_walls_open() {
+    let mut hashes = Vec::new();
+    for _ in 0..2 {
+        let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+        body(
+            &mut world,
+            BodyKind::Fixed,
+            [0., -0.1, 0.],
+            Shape::Box {
+                half_extents: [8., 0.1, 8.],
+            },
+        );
+        let wall = || Shape::Box {
+            half_extents: [0.25, 2., 2.],
+        };
+        let left = body(
+            &mut world,
+            BodyKind::KinematicPosition,
+            [-0.54, 1., 0.],
+            wall(),
+        );
+        let right = body(
+            &mut world,
+            BodyKind::KinematicPosition,
+            [0.54, 1., 0.],
+            wall(),
+        );
+        let actor = character(&mut world, [0., 0.759, 0.]);
+        for _ in 0..4 {
+            world.step_checked().unwrap();
+        }
+        let mut hash = TraceHash::new();
+        let mut recovered = None;
+        let mut blocked_ticks = 0;
+        let mut min_gap = f32::INFINITY;
+        world
+            .set_character_input(
+                actor,
+                CharacterInput {
+                    velocity: [1.2, 0., 0.],
+                    jump_speed: 0.,
+                },
+            )
+            .unwrap();
+        for tick in 0_usize..300 {
+            let closing = (tick as f32 / 10.).min(1.);
+            let opening = (tick.saturating_sub(120) as f32 / 25.).min(1.);
+            let x = 0.54 - 0.05 * closing;
+            for (id, x) in [(left, -x), (right, x + 3. * opening)] {
+                world
+                    .set_kinematic_target(
+                        id,
+                        Pose {
+                            position: [x, 1., 0.],
+                            ..Pose::default()
+                        },
+                    )
+                    .unwrap();
             }
-            let mut hash = TraceHash::new();
-            let mut recovered = None;
-            let mut blocked_ticks = 0;
-            let mut min_gap = f32::INFINITY;
-            world.observe_p1b_ticks();
-            world
-                .set_character_input(
-                    actor,
-                    CharacterInput {
-                        velocity: [1.2, 0., 0.],
-                        jump_speed: 0.,
-                    },
-                )
-                .unwrap();
-            for tick in 0_usize..300 {
-                let closing = (tick as f32 / 10.).min(1.);
-                let opening = (tick.saturating_sub(120) as f32 / 25.).min(1.);
-                let x = 0.54 - 0.05 * closing;
-                for (id, x) in [(left, -x), (right, x + 3. * opening)] {
-                    world
-                        .set_kinematic_target(
-                            id,
-                            Pose {
-                                position: [x, 1., 0.],
-                                ..Pose::default()
-                            },
-                        )
-                        .unwrap();
-                }
-                let _ = world.p1b_step_observed(&[]);
-                let at = world.body_state(actor).unwrap();
-                if (10..120).contains(&tick) {
-                    blocked_ticks += usize::from(at.linear_velocity[0].abs() < 0.05);
-                    let left = world.body_state(left).unwrap().pose.position[0];
-                    let right = world.body_state(right).unwrap().pose.position[0];
-                    min_gap = min_gap.min(right - left - 0.5);
-                }
-                if tick >= 120 && at.pose.position[0] > 1. {
-                    recovered.get_or_insert(tick);
-                }
-                for id in [actor, left, right] {
-                    hash.body(&world, id);
-                }
+            world.step_checked().unwrap();
+            let at = world.body_state(actor).unwrap();
+            if (10..120).contains(&tick) {
+                blocked_ticks += usize::from(at.linear_velocity[0].abs() < 0.05);
+                let left = world.body_state(left).unwrap().pose.position[0];
+                let right = world.body_state(right).unwrap().pose.position[0];
+                min_gap = min_gap.min(right - left - 0.5);
+                assert!((left + 0.25..right - 0.25).contains(&at.pose.position[0]));
             }
-            let hash = hash.finish();
-            hashes.push(hash);
-            if repeat == 0 {
-                println!("P1B_SQUEEZE mode={mode:?} release=120 recovered={recovered:?} blocked_ticks={blocked_ticks} min_gap={min_gap:.7}");
-                report("squeeze-release", mode, &world.take_p1b_ticks(), hash);
+            if tick >= 120 && at.pose.position[0] > 1. {
+                recovered.get_or_insert(tick);
+            }
+            for id in [actor, left, right] {
+                hash.body(&world, id);
             }
         }
-        assert_eq!(hashes[0], hashes[1], "squeeze-release {mode:?}");
+        let hash = hash.finish();
+        hashes.push(hash);
+        assert!(blocked_ticks > 95, "{blocked_ticks}");
+        // The narrowest opening in this fixture is 0.48 under the product KCC.
+        assert!(min_gap >= 0.48 - 1e-5, "squeeze gap {min_gap}");
+        assert!(
+            recovered.is_some_and(|tick| tick <= 180),
+            "release={recovered:?}"
+        );
     }
+    assert_eq!(hashes[0], hashes[1], "squeeze-release");
 }

@@ -1,4 +1,4 @@
-//! P1a rigid-body experiment. Release runs also time the calls that advance physics.
+//! Product rigid-body regressions and the optional soft CCD measurements.
 use super::*;
 use crate::collision_event::{COLLISION_EVENT_ENTER, COLLISION_EVENT_TRIGGER_ENTER};
 use crate::components::{
@@ -6,32 +6,15 @@ use crate::components::{
     WeldJoint,
 };
 use crate::physics3d::p1b_tests::TraceHash;
-use crate::physics3d::{
-    BodyDesc, BodyId, BodyKind, ColliderDesc, ColliderId, OverlapSample, PhysicsWorld3d, Pose,
-    Shape,
-};
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Debug;
+use crate::physics3d::{BodyDesc, BodyId, BodyKind, ColliderDesc, PhysicsWorld3d, Pose, Shape};
+use std::collections::BTreeSet;
 use std::time::Instant;
 
 const FRAMES: usize = 300;
 const BRICK_HALF_EXTENTS: [f32; 2] = [26., 9.];
 
-#[derive(Debug, Clone, Copy)]
-enum Mode {
-    Current,
-    Rapier,
-}
-const MODES: [Mode; 2] = [Mode::Current, Mode::Rapier];
-
 fn physics(e: &Engine) -> &PhysicsWorld3d {
     &e.unified_physics.as_ref().unwrap().physics
-}
-
-fn configure_experiment(world: &mut PhysicsWorld3d, mode: Mode) {
-    if matches!(mode, Mode::Current) {
-        world.force_rigid_motion_proof();
-    }
 }
 
 fn step_sample<T>(step: impl FnOnce() -> T) -> (T, f64) {
@@ -43,78 +26,8 @@ fn step_sample<T>(step: impl FnOnce() -> T) -> (T, f64) {
     )
 }
 
-#[derive(Default)]
-struct Measurements {
-    errors: BTreeMap<String, usize>,
-    first_error: Option<usize>,
-    first_stall: Option<usize>,
-    stalls: usize,
-    first_crossing: Option<usize>,
-    overlap: f32,
-    initial_overlap: f32,
-    tail_speed: f32,
-    joint_error: f32,
-    ccd_clamps: u32,
-    sum_us: f64,
-    max_us: f64,
-}
-
-impl Measurements {
-    fn new(world: &PhysicsWorld3d) -> Self {
-        Self {
-            initial_overlap: world.p1a_max_overlap(),
-            ..Self::default()
-        }
-    }
-
-    fn record(
-        &mut self,
-        world: &PhysicsWorld3d,
-        frame: usize,
-        error: Option<impl Debug>,
-        crossed: bool,
-        elapsed_us: f64,
-    ) {
-        if let Some(error) = error {
-            *self.errors.entry(format!("{error:?}")).or_default() += 1;
-            self.first_error.get_or_insert(frame);
-            if world.actual_motion_completed_time() == 0. {
-                self.first_stall.get_or_insert(frame);
-                self.stalls += 1;
-            }
-        }
-        if crossed {
-            self.first_crossing.get_or_insert(frame);
-        }
-        self.overlap = self.overlap.max(world.p1a_max_overlap());
-        self.ccd_clamps += world.step_statistics().ccd_clamps;
-        self.sum_us += elapsed_us;
-        self.max_us = self.max_us.max(elapsed_us);
-    }
-
-    fn report(&self, world: &PhysicsWorld3d, scene: &str, mode: Mode) {
-        assert_eq!(world.p1a_uses_motion_proof(), matches!(mode, Mode::Current));
-        let timing =
-            (!cfg!(debug_assertions)).then_some((self.sum_us / FRAMES as f64, self.max_us));
-        println!(
-            "P1A scene={scene} mode={mode:?} frames={FRAMES} errors={:?} first_error={:?} stalls={} first_stall={:?} first_crossing={:?} overlap={:.7} initial_overlap={:.7} ccd_clamps={} tail_speed={:.7} joint_error={:.7} timing_us={timing:?} params={:?}",
-            self.errors,
-            self.first_error,
-            self.stalls,
-            self.first_stall,
-            self.first_crossing,
-            self.overlap,
-            self.initial_overlap,
-            self.ccd_clamps,
-            self.tail_speed,
-            self.joint_error,
-            world.p1a_integration_settings()
-        );
-    }
-}
-
 // The fixed lower fence is 760 x 24, centered at (400, 454).
-fn past_sandbox_floor(e: &Engine, tracked: &[Entity]) -> bool {
+pub(super) fn past_sandbox_floor(e: &Engine, tracked: &[Entity]) -> bool {
     tracked.iter().any(|&id| {
         let p = e.world.transform(id).unwrap();
         (20. ..=780.).contains(&p.x) && p.y > 466.
@@ -151,68 +64,30 @@ fn gallery_chain(bodies: &[Body]) -> Vec<[f32; 2]> {
         .collect()
 }
 
-type OverlapTick = (usize, bool, OverlapSample);
-
-#[derive(Default)]
-struct RigidOverlapTrace {
-    by_pair: BTreeMap<[ColliderId; 2], Vec<OverlapTick>>,
-    tail_full_ticks: usize,
-}
-
-impl RigidOverlapTrace {
-    fn record(&mut self, world: &PhysicsWorld3d, frame: usize, full: bool) {
-        self.tail_full_ticks += usize::from(frame >= FRAMES - 60 && full);
-        world.p1a_visit_overlaps(|s| {
-            self.by_pair
-                .entry(s.bodies.map(|b| b.collider))
-                .or_default()
-                .push((frame, full, s));
-        });
-    }
-
-    fn report(&self, name: &str, mode: Mode) {
-        let rows = || self.by_pair.values().flatten();
-        let tail = || rows().filter(|(tick, _, _)| *tick >= FRAMES - 60);
-        let tail_full = || tail().filter(|(_, full, _)| *full);
-        let tail_rest = tail_full()
-            .filter(|(_, _, sample)| {
-                sample.bodies.iter().all(|b| {
-                    let speed = |v: [f32; 3]| v.into_iter().map(|x| x * x).sum::<f32>().sqrt();
-                    speed(b.velocity) <= 0.01 && speed(b.angular) <= 0.01
-                })
-            })
-            .map(|r| r.2.depth)
-            .reduce(f32::max);
-        let tail_full = tail_full().map(|r| r.2.depth).reduce(f32::max);
-        let tail = tail().map(|r| r.2.depth).reduce(f32::max);
-        let filtered = rows()
-            .filter_map(|r| (!r.2.solver_allowed).then_some(r.2.depth))
-            .reduce(f32::max);
-        println!("P1A_OVERLAP scene={name} mode={mode:?} tail={tail:?} tail_full={tail_full:?} tail_rest={tail_rest:?} tail_full_ticks={} denied={filtered:?}", self.tail_full_ticks);
-        let Some(&(tick, _, peak)) =
-            rows().max_by(|a, b| a.2.depth.total_cmp(&b.2.depth).then_with(|| b.0.cmp(&a.0)))
-        else {
-            return;
-        };
-        let rows = &self.by_pair[&peak.bodies.map(|b| b.collider)];
-        let at = rows.iter().position(|r| r.0 == tick).unwrap();
-        let mut start = at;
-        let mut end = at;
-        while start > 0 && rows[start - 1].0 + 1 == rows[start].0 {
-            start -= 1;
-        }
-        while end + 1 < rows.len() && rows[end].0 + 1 == rows[end + 1].0 {
-            end += 1;
-        }
-        let run = &rows[start..=end];
-        let full = run.iter().filter(|r| r.1).count();
-        let deep_full = run.iter().filter(|r| r.1 && r.2.depth >= 1.).count();
-        let first_solver = run
+pub(super) fn assert_gallery_advances_without_crossing_the_chain() {
+    let bodies = collider_gallery();
+    let chain = gallery_chain(&bodies);
+    let (mut engine, entities) = sandbox_engine(&bodies, 640., [8, 6]);
+    let dynamic: Vec<_> = bodies
+        .iter()
+        .zip(entities)
+        .filter_map(|(body, entity)| body.dynamic.then_some(entity))
+        .collect();
+    for tick in 0..FRAMES {
+        engine.update(1. / 60.);
+        let before: Vec<_> = dynamic
             .iter()
-            .find_map(|r| r.2.solver_depth.map(|depth| (r.0, depth)));
-        println!("P1A_PEAK scene={name} mode={mode:?} tick={tick} depth={} normal={:?} allowed={} solver_depth={:?} first_solver={first_solver:?} overlap_ticks={} full_ticks={full} depth_at_least_one_full_ticks={deep_full} from={} to={}", peak.depth, peak.normal, peak.solver_allowed, peak.solver_depth, run.len(), rows[start].0, rows[end].0);
-        for body in peak.bodies {
-            println!("P1A_PAIR scene={name} mode={mode:?} body={:?} collider={:?} kind={:?} shape={:?} position={:?} velocity={:?} angular={:?} ccd_active={} ccd_thickness={}", body.id, body.collider, body.kind, body.shape, body.position, body.velocity, body.angular, body.ccd_active, body.ccd_thickness);
+            .map(|&id| engine.world.transform(id).unwrap())
+            .collect();
+        sandbox_step(&mut engine, 640., [8, 6]);
+        assert_eq!(engine.take_unified_physics_error(), None, "tick {tick}");
+        assert!(!past_sandbox_floor(&engine, &dynamic), "tick {tick}");
+        for (&id, start) in dynamic.iter().zip(before) {
+            let end = engine.world.transform(id).unwrap();
+            assert!(
+                !crosses_chain_downward([start, end], &chain),
+                "tick {tick}: {id:?}"
+            );
         }
     }
 }
@@ -231,41 +106,6 @@ fn p1a_probes_detect_crossings_near_chain_vertices() {
         ],
         &chain,
     ));
-}
-
-fn run_sandbox(name: &str, bodies: &[Body], gravity: f32, iterations: [u32; 2]) {
-    let chain = (name == "collider-gallery").then(|| gallery_chain(bodies));
-    for mode in MODES {
-        let (mut e, entities) = sandbox_engine(bodies, gravity, iterations);
-        let tracked: Vec<_> = bodies
-            .iter()
-            .zip(&entities)
-            .filter_map(|(body, &entity)| body.dynamic.then_some(entity))
-            .collect();
-        configure_experiment(&mut e.unified_physics.as_mut().unwrap().physics, mode);
-        let mut output = Measurements::new(physics(&e));
-        let mut overlaps = RigidOverlapTrace::default();
-        let mut before = Vec::with_capacity(tracked.len());
-        for frame in 0..FRAMES {
-            e.update(1. / 60.);
-            if chain.is_some() {
-                before.clear();
-                before.extend(tracked.iter().map(|&id| e.world.transform(id).unwrap()));
-            }
-            let (_, elapsed) = step_sample(|| sandbox_step(&mut e, gravity, iterations));
-            let error = e.take_unified_physics_error();
-            overlaps.record(physics(&e), frame, error.is_none());
-            let crossed = past_sandbox_floor(&e, &tracked)
-                || chain.as_ref().is_some_and(|chain| {
-                    tracked.iter().zip(&before).any(|(&id, &start)| {
-                        crosses_chain_downward([start, e.world.transform(id).unwrap()], chain)
-                    })
-                });
-            output.record(physics(&e), frame, error, crossed, elapsed);
-        }
-        output.report(physics(&e), name, mode);
-        overlaps.report(name, mode);
-    }
 }
 
 #[test]
@@ -292,7 +132,6 @@ fn p2a_compare_soft_ccd_at_first_contact() {
                     .unwrap()
                     .physics
                     .p2a_set_soft_ccd_fraction(fraction);
-                assert!(!physics(&e).p1a_uses_motion_proof());
                 let tracked: Vec<_> = bodies
                     .iter()
                     .zip(&entities)
@@ -364,24 +203,6 @@ fn p2a_compare_soft_ccd_at_first_contact() {
             }
         }
     }
-}
-
-#[test]
-#[ignore = "P1a measures 300 attempts per mode"]
-fn p1a_compare_rigid_materials() {
-    run_sandbox("rigid-materials", &rigid_materials(), 860., [8, 6]);
-}
-
-#[test]
-#[ignore = "P1a measures 300 attempts per mode"]
-fn p1a_compare_contacts_sensors() {
-    run_sandbox("contacts-sensors", &contacts_sensors(), 820., [8, 7]);
-}
-
-#[test]
-#[ignore = "P1a measures 300 attempts per mode"]
-fn p1a_compare_collider_gallery() {
-    run_sandbox("collider-gallery", &collider_gallery(), 640., [8, 6]);
 }
 
 fn anchor(e: &mut Engine, x: f32, y: f32) -> Entity {
@@ -480,32 +301,27 @@ fn joints_lab() -> (Engine, Vec<Entity>) {
 }
 
 #[test]
-#[ignore = "P1a measures 300 attempts per mode"]
-fn p1a_compare_joints_lab() {
-    for mode in MODES {
-        let (mut e, bodies) = joints_lab();
-        configure_experiment(&mut e.unified_physics.as_mut().unwrap().physics, mode);
-        let mut output = Measurements::new(physics(&e));
-        for frame in 0..FRAMES {
-            e.update(1. / 60.);
-            let (_, elapsed) = step_sample(|| sandbox_step(&mut e, 640., [8, 8]));
-            let error = e.take_unified_physics_error();
-            let crossed = past_sandbox_floor(&e, &bodies[1..]);
-            if error.is_none() {
-                assert_eq!(physics(&e).joint_count(), 7);
-                let weld_anchor = |entity, offset| {
-                    let p = e.world.transform(entity).unwrap();
-                    let angle = e.world.rotation(entity).unwrap().radians;
-                    let (s, c) = angle.sin_cos();
-                    [p.x + c * offset, p.y + s * offset]
-                };
-                let a = weld_anchor(bodies[9], 32.);
-                let b = weld_anchor(bodies[10], -32.);
-                output.joint_error = output.joint_error.max((a[0] - b[0]).hypot(a[1] - b[1]));
-            }
-            output.record(physics(&e), frame, error, crossed, elapsed);
-        }
-        output.report(physics(&e), "joints-lab", mode);
+fn joints_lab_keeps_seven_joints_and_the_weld_aligned_for_300_ticks() {
+    let (mut e, bodies) = joints_lab();
+    for tick in 0..FRAMES {
+        e.update(1. / 60.);
+        sandbox_step(&mut e, 640., [8, 8]);
+        assert_eq!(e.take_unified_physics_error(), None, "tick {tick}");
+        assert_eq!(physics(&e).joint_count(), 7);
+        assert!(!past_sandbox_floor(&e, &bodies[1..]), "tick {tick}");
+        let weld_anchor = |entity, offset| {
+            let p = e.world.transform(entity).unwrap();
+            let angle = e.world.rotation(entity).unwrap().radians;
+            let (s, c) = angle.sin_cos();
+            [p.x + c * offset, p.y + s * offset]
+        };
+        let a = weld_anchor(bodies[9], 32.);
+        let b = weld_anchor(bodies[10], -32.);
+        let separation = (a[0] - b[0]).hypot(a[1] - b[1]);
+        assert!(
+            separation < 2.,
+            "weld separation {separation} at tick {tick}"
+        );
     }
 }
 
@@ -572,31 +388,6 @@ fn p1a_probes_detect_crossings_at_brick_edges() {
 
 #[test]
 fn breakout_gap_runs_300_ticks_without_errors_or_tunneling() {
-    let (output, completed_ticks) = run_breakout_gap(Mode::Rapier);
-    assert_eq!(output.first_error, None, "step errors: {:?}", output.errors);
-    assert_eq!(
-        completed_ticks, FRAMES,
-        "the native world must advance on each tick"
-    );
-    assert_eq!(
-        output.first_crossing, None,
-        "the ball crossed a solid fixture"
-    );
-    assert!(
-        output.ccd_clamps > 0,
-        "the scene must exercise continuous collision detection"
-    );
-}
-
-#[test]
-#[ignore = "P1a measures 300 attempts per mode"]
-fn p1a_compare_breakout_gap() {
-    for mode in MODES {
-        run_breakout_gap(mode);
-    }
-}
-
-fn run_breakout_gap(mode: Mode) -> (Measurements, usize) {
     const GAP: [f32; 2] = [348., 168.];
     const SPEED: f32 = 300.;
     const PADDLE_REACH: f32 = 56. + 6.;
@@ -643,15 +434,13 @@ fn run_breakout_gap(mode: Mode) -> (Measurements, usize) {
     let mut rigid = e.world.rigid_body(ball).unwrap();
     rigid.can_sleep = false;
     e.world.set_rigid_body(ball, rigid);
-    configure_experiment(&mut e.unified_physics.as_mut().unwrap().physics, mode);
     assert!(e.resume_data_scene());
     assert!(e.auto_rigid_body_step_active());
     let dt = f64::from(e.fixed_timestep.config().step_seconds);
-    let mut output = Measurements::new(physics(&e));
     let mut in_play = false;
     let mut gap_frames = 0;
     let mut hits = 0;
-    let mut completed_ticks = 0;
+    let mut ccd_clamps = 0;
     for frame in 0..FRAMES {
         if frame % 100 == 0 {
             in_play = true;
@@ -667,11 +456,10 @@ fn run_breakout_gap(mode: Mode) -> (Measurements, usize) {
         let before = e.world.transform(ball).unwrap();
         // The demo uses automatic stepping so native collision lifecycle events
         // are available before its brick removal and paddle response.
-        let (_, elapsed) = step_sample(|| e.update(dt));
-        let error = e.take_unified_physics_error();
-        if error.is_none() && e.unified_physics_frame_statistics().unwrap().fixed_steps == 1 {
-            completed_ticks += 1;
-        }
+        e.update(dt);
+        assert_eq!(e.take_unified_physics_error(), None, "tick {frame}");
+        assert_eq!(e.unified_physics_frame_statistics().unwrap().fixed_steps, 1);
+        ccd_clamps += physics(&e).step_statistics().ccd_clamps;
         let p = e.world.transform(ball).unwrap();
         let crossing = static_bodies
             .iter()
@@ -681,7 +469,10 @@ fn run_breakout_gap(mode: Mode) -> (Measurements, usize) {
         let [half_width, half_height] = BRICK_HALF_EXTENTS;
         gap_frames +=
             usize::from((p.x - GAP[0]).abs() < half_width && (p.y - GAP[1]).abs() < half_height);
-        output.record(physics(&e), frame, error, crossing, elapsed);
+        assert!(
+            !crossing,
+            "the ball crossed a solid fixture at tick {frame}"
+        );
         if !in_play {
             continue;
         }
@@ -753,9 +544,10 @@ fn run_breakout_gap(mode: Mode) -> (Measurements, usize) {
         gap_frames > 0 && hits > 0,
         "the ball must reach the brick gap"
     );
-    println!("P1A_BREAKOUT mode={mode:?} completed_ticks={completed_ticks} gap_frames={gap_frames} bricks_hit={hits}");
-    output.report(physics(&e), "breakout-gap", mode);
-    (output, completed_ticks)
+    assert!(
+        ccd_clamps > 0,
+        "the ball must exercise continuous collision detection"
+    );
 }
 
 fn spatial_world() -> PhysicsWorld3d {
@@ -767,54 +559,46 @@ fn spatial_world() -> PhysicsWorld3d {
 }
 
 #[test]
-#[ignore = "P1a measures 300 attempts per mode"]
-fn p1a_compare_thin_mesh_fall() {
-    for mode in MODES {
-        let mut w = spatial_world();
-        w.create_body(
+fn fast_ball_stays_above_a_thin_triangle_mesh() {
+    let mut w = spatial_world();
+    w.create_body(
+        BodyDesc {
+            kind: BodyKind::Fixed,
+            ..BodyDesc::default()
+        },
+        ColliderDesc::new(Shape::TriangleMesh {
+            vertices: vec![
+                [-10., 0., -10.],
+                [10., 0., -10.],
+                [10., 0., 10.],
+                [-10., 0., 10.],
+            ],
+            triangles: vec![[0, 2, 1], [0, 3, 2]],
+        }),
+    )
+    .unwrap();
+    let ball = w
+        .create_body(
             BodyDesc {
-                kind: BodyKind::Fixed,
+                pose: Pose {
+                    position: [0., 2., 0.],
+                    ..Pose::default()
+                },
+                linear_velocity: [0., -1000., 0.],
+                ccd: true,
                 ..BodyDesc::default()
             },
-            ColliderDesc::new(Shape::TriangleMesh {
-                vertices: vec![
-                    [-10., 0., -10.],
-                    [10., 0., -10.],
-                    [10., 0., 10.],
-                    [-10., 0., 10.],
-                ],
-                triangles: vec![[0, 2, 1], [0, 3, 2]],
-            }),
+            ColliderDesc::new(Shape::Sphere { radius: 0.5 }),
         )
         .unwrap();
-        let ball = w
-            .create_body(
-                BodyDesc {
-                    pose: Pose {
-                        position: [0., 2., 0.],
-                        ..Pose::default()
-                    },
-                    linear_velocity: [0., -1000., 0.],
-                    ccd: true,
-                    ..BodyDesc::default()
-                },
-                ColliderDesc::new(Shape::Sphere { radius: 0.5 }),
-            )
-            .unwrap();
-        configure_experiment(&mut w, mode);
-        let mut output = Measurements::new(&w);
-        for frame in 0..FRAMES {
-            let (result, elapsed) = step_sample(|| w.step_checked());
-            let state = w.body_state(ball).unwrap();
-            output.record(
-                &w,
-                frame,
-                result.err(),
-                state.pose.position[1] < -0.5,
-                elapsed,
-            );
+    for tick in 0..FRAMES {
+        w.step_checked().unwrap();
+        let y = w.body_state(ball).unwrap().pose.position[1];
+        assert!(y >= -0.005, "ball crossed the mesh at tick {tick}: {y}");
+        if tick == 0 {
+            assert_eq!(w.ccd_clamps().len(), 1);
+            assert_eq!(w.ccd_clamps()[0].moving.body, ball);
         }
-        output.report(&w, "thin-mesh-fall", mode);
     }
 }
 
@@ -865,47 +649,51 @@ fn create_stack_box(
 }
 
 #[test]
-#[ignore = "P1a measures 300 attempts per mode"]
-fn p1a_compare_box_stack() {
-    for mode in MODES {
-        let mut w = spatial_world();
-        let floor = create_stack_box(&mut w, BodyKind::Fixed, [0., -0.5, 0.], [10., 0.5, 10.]);
-        let blocks: Vec<_> = (0..8)
-            .map(|level| {
-                create_stack_box(
-                    &mut w,
-                    BodyKind::Dynamic,
-                    [0., 0.55 + 1.03 * level as f32, 0.],
-                    [0.5; 3],
-                )
-            })
-            .collect();
-        configure_experiment(&mut w, mode);
-        let mut output = Measurements::new(&w);
-        let mut tail_supported_frames = 0;
-        let mut tail_angular_speed = 0_f32;
-        let magnitude = |[x, y, z]: [f32; 3]| (x * x + y * y + z * z).sqrt();
-        for frame in 0..FRAMES {
-            let (result, elapsed) = step_sample(|| w.step_checked());
-            let mut crossed = false;
-            for &id in &blocks {
-                let state = w.body_state(id).unwrap();
-                let [x, y, z] = state.pose.position;
-                crossed |= x.abs() < 10. && z.abs() < 10. && y < -1.;
-                if frame >= FRAMES - 60 {
-                    output.tail_speed = output.tail_speed.max(magnitude(state.linear_velocity));
-                    tail_angular_speed = tail_angular_speed.max(magnitude(state.angular_velocity));
-                }
+fn eight_box_stack_settles_without_losing_support() {
+    let mut w = spatial_world();
+    let floor = create_stack_box(&mut w, BodyKind::Fixed, [0., -0.5, 0.], [10., 0.5, 10.]);
+    let blocks: Vec<_> = (0..8)
+        .map(|level| {
+            create_stack_box(
+                &mut w,
+                BodyKind::Dynamic,
+                [0., 0.55 + 1.03 * level as f32, 0.],
+                [0.5; 3],
+            )
+        })
+        .collect();
+    for tick in 0..FRAMES {
+        w.step_checked().unwrap();
+        for &id in &blocks {
+            let state = w.body_state(id).unwrap();
+            assert!(
+                state.pose.position[1] > 0.,
+                "box crossed the floor at tick {tick}"
+            );
+            if tick >= FRAMES - 60 {
+                assert!(
+                    state
+                        .linear_velocity
+                        .into_iter()
+                        .map(f32::abs)
+                        .fold(0., f32::max)
+                        < 0.05,
+                    "unsettled box at tick {tick}: {state:?}"
+                );
+                assert!(
+                    state
+                        .angular_velocity
+                        .into_iter()
+                        .map(f32::abs)
+                        .fold(0., f32::max)
+                        < 0.05,
+                    "rotating box at tick {tick}: {state:?}"
+                );
             }
-            if frame >= FRAMES - 60 && w.p1a_stack_is_supported(floor, &blocks) {
-                tail_supported_frames += 1;
-            }
-            output.record(&w, frame, result.err(), crossed, elapsed);
         }
-        let final_supported = w.p1a_stack_is_supported(floor, &blocks);
-        println!(
-            "P1A_STACK mode={mode:?} final_supported={final_supported} tail_supported_frames={tail_supported_frames} tail_angular_speed={tail_angular_speed:.7}"
-        );
-        output.report(&w, "box-stack", mode);
+        if tick >= FRAMES - 60 {
+            assert!(w.p1a_stack_is_supported(floor, &blocks), "tick {tick}");
+            assert!(w.p1a_max_overlap() < 0.02, "stack overlap at tick {tick}");
+        }
     }
 }

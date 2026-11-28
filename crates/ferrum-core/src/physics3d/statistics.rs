@@ -1,5 +1,6 @@
 //! Native work counts and CCD observations, independent of geometric queries.
 use super::events::collider_ref;
+use super::motion_time::Domain;
 use super::world::native_id;
 use super::{BodyId, ColliderRef, PhysicsWorld3d};
 
@@ -204,11 +205,7 @@ impl PhysicsWorld3d {
         );
     }
 
-    pub(super) fn step_backend(
-        &mut self,
-        controller_seconds: f32,
-        logical_domain: super::solver_trajectory::Domain,
-    ) -> bool {
+    pub(super) fn step_backend(&mut self, controller_seconds: f32, logical_domain: Domain) -> bool {
         let motion_proof = self.backend_motion_enabled();
         self.events
             .2

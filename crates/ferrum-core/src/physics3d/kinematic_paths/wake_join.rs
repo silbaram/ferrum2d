@@ -73,7 +73,7 @@ fn point_velocity(
         if !seconds.is_finite() || seconds <= 0. {
             return Err(TrajectoryError::InvalidTime);
         }
-        let seconds = crate::physics3d::character_motion::backend::native_duration(seconds)?;
+        let seconds = crate::physics3d::motion_time::native_duration(seconds)?;
         let inverse = 1. / seconds;
         if !inverse.is_finite() {
             return Err(TrajectoryError::NonFinite);

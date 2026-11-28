@@ -7,6 +7,8 @@ use crate::physics3d::character_contacts::actual_rows;
 use crate::physics3d::character_dynamics::actual_impulse::{self, MassPolicy, Participant};
 use crate::physics3d::contact_policy::ContactPolicies;
 use crate::physics3d::events::EventCollector;
+use crate::physics3d::geometry::same_pose_bits;
+use crate::physics3d::motion_time::native_duration;
 use crate::physics3d::motion_trace::AcceptedCurve;
 use crate::physics3d::solver_trajectory::{
     self, Curve, Domain, Kernel, ShapeMotion, Time, TrajectoryError, Work,
@@ -235,16 +237,6 @@ struct CharacterOrigin {
     geometry_delta: rp::Vector,
     /// Canonical geometric projection already applied over physical momentum.
     geometry_credit: rp::Vector,
-}
-
-/// The sole controller-duration conversion at the native physical boundary.
-/// Reject underflow before previews can consume input or divide by zero.
-pub(in crate::physics3d) fn native_duration(seconds: Time) -> Result<f32, TrajectoryError> {
-    let value = seconds as f32;
-    if !seconds.is_finite() || seconds <= 0. || !value.is_finite() || value <= 0. {
-        return Err(TrajectoryError::InvalidTime);
-    }
-    Ok(value)
 }
 
 #[cfg(test)]
@@ -4189,9 +4181,10 @@ impl BackendMotionScratch {
                             curve: self.entries[i].curve,
                             ..source.motion
                         };
-                        if ![time, next].into_iter().all(|at| {
-                            solver_trajectory::same_pose_bits(source.motion.pose(at), new.pose(at))
-                        }) {
+                        if ![time, next]
+                            .into_iter()
+                            .all(|at| same_pose_bits(source.motion.pose(at), new.pose(at)))
+                        {
                             return Ok(false);
                         }
                     }
@@ -5796,10 +5789,6 @@ impl PhysicsWorld3d {
         }
     }
     pub(in crate::physics3d) fn begin_backend_motion_tick(&mut self) {
-        #[cfg(test)]
-        {
-            self.character_motion.p1b_tick_started = true;
-        }
         self.character_motion.backend_motion.begin_tick();
     }
     pub(in crate::physics3d) fn backend_motion_enabled(&self) -> bool {

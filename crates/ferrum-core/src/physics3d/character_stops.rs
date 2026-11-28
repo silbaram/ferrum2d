@@ -1,6 +1,6 @@
 //! Capsule constraints may consume a prescribed command at its obstruction time.
 use super::character::CharacterPreview;
-use super::solver_trajectory::Time;
+use super::motion_time::Time;
 use super::world::native_id;
 use super::{BodyId, PhysicsWorld3d};
 use rapier3d::prelude as rp;
@@ -67,12 +67,5 @@ impl PhysicsWorld3d {
     pub(super) fn stop_character_obstacle(&mut self, id: BodyId) {
         self.stop_prescribed_body(id);
         self.record_character_stop();
-    }
-    pub(super) fn stop_prescribed_body(&mut self, id: BodyId) {
-        if let Some(body) = self.backend.bodies.get_mut(native_id(id)) {
-            body.set_next_kinematic_position(*body.position());
-            body.set_linvel(rp::Vector::ZERO, true);
-            body.set_angvel(rp::Vector::ZERO, true);
-        }
     }
 }

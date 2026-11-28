@@ -11,7 +11,10 @@ mod supported_capsule_face;
 pub(in crate::physics3d) use rounded::static_signed_support_lower;
 pub(super) use rounded::{offset_box_ball_separated, tight_face_fits};
 mod world_contact;
-pub(super) use clock::{Domain, Kernel, Time};
+use super::geometry::same_pose_bits;
+pub(super) use super::motion_error::TrajectoryError;
+pub(super) use super::motion_time::{Domain, Time};
+pub(super) use clock::Kernel;
 pub(super) use rounded::{normal_action_range, straight_primitive_bounds};
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -46,17 +49,6 @@ pub(super) struct ShapeMotion {
     pub local_center: rp::Vector,
     /// Original full-shape frame relative to the body origin.
     pub local_pose: rp::Pose,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum TrajectoryError {
-    WorkLimit,
-    InvalidTime,
-    InvalidReference,
-    MissingBodyMotion,
-    UnsupportedShape,
-    NonFinite,
-    Unresolved,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -133,11 +125,6 @@ pub(super) fn linear_com_addition_invisible(
     work: &mut Work,
 ) -> Result<bool, TrajectoryError> {
     rounded::linear_com_addition_invisible(curve, rate, start, end, max_addition_seconds, work)
-}
-
-pub(super) fn same_pose_bits(a: rp::Pose, b: rp::Pose) -> bool {
-    a.translation.to_array().map(f32::to_bits) == b.translation.to_array().map(f32::to_bits)
-        && a.rotation.to_array().map(f32::to_bits) == b.rotation.to_array().map(f32::to_bits)
 }
 
 // A rebased zero-rate kernel may have different clock labels while every

@@ -1,7 +1,7 @@
 //! Recheck a selected event against the backend pass schedule actually committed.
 //! No backend step or repeated character/native impulse solve occurs here.
 use super::{KinematicPath, PathScratch, PhysicsWorld3d};
-use crate::physics3d::solver_trajectory::Time;
+use crate::physics3d::motion_time::Time;
 use crate::physics3d::world::native_id;
 use rapier3d::prelude as rp;
 
@@ -52,7 +52,7 @@ impl PhysicsWorld3d {
         let mut candidate = Vec::new();
         for _ in 0..allowance.min(MAX_REFINEMENTS) {
             self.backend.integration_parameters.dt =
-                match crate::physics3d::character_motion::backend::native_duration(
+                match crate::physics3d::motion_time::native_duration(
                     tick_dt * (event.impact - start),
                 ) {
                     Ok(seconds) => seconds,

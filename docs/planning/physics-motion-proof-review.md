@@ -1041,3 +1041,293 @@ Engine 체크포인트에서는 장애물을 제거한 뒤 6틱을 재생했다.
 최종 Wasm을 사용한 로컬 통합 물리 Web, Platformer, 물리 실험실 7개 장면, 마을 전투
 8개 조합이 통과했다. `smoke:hd2d-combat`은 사용자 지시대로 생략했다. main에서도 재현된
 DPR 2 소프트웨어 렌더링의 최소 프레임 문제 때문이다.
+
+## P3 삭제 지도
+
+P3-0의 기준은 PR #117을 병합한 `origin/main`(`5d0097e7`)이다. 제품 경로는 일반 Rapier 스텝,
+Rapier CCD, KCC, 경로 매듭 분할과 시작·끝 자세를 보간하는 투사체 질의다. 증명 실행은
+`force_rigid_motion_proof`와 `force_character_motion_proof`를 사용하는 테스트에만 연결된다.
+이 지도는 사용자 결정 4번에 따라 그 경로를 최종 삭제하는 순서를 제안한다.
+
+### 빌드와 크기 기준
+
+AMD Ryzen AI Max+ 395, 16코어·32스레드, WSL2 Linux 6.18.58.1 x86-64에서 측정했다. 게스트가
+인식한 RAM은 16,577,130,496바이트(15.44 GiB), swap은 4 GiB이며 cgroup CPU·메모리 제한은
+`max`였다. Rust·Cargo 1.97.1, wasm-pack 0.15.0, wasm-bindgen 0.2.120, wasm-opt 117,
+gzip 1.14를 사용했다. 각 대상 디렉터리를 비운 상태에서 Cargo 레지스트리와 설치된 도구 캐시는
+재사용했다. 두 빌드를 순차 실행했고, 각각 외부 타이머의 wall time을 한 번 측정했다.
+
+| 작업 | wall time | 산출물 |
+| --- | ---: | --- |
+| Core 디버그 `cargo test --no-run` | 91.08초 | 단위·통합 테스트 바이너리 컴파일 |
+| Core Wasm release | 159.16초 | Cargo 84초, 나머지 시간에 wasm-bindgen·wasm-opt와 패키지 출력 포함 |
+| `ferrum_core_bg.wasm` | | 10,027,707바이트 |
+| 동일 파일 `gzip -n -9` | | 3,490,382바이트 |
+
+```bash
+p3_dir="$PWD/artifacts/physics-p3-map"
+export RUSTUP_TOOLCHAIN=stable CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=8
+# wasm-bindgen 0.2.120과 wasm-opt 117의 설치 경로를 PATH에 둔다.
+CARGO_TARGET_DIR="$p3_dir/native-cold" /usr/bin/time -f '%e' \
+  cargo +stable test --no-run --locked --offline --manifest-path crates/ferrum-core/Cargo.toml
+CARGO_TARGET_DIR="$p3_dir/wasm-cold" /usr/bin/time -f '%e' \
+  wasm-pack build --mode no-install crates/ferrum-core --release --target web --out-dir "$p3_dir/pkg"
+wc -c < "$p3_dir/pkg/ferrum_core_bg.wasm"
+gzip -n -9 -c "$p3_dir/pkg/ferrum_core_bg.wasm" | wc -c
+```
+
+### 소스 규모
+
+파일과 하위 모듈의 물리 줄 수다. 주석과 빈 줄을 포함한다. Rust 구문을 파싱해
+`#[cfg(test)]`로 제한된 선언·블록·외부 모듈, `#[test]` 함수와 그 시험 모듈의 보조 코드도
+시험에 포함했다. 매크로가 확장하면서 만드는 줄은 세지 않았다. 표의 비시험 줄은 소스 구성 기준이다.
+제품에서 실행되지 않지만 해당 빌드에 컴파일되는 증명 코드도 비시험 열에 포함된다.
+
+| Core 모듈과 하위 | Rust 파일 | 비시험 줄 | 시험 줄 | 명시적 `#[test]` |
+| --- | ---: | ---: | ---: | ---: |
+| `solver_trajectory` | 93 | 36,506 | 26,577 | 331 |
+| `character_motion` | 51 | 18,462 | 21,164 | 198 |
+| `queries/step_motion` | 6 | 1,087 | 790 | 10 |
+| `motion_trace` | 2 | 274 | 158 | 4 |
+| `kinematic_paths` | 6 | 1,104 | 889 | 14 |
+| 합계 | 158 | 57,433 | 49,578 | 557 |
+
+Vendor의 수정 파일은 각 `UPSTREAM.json`의 경로별 SHA-256과 추적 파일을 대조했다. 원본
+압축본의 SHA-256을 확인한 뒤 Python `difflib.SequenceMatcher`로 줄 diff를 계산했다.
+추가 줄은 바뀐 줄의 새 쪽도 포함한다.
+`Cargo.toml` 등 Rust 소스 외 파일과 수정 기록·라이선스 파일은 이 표에서 제외했다.
+
+| Ferrum 추가·수정 소스 | Rust 파일 | 현재 비시험 줄 | 현재 시험 줄 | 상류 대비 비시험 추가 줄 | 상류 대비 시험 추가 줄 | 상류 쪽 제거 줄 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `vendor/rapier3d` | 72 | 29,493 | 7,131 | 5,607 | 5,602 | 203 |
+| `vendor/parry3d` | 41 | 19,964 | 1,723 | 3,689 | 355 | 537 |
+
+`crates/ferrum-core/src`에서 `tests` 및 `*_tests` 경로를 제외하고 이름을 검색하면
+`solver_trajectory`는 131파일(모듈 안 59, 밖 72), `character_motion`은 46파일(안 26, 밖 20)이다.
+후자의 54파일은 같은 검색 범위에서 재현되지 않았다. 모듈 밖에서 인라인 시험 구문과 주석 줄을
+추가로 제외하면 각각 50·13파일이다. 이 집계에는 import, 필드 접근, 실행되지 않는 분기도 있다.
+호출 위치와 저장 형식 접근을 아래 분류에 따로 반영했다.
+
+### 도달 범위 실험
+
+`5d0097e7`에서 Core를 추출해 독립 임시 Git 저장소에 실험 커밋을 만들었다. `world.rs`,
+`kinematic_paths.rs`, `joints.rs`, `statistics.rs`, `character_motion/backend.rs`에서
+증명 분기와 `step_kinematic_tick`을 `#[cfg(test)]`로 차단했다. 강제 스위치는 원래
+`character/experimental_tests.rs`의 테스트 전용 모듈에 있다. KCC를 선택하고 남은 강체 분기의
+기존 캐릭터 preview 호출도 차단했다. 지정 경로의 실사용 사전 검사와 저널, 일반 투사체,
+저장용 타입과 decode 분기를 실험 사본에 남겼다.
+
+```bash
+# 별도 실험 사본의 루트에서 실행한다.
+export CARGO_TARGET_DIR="$p3_dir/experiment-target" CARGO_BUILD_JOBS=8
+cargo +stable build --lib --locked --offline --manifest-path crates/ferrum-core/Cargo.toml --message-format=json
+cargo +stable build --lib --locked --offline --manifest-path crates/ferrum-core/Cargo.toml \
+  --target wasm32-unknown-unknown --message-format=json
+```
+
+두 비시험 빌드에서 각각 같은 **`dead_code` 진단 352건**(63파일, primary span 788개)과 실험으로
+인한 `unused_variables` 4건을 얻었다. 진단당 첫 위치 기준으로 `character_motion` 208,
+`solver_trajectory` 27, `character_contacts` 47, `character_dynamics` 27,
+`contact_impulses` 7, `kinematic_paths` 9, `motion_trace` 3, `queries/step_motion` 3,
+나머지 `character*`·`events`·`kinematic_limits`·`one_way`·`world` 21건이다.
+Rapier·Parry의 외부 공개 export는 이름과 Core 호출 위치를 추적했다. 최종 Wasm에서 실제로
+절약할 바이트는 삭제 뒤 같은 release 빌드와 gzip 설정으로 다시 잰다.
+
+### Core 파일 지도
+
+A는 증명 전용, B는 제품 공통, C는 제품 또는 저장 판독이 아직 증명 쪽 타입·할당·분기에
+의존하는 부분이다. A도 호출자와 함께 삭제한다. 혼합 파일에서는 아래에 적은 함수·필드 단위로
+경계를 잡는다.
+
+| 경로 또는 기호 | 분류 | 남은 호출과 정리 방법 |
+| --- | --- | --- |
+| `world::step_checked`의 증명 분기, `kinematic_paths::step_kinematic_tick`, `event_prefix.rs`, `wake_join.rs`, `joints.rs`의 exact prefix·공통 solver cadence 분기, `statistics.rs`의 `BackendEvents` 분기 | A | 강제 스위치, solver motion 콜백, 재승인·잠든 바디 합류·승인 prefix 기록을 함께 제거한다. 일반 Rapier 스텝, joint pass와 관절 고장 보고는 B다. |
+| `character_motion/{actual_scene,angular_suffix,native_ccd,sensors,feedback}.rs`와 하위, `backend/{active_constraints,classification,clock_phase,confined_push,finite_coasting,opposed_rider,physical_momentum,representable}.rs`와 하위 | A | 셀별 증명, native CCD 사전 계획, 승인 feedback, 실제 prefix용 센서 예측 경로다. `BackendEvents`와 함께 참조를 끊는다. |
+| `character_motion.rs`의 옛 장애물 resolve, `character.rs`의 `step_characters`/preview 복원·옛 `step_character`, `character_contacts`와 옛 `character_dynamics` coupling, `character_constraints.rs`, `character_query/tight_ground_admission.rs`, `kinematic_limits.rs`, `contact_impulses/actual.rs` | A 중심 | 제품 진입을 막았을 때 증명과 구형 preview/solver 호출이 사라진다. `character_stops::stop_prescribed_body`, `character_dynamics::predicted_pose`, 실제 KCC 접촉 normal·접지, native impulse/CCD 관측 수집은 B다. 기존 contact event collector와 센서 enter/exit는 유지한다. |
+| `character/kcc.rs`, `kcc/kinematic_push.rs`, `kinematic_motion.rs`, `kinematic_paths::step_rapier_kinematic_tick`, `engine/unified_physics/terrain_motion.rs` | B | 입력·군중·밀기·운반, 매듭과 blocked 구간에서의 다음 틱 phase, sweep-sensors 대시의 안전 prefix가 제품 동작이다. |
+| `solver_trajectory::Time`, `clock::Domain`의 구간 생성·분할, `same_pose_bits`, `backend::native_duration` | B | 일반 joint/경로 시간 변환과 보간에서 쓰인다. 공통 시간·검증 옆으로 옮기고 `Kernel`의 원 solver 표현과 분리한다. |
+| `solver_trajectory`의 `accepted_capsules_separated`, `contacts_full_shapes*`, `offset_box_ball_separated`, `tight_face_fits`, actual support·회전 분리 검사 | A 중심 | 실험 후 위 진입이 경고로 드러났다. `rounded`나 `world_contact`를 먼저 통째로 자르면 아래 저장 exact cast가 컴파일되지 않는다. |
+| `solver_trajectory.rs`의 `Curve`, `ShapeMotion`, `cast_full_shapes_policy*`, `leaf_contact`와 `clock::Kernel`, `feature_contact`, `positive_initial_support`, `rounded`, `world_contact`의 exact cast 종속부 | C → A | 증명 실행 외에도 `queries/step_motion.rs`의 `Some(exact)` → `exact.rs`의 cast 및 `finish.rs`·`file_admission.rs`의 bounds/검증에서 닿는다. 일반 KCC는 Parry, 일반 투사체는 시작·끝 보간과 Parry로 간다. 우선 exact 판독/호환 방침을 확정하고 공통 시간·pose 검사만 분리한다. 하위 파일의 잔존 호출을 다시 확인한 뒤 순서대로 삭제한다. |
+| `queries/step_motion.rs`의 `record_interpolated_step_motion`, 보간 BVH·질의·호출자 `engine/unified_physics/projectiles.rs` | B | 발사/명중, 월드 query의 read-only 성질, 태그·센서·그룹/one-way 필터, 후보·hit 상한, 일반 저장 BVH admission을 남긴다. |
+| `queries/step_motion::{exact,file_admission,finish}.rs`의 exact 구간, `motion_trace.rs`, `events.rs`의 `EventCollector.2` 및 solver motion callback | C → A | exact trace producer는 A다. collector는 직렬화 구조에 있고 `TargetMotion.exact`를 처리하는 reader/query가 있다. 호환 결정에 맞춰 레코드·콜백·읽기를 묶어 정리한다. 일반 ordinary BVH 빌드/검증은 B다. |
+| `character_motion/backend.rs`의 `actual_motion_result`/완료 시간·error latch·scratch 계산, `trajectory::MAX_PROOF_WORK`, `Work::charge` | C | 일반 경로 틱의 `begin_backend_step_rollback`/출력 예약과 `finish_step_motion`에도 기존 32 Mi 작업 단위 ledger가 전달된다. 위치·query 출력의 예산과 오류를 각각 소유시키고, 기존 캡 증감은 별도 검토한다. 준비·승인 오류가 이후 성공 출력으로 덮이지 않도록 한다. |
+| `character_motion/credit.rs`·`character/interval_credit.rs`, `credit/step.rs`, `world/tick_outputs.rs`, `events.rs`의 틱 저널 | C | 증명 전용 interval credit은 A다. `step_checked`의 `finish_actual_interval_credit` 호출을 정리한다. 경로 틱은 `prescribed_paths`만으로도 rigid graph/body/BVH와 prior outputs를 예약한다. 제품에 필요한 차단·입력·이벤트 원자성을 별도로 입증한 뒤 큰 저널과 해당 vendor API를 제거한다. |
+| `MotionStop`, `CharacterPreview`, `character/file_admission.rs`, `kinematic_paths/character_admission.rs`, `snapshot.rs`의 해당 레코드 | C | `CharacterRuntime.motion_stop`, `path_scratch.preview` 및 legacy carry/동적 접촉 상태가 저장 검사를 거친다. 제품은 경로 시작에 preview를 저장하며, `PathScratch`의 실제 stop/phase·운반 합도 사용한다. 증명 필드만 걷어내고 다음 틱에 영향을 주는 지지체·입력·힘과 진행률, cold 참조 검증을 유지한다. |
+
+### Vendor 수정 지도
+
+`FERRUM-PATCHES.md`의 변경 목적과 원본 archive diff를 같이 확인했다. 아래 경로는 각 vendor의
+`src/` 기준이며 마지막 행의 통합 테스트만 crate 루트 기준이다. A+B 또는 B+C 파일은 해당
+hunk만 제거한다. Rust 공개 export는 Core와 vendor 내부의 사용을 함께 추적한다.
+
+| Rapier 파일 | 분류 | P3 처리 |
+| --- | --- | --- |
+| `control/character_controller.rs` | B | offset 비례의 이동 epsilon과 접촉 충격 조회 동작을 유지한다. |
+| `dynamics/solver/contact_constraint/{contact_constraint_element,contact_with_coulomb_friction,contact_with_twist_friction,generic_contact_constraint}.rs`, `dynamics/integration_parameters.rs`, `geometry/{contact_correction,contact_pair}.rs`, `pipeline/physics_hooks.rs` | B | 3D 마찰·rank-1 접선 풀이, 접촉/분리 보정, 반발 문턱, 실제 normal/friction impulse 보고는 일반 스텝에서 사용한다. |
+| `dynamics/ccd/{ccd_solver,sweeps,mod,sweeps_tests}.rs`, `dynamics/mod.rs` | A+B | Prepared Native CCD 적용과 승인용 crossing export는 A다. 일반 clamp/sweep, 평면 회전 상자 활성 판단, CCD 진단·상한·일반 회귀는 B다. |
+| `pipeline/{solver_motion.rs,solver_motion/tests.rs,event_handler.rs,mod.rs,physics_pipeline/{mod,solve,substep}.rs}`, `dynamics/solver/{velocity_solver.rs,staged_island_solver/{helpers,init,mod,worker}.rs,solver_body.rs}` | A+B | solver motion callback, f64 logical domain·decision/barrier, prepared plan, 전용 trace·관측 serde와 이들 export는 A다. 기본 writeback, CCD/접촉 이벤트, 지정 키네마틱 선속도·기존 각속도 정책과 반발 문턱은 B다. `RigidBody::predict_kinematic_motion` 소비자인 KCC·path 예측을 함께 확인한다. |
+| `pipeline/rigid_step_credit.rs`, `geometry/broad_phase_bvh/step_credit.rs`, `data/modified_objects.rs` 및 `data/{arena,coarena,mod}.rs`·`dynamics/{rigid_body,rigid_body_set}.rs`·`geometry/{collider_set,broad_phase_bvh/mod}.rs`의 journal·motion-credit hunk | C | Core 경로 틱에서 `RigidStepCredit`를 호출한다. 제품 저널 분리 뒤 해당 복사·capture·restore·백업 전용 sizing을 없앤다. 저장 검사에서도 사용하는 arena 접근·순회 비용 함수는 남긴다. |
+| `data/{arena/serde_tests,graph,graph/validation}.rs`와 `data/{arena,coarena,mod}.rs`의 복원·검증부, `dynamics/{rigid_body,rigid_body_components,rigid_body_set,stored_body_numerics,stored_body_numerics/tests}.rs`의 공통부 | B | 슬롯·세대·free list·graph·동적 수치 admission과 일반 적분을 유지한다. |
+| `dynamics/island_manager/{global_split,local_split,manager,mod,persistent}.rs`와 `persistent/{scheduler_tests,validation,validation/eligibility,validation/eligibility_tests,validation/tests}.rs`, `dynamics/joint/impulse_joint/{impulse_joint_set,impulse_joint_set/validation}.rs`, `dynamics/solver/solver_contact_graph.rs` | B | 일반 island scheduler·저장 참조와 contact/joint graph를 유지한다. 저널용 caller만 끊긴 함수는 C 검토에 포함한다. |
+| `geometry/{broad_phase_bvh/{mod,update,validation},collider_set,contact_pair,file_shape_aliases,mod,stored_references,stored_references/tests}.rs`, `geometry/narrow_phase/{mod,pair_update,shape_change_tests,stored_numerics,stored_numerics/tests,stored_workspaces,stored_workspaces/tests,validation,validation/tests}.rs` | B | slot reuse, SHAPE 교체와 pending 제거, solver hints, manifold/workspace, alias 및 저장 geometry 검증을 남긴다. 저널 hunk만 위 C 행을 적용한다. |
+| `tests/snapshot_portability.rs`, `Cargo.toml`의 고정 Parry 경로 | B | 상류 bincode target parity와 vendoring 근거를 유지한다. 영속 vendor layout을 실제로 바꾸는 PR에서만 검증값을 재생성한다. |
+
+| Parry 파일 | 분류 | P3 처리 |
+| --- | --- | --- |
+| `partitioning/bvh/{bvh_binned_build,bvh_geometry,bvh_refit,bvh_serde,bvh_traverse_bvtt,bvh_tree,mod}.rs` | B+C | 일반 query·broad phase·투사체 BVH와 cold 그래프 검사는 B다. `bvh_tree.rs`의 `step_credit_bytes`·`retained_step_credit_bytes`·`try_copy_step_credit`는 Rapier 저널 분리 뒤 제거한다. |
+| `shape/{compound,compound/serde_state,convex_polyhedron,convex_polyhedron/serde_state,file_aliases,file_aliases/encoding,heightfield3,mod,serde_validation,shared_shape,trimesh,trimesh/serde_state}.rs`, `utils/{array2,vec_map}.rs) | B | Native 파일 검증·shape alias 동일값 검사·법선/반사 scale·수치 보정을 유지한다. `file_aliases`의 동일값 입증은 운동 증명과 별개인 저장 계약이다. |
+| `query/contact_manifolds/{contact_manifolds_composite_shape_composite_shape,contact_manifolds_composite_shape_shape,contact_manifolds_heightfield_composite_shape,contact_manifolds_heightfield_shape,contact_manifolds_trimesh_shape,stored_workspace,mod}.rs), `query/mod.rs`의 저장 export | B | 저장 workspace 원본 대응과 root metadata admission을 유지한다. |
+| `query/{contact/contact_cuboid_cuboid,gjk/gjk,ray/ray_ball,shape_cast/shape_cast_support_map_support_map}.rs`, `utils/interval.rs` | B 중심 | 일반 cuboid SAT 원 local witness/선택면, coplanar GJK 복구, ray NaN 방지, shape cast·interval 회귀를 유지한다. GJK의 metered 분기만 아래 행에서 정리한다. SAT 수정은 증명 작업 때 들어왔어도 일반 dispatcher가 사용한다. |
+| `query/{contact/metered,contact/mod,native_work,gjk/gjk,epa/epa3,sweep_toi/mod,sweep_toi/proxy_distance,mod}.rs`의 metered/local-witness 부분, `contact_manifolds/contact_manifolds_cuboid_capsule.rs`의 Ferrum 명시 SAT 연결 | C → A | Core `solver_trajectory::leaf_contact`와 fullshape exact query의 `proxy_distance_with_local_witness_metered`, `contact_point_cloud_metered`, 명시 capsule/box SAT가 마지막 연결이다. exact 판독 제거 뒤 re-export·callback·계량 구현을 제거한다. 기본 GJK/EPA·CCD와 일반 거리/접촉 수식을 유지하며 capsule SAT는 추가로 활성화한 hunk만 되돌린다. |
+
+### 시험 이관과 공백
+
+강제 스위치의 직접 호출과 `Mode::configure`·`p1b_step_observed`·Engine 시험용 proof
+설정의 간접 호출을 함께 추적했다. 같은 이름군에 제품만 쓰는 대조도 있으므로 함수의 설정과
+단언을 기준으로 분리한다.
+
+| 시험·파일군 | 처리 | 제품에서 필요한 단언 |
+| --- | --- | --- |
+| `p1a_compare_*` 7개 | 삭제 + 일부 장면 이관 | 증명 대조군·거절 틱·모드 전용 시간을 지운다. 제품의 실험실 3장면 300틱 회귀는 유지한다. 관절 실험실, 벽돌 깨기 gap, 얇은 mesh 낙하, 더미는 기존 제품 시험과 비교해 빠진 동일 장면의 무오류·관통·겹침/안정 단언을 독립 fixture로 남긴다. |
+| `p1b_compare_*` 4개, ignored `p2b_compare_*` 3개 | 삭제 + 일부 장면 이관 | 회전·이동 발판, 끼임/풀림, 64명 재생, 동적 지지체·고속 키네마틱 벽·유한 질량은 현재 KCC 단독 회귀를 보존한다. 64명·405틱 해시와 저장 뒤 6틱 재생, 256/1,024명 제품 benchmark는 유지한다. `p2a_compare_soft_ccd_at_first_contact`는 두 일반 Rapier 설정을 재는 별도 실험이므로 필요하면 proof 모드 확인만 걷고 유지한다. |
+| 일반 테스트인 `p2b_compare_passive_knockback`, `p2b_compare_platform_and_rider_at_wall`와 `p1b_tests.rs`의 KCC 전용 조작 | 제품 경로로 다시 쓰기 | proof 기대값을 끊고 outbound push의 운동량·반작용, 피격의 게임 충격, 발판 정지·운반, 두 캡슐의 자리 교환 방지를 기본 KCC로 단언한다. 복수 캡슐의 쌍과 플랫폼 그룹은 실제 제품 결과를 유지한다. |
+| `actual_trajectory_tests.rs`, `character_motion/backend/{clock_phase,active_constraints,classification,native_ccd_tests}`의 실제 kernel·suffix·handoff·promotion 테스트, `angular_suffix/tests.rs`, `kinematic_paths/event_prefix/tests.rs` | 대부분 삭제 | exact witness/출력 비트/승인 작업량·native call 수·원 시각을 따지는 단언을 지운다. 남겨야 할 의미는 빠른 센서/대시가 갖는 문서화된 접촉·비충격, 회전 장벽에 대한 겹침·끼임, extra iterations/joints 장면의 재생이다. 제품 허용 오차와 실제 정상 진행을 측정한다. |
+| `observation_off_linear_sphere_and_locked_box_keep_actual_force_kernels_and_native_momentum`, `forced_proof_includes_all_enabled_native_dynamic_origins`, `prediction_extra_cadence_never_changes_actual_backend_base_parameters` | 삭제 | 증명 kernel/원본 cadence 전용이다. 같은 `native_ccd_tests.rs`의 `disabled_joint_pair_does_not_disable_an_unrelated_native_ccd_target`는 일반 CCD로 실행하므로 유지한다. |
+| 강제 증명인 `squeeze_substeps_preserve_force_targets_and_original_motion_time`, `path_splits_keep_other_targets_forces_joint_load_and_full_tick_motion`, `controller_preview_preserves_jump_and_does_not_duplicate_dynamic_pushes` | 제품 경로로 다시 쓰기 | 매듭이 나뉜 물리 틱에서 관련 없는 위치 목표와 힘·충격이 한 번만 반영되고, pending jump·관절의 실제 힘/파손 보고와 다음 틱이 재생되는지 검사한다. `path_impact_preserves_true_hit_time_and_the_other_bodies_full_tick`에서는 다른 바디가 full dt를 진행하는 제품 단언만 이관한다. `preview_pair_work_counts_each_query_once_and_is_separate_from_ccd`는 삭제한다. |
+| `step_motion_tests.rs`의 full turn·내부 반전·원 CCD prefix, `queries/step_motion/logical_clock_tests.rs`, `motion_trace/tests.rs`, `snapshot/tests/actual_paths.rs`의 exact 전용 테스트 | 삭제 + 제품 회귀 유지 | 투사체의 시작·끝 보간, tie/필터, 질의의 상태 불변, BVH 실패의 원래 데이터 보존과 restore 후 같은 명중을 확인한다. 동일 끝점 회전과 exact CCD prefix 단언은 P2b 제품 계약에서 제외됐다. |
+| `engine/file_candidate/tests/actual_native_ccd.rs`의 `saved_queries_and_six_tick_runtime_are_identical`, `original_end_damage_rejects_valid_crcs_and_keeps_source`, `uses_exact_decode_and_common_post_decode_quotas` 및 `precise_completed_query_payload_valid_crc_damage_keeps_native_source_unchanged` | exact 부분 삭제, 일반 형식으로 다시 쓰기 | 일반 보간 레코드·유효 CRC의 잘못된 참조·공통 quota·same-build 파일 rejection에 대해 원본 보존과 6틱 일치를 남긴다. outer/cold decoder의 일반 admission 테스트는 보존한다. |
+| `character_runtime_admission_preview_stale_support_clear_reenable_and_new_axis_are_history`, `character_runtime_admission_grounded_jump_is_retained_then_consumed_once`, `native_snapshot_retains_path_stop_and_rotating_piecewise_motion_queries` | 제품 경로로 다시 쓰기 | 실사용 지지체 세대·재설정·queued jump/force·정지한 매듭 진행률과 그 뒤 6틱을 지킨다. `rapier_path_checkpoint_replays_support_preview_and_pending_jump`와 PR #117의 `late_knot_stop_*` 검증에 겹치는 부분은 합칠 수 있다. |
+| `preapply_capacity_rejection_preserves_last_tick_and_pending_world_bytes`, `zero_progress_rejection_restores_staged_tick_inputs`, `rejected_frame_retry_does_not_repeat_pre_physics_gameplay` | 제품 오류 계약으로 다시 쓰기 | 공통 proof quota 대신 공용 admission의 실제 오류를 쓰거나 test-only 실패 주입을 둔다. 첫 거절의 이전 진단·입력·이벤트·Native 바이트 불변과 재시도에서 tween/scene·게임 입력·동적 힘의 정확히 한 번 적용을 각각 검증한다. |
+| `solver_trajectory` 내부 331개와 `character_motion` 내부 198개의 단위 시험 | 모듈마다 위 처리를 적용 | `rounded`·`world_contact`·`query_work_tests`·`cardinal_tests`, proof용 장면·추적·모멘텀·셀이 삭제되는 경우 그 내부 수학 시험도 삭제한다. `clock.rs`의 유한/시간 단위 검사와 유지할 일반 geometry·work의 회귀는 공통 모듈로 이동한다. `credit.rs`의 legacy 명령 소유 증명은 삭제하되 실제 제품의 journal/출력 계약은 아래 검사를 남긴다. |
+| `queries/step_motion/finish/tests.rs`, `kinematic_paths/character_admission/tests.rs`, 통합 물리 Web·Platformer·물리 실험실·마을 전투·공개 체크포인트/Native 파일 시험 | 혼합, 일반 경로 유지 | BVH 상한·capture 불능 상태에서 복구·path phase 정밀도·hand-crafted valid-CRC 저장 손상·trajectory 없는 정상 재생은 유지한다. exact 공유 ledger 및 오래된 preview 검사만 제거 대상이다. |
+
+삭제 전에 막아야 할 공백은 복합 매듭의 힘/관절/입력 소비, sensor 대시와 일반 CCD의 활성·필터,
+복원 후 명중·carry·path phase의 결정성, 사전 거절과 틱 안 실패를 분리한 복구다. 독립
+일반 경로 시험으로 받은 뒤 비교용 모드를 없앤다. 지정 경로의 0.5 구간 정지, 하강 발판
+상자, 두 벽 정지와 박스/탑승자/이벤트 일관성은 PR #117 제품 회귀를 기준으로 유지한다.
+
+### 공개 ABI와 저장 형식
+
+| 항상 0으로 생성되는 값 | 노출 경계 | 제거 영향 |
+| --- | --- | --- |
+| `couplingVisits`(word 22), `failedPairCasts`(23), `failedObstacleContacts`(27), `couplingLimitFlag`(flags word 2의 16), `obstacleLimitFlag`(64) | Rust `CharacterState`와 `engine/unified_physics/web_bridge/characters.rs`의 버퍼, TypeScript `unifiedPhysicsCharacters.ts`의 `UNIFIED_PHYSICS_CHARACTER_LAYOUT`과 `UnifiedPhysicsCharacterStateBufferView`. character capability v1, 28 words/112 bytes. [Core API](../engine/public-api/core.md) | v1에서 0인 예약 word·bit를 유지하면 기존 offset과 소비자가 그대로 동작한다. 압축 시 25 words/100 bytes로 바뀌고 obstacle offset이 이동하므로 capability v2·TS stride/offset·Wasm 패키지·스모크를 함께 갱신해야 한다. |
+| `characterPreviewPasses`, `characterPreviewPairCasts`, `characterPreviewPairContacts`, `characterPreviewCouplingVisits`, `characterPreviewCouplingLimits`, `characterPreviewObstacleCasts`, `characterPreviewObstacleContacts`, `characterPreviewObstacleFailures` | Rust `StepStatistics`의 word 4–11과 frame 합계, `DiagnosticsRecord` parts `step`과 `frame`. observations v1 kind 4는 7-word 헤더 + 32 words × 2 = 71 words/284 bytes다. `unifiedPhysicsObservations.ts`의 `UNIFIED_PHYSICS_COUNTER_LAYOUT`, `UnifiedPhysicsCounters`, `decodeCounters`, `copyUnifiedPhysicsDiagnostics`, `FrameState.unifiedPhysics`와 profiler 경로에 노출된다. [Core API](../engine/public-api/core.md) | 0인 자리를 두면 두 counter block과 JSON 키가 유지된다. 압축 시 각 block이 24 words이고 전체가 55 words/220 bytes다. observations v2, 두 block의 시작 위치와 공개 TS 키·문서·profiler 검사도 바뀐다. |
+
+`pairCasts`, `pairContacts`, `obstacleCasts`, `obstacleContacts`, `failedObstacleCasts`,
+`droppedContacts`, blocked flags, `kinematicPath*`, native CCD/impulse 및 contact 관측은
+일반 경로 소유다. 예를 들어 KCC의 움직이는 장애물 cast 실패는 `failedObstacleCasts`에
+기록한다. 삭제 표는 제품 스텝이 생성하는 값 기준이다. 디코더가 받아들일 수 있는 저장된
+legacy 상태와 구분해 슬롯을 정리한다.
+
+| 저장 레코드 | 현재 연결 | 추천 정리와 버전 |
+| --- | --- | --- |
+| `WorldState.step_motion`의 `TargetMotion.exact: Option<exact::Segment>`, exact `Curve/Kernel`, `exact_failed`, `EventCollector.2`의 solver `MotionTrace` | Physics snapshot v7 안에 직렬화된다. 공개 Native 파일 Engine section과 Core/Engine 체크포인트도 그 world를 포함한다. exact reader가 허용하는 pose·time·owner·BVH 대응과 상한이 있다. | 같은 빌드 정책을 유지하고 exact 저장·reader·확정 trace를 지운다. 일반 `StepMotion`의 보간 pose, BVH 및 resume는 남긴다. 실제 physics wire 제거 시 `PHYSICS_SNAPSHOT_VERSION` 7→8. |
+| `CharacterRuntime.motion_stop`/옛 coupling 상태, `PathScratch.preview`·`pending_stops` 등의 proof 레코드, 캐릭터·step/frame 통계 | `character/file_admission.rs`, `kinematic_paths/character_admission.rs`, `stored_characters` 및 Engine의 통계 구조 안에서 검증한다. | f64의 실제 구간 stop과 phase, 현재 character input/support, 동적 속도·외력, 일반 통계는 유지한다. 바꾸는 wire 필드를 확정해 physics v8과 정합시킨다. Engine의 직접 Serde 필드를 바꾸면 `checkpoint_codec` 내부 엔진 버전 2도 올린다. |
+| `MotionScene`, `TickOutputs`, rigid journal/그래프 복사 | 런타임 scratch는 `serde(skip)`이거나 한 틱 전용이다. decoder에 `MotionScene` 초기 heap의 별도 charge가 있다. | scratch만 이동/제거할 때 해당 타입의 decode charge와 저장이 실제로 소비하는 예산을 함께 정리한다. 같은 serialized layout이면 이 변경만으로는 wire version을 올리지 않는다. |
+
+현재 Physics snapshot과 Engine 코덱, Native 파일 헤더는 Core/target의 build 지문을 확인한다.
+Native v1은 SDK 지문도 확인하고, 공개 메모리 체크포인트는 Engine 인스턴스 소유권도 확인한다.
+따라서 **기존 빌드의 저장 파일이 새 P3 빌드에서 열리는 호환성은 현재 계약에 없다**.
+P3 빌드가 생성한 새 파일과 체크포인트는 같은 빌드에서 복원돼야 한다. 외부 `F2DFILE`
+envelope의 7-section 배치가 유지되면 outer v1을 유지할 수 있고, Rust 내부의 layout 버전과
+공개 체크포인트 capability 버전은 각각 자기 계약으로 관리한다. 소스 지문이 들어간 Native
+저장 SHA·템플릿 fixture는 Rust 소스를 바꾸는 단계마다 재생성하고, 정상 제품 동작의 해시를
+별도로 대조한다. PR #117 비교처럼 지문/종속 CRC와 실제 payload 변화를 나눠 확인한다.
+현재 28/71 ABI를 보존해도 내부 저장 layout을 바꾸면 새 버전과 fixture가 필요하다.
+
+### 오류와 저널 제거 조건
+
+| 검사·동작 | 현재 발생 지점 | P3 이후 검사 |
+| --- | --- | --- |
+| `native-checked-error-probe.mjs`의 수동 기본/설정 지정과 자동 RAF | 수동은 고정 10ms world에 5ms를 요청해 clock mismatch가 난다. 자동은 nominal 10ms에 승인된 힘 500,000·가상 질량 0.01을 30ms RAF에서 평가해 `InvalidCharacter`가 난다. | 세 사례 모두 path journal이나 `CapacityExceeded`에 의존하지 않아 그대로 유지한다. 이전 CCD 진단과 포즈·시간·Native bytes, RAF 중단·재시작, restore 검사를 유지한다. |
+| `aggregate-native-authoring-probe.mjs`의 두 `physics capacity exceeded` 단언 | Physics Spec collider 추가 batch 한도와 Scene JSON 혼합 배치 admission이다. | 그대로 유지한다. 제거할 증명 ledger와 무관한 body/collider/schema 한도에서 계속 실패할 수 있다. |
+| 제품 지정 경로/대시의 `CapacityExceeded` | `step_with_kinematic_paths`의 16개 경로 한도, `tick_motion::begin_tick_motions`의 경로 + 비캐릭터 대시 합계 16개 제한과 별도로, 현재는 저널·출력 예약이 proof ledger에서 거절될 수 있다. | 제품에서 용량 오류가 필요한 회귀는 16개 승인 가능한 경로에 비캐릭터 대시 하나를 추가하는 실제 preflight로 옮긴다. 입력과 직전 출력·저장 불변을 동시에 확인한다. 기존 경로별 4매듭, 기타 제품 설정 상한도 유지한다. |
+| `injected_native_tick_failure_preserves_diagnostics_checkpoint_and_native_file`, `planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection` | 테스트 전용 주입은 tick output/journal을 만든 뒤 staged 입력을 적용하고 실패한다. | 이 둘을 preflight 실패로 대체하지 않는다. 남은 제품 실패의 발생 위치와 mutation 순서를 먼저 확인한다. 실패 가능한 단계가 앞당겨져야 하는 곳은 사전 검사로 옮기고, 남는 틱 중 실패에는 필요한 입력·작은 출력/이벤트 복원을 유지한다. 실제 틱 실패 주입 전후 바이트, 예약 입력과 다음 재시도를 검사한다. |
+
+`CapacityExceeded` 자체는 공개 오류이며 일반 한도에도 쓰인다. `UnresolvedMotion` 및 exact
+prefix 전용 에러 변환이 제품에서 실제로 발생하는지 이관 때 다시 확인하되, 공개 enum/tag 제거는
+별도의 호환 결정을 거친다. `MAX_PROOF_WORK`를 없앨 때 할당의 checked 산술·fallible reserve와
+Native 파일의 독립적인 decode 예산을 남긴다.
+
+### 단계별 PR 제안
+
+| 단계 | 작업과 예상 삭제 규모 | 확인할 결과와 위험 |
+| --- | --- | --- |
+| P3-1 제품 경계와 시험 이관 | 물리 틱 시간·자세·예측을 공통 모듈로 분리하고, 제품 시험에 넘긴 비교 모드와 계측 코드를 정리한다. | 64명 상태 해시를 유지하고 Native 파일의 Core 지문과 종속 CRC만 바뀌는지 확인한다. 복합 매듭의 힘·관절·입력, 센서 대시와 CCD 필터, 복원 뒤 명중·운반·경로 진행을 독립 시험으로 검사한다. |
+| P3-2 경로 틱 사전 검사와 저널 | 경로와 출력의 용량 검사, 오류 소유권, 틱 시작 전과 틱 중 실패 경계를 분리한다. 약 1–4천 줄. | 기존 예산에 걸리던 사례의 오류가 달라질 수 있다. 경로 16개와 비캐릭터 대시의 실제 거절, 실패 주입, 관절·체크포인트를 비교한다. 실제 mutation 순서를 확인한 뒤 필요한 복원만 유지한다. |
+| P3-3 증명 실행 연결과 저장 증명 레코드 제거 | `StepMotion` exact 경로와 저장 proof 레코드, `MotionTrace` 및 `BackendEvents`, 강제 스위치와 증명 진입을 제거한다. 약 3–8천 줄. | 일반 CCD·투사체·발판과 저장 손상 거절을 유지한다. 실제 payload 배치가 바뀔 때 내부 버전을 올리고 fixture를 재생성한다. |
+| P3-4 Core 증명 파일 삭제 | 옛 캐릭터 풀이·`character_motion`·`solver_trajectory`·`rounded`를 한 PR에서 정리한다. 등록을 끊은 파일은 캐릭터 풀이(5–8천 줄), backend·representable·보조 캐릭터 모듈(각 약 5–10천 줄), solver 진입·접촉·rounded 하위(각 약 5–10천 줄) 커밋으로 나눈다. | 제품 유틸리티, CCD 및 저장 참조를 보존한다. 혼합 파일의 수정이 한 PR에서 검토하기 어려운 규모면 그때 분할을 보고한다. |
+| P3-5 vendor 증명 훅 제거와 최종 측정 | Rapier callback·Prepared Native CCD·logical clock, Parry exact metering과 전용 시험을 2–5천 줄 범위에서 정리한다. 같은 환경과 옵션으로 cold build와 gzip 크기를 다시 잰다. | 일반 CCD, 마찰·반발·축 잠금·KCC, broad phase와 저장 그래프를 비교한다. 혼합 파일에서 공통 수식과 관측을 유지한다. |
+
+후속 PR은 Core test·Clippy·포맷, Wasm release와 소스 지문, SDK 및 Native 저장·재생,
+패키지, 공개 API와 문서 링크를 확인한다. 동작을 이관하거나 vendor 계산을 바꿀 때는 영향받는
+통합 물리 Web·Platformer·실험실·마을 전투를 로컬에서 검증한다.
+
+동일 입력의 64명 해시는 각 단계에서 기존 값과 대조한다. P3-2에서 명시적으로 정리한 거절
+결과는 별도로 기록한다. 등록이 끊긴 뒤에도 `build.rs`가 추적하는 비시험 파일을 지우면
+Wasm 지문과 Native 저장 SHA가 바뀔 수 있다. 저장본은 지문·종속 체크섬과 일반 payload를
+각각 비교한다.
+
+### 사용자 결정 (2026-11-28) · P3 호환과 PR 범위
+
+- 공개 v1은 캐릭터 28 words와 observations 71 words의 키·offset·flag를 유지한다.
+  폐기 대상 값은 기존 자리에 0을 쓴다. v2 압축은 P3 범위에서 제외한다.
+- Native 저장 파일과 체크포인트의 same-build 계약을 유지한다. 내부 형식 버전은
+  실제 payload 배치가 바뀌는 PR에서 올린다.
+- P3는 위 다섯 단계로 진행한다. 모듈에서 등록을 끊은 Core 파일은 P3-4의 한 PR에서
+  커밋 단위로 나눠 지운다. 혼합 파일의 수정량이 큰 경우 분할이 필요한 근거를 보고한다.
+
+### P3-1 결과
+
+`motion_time`이 기존 `Time`, `Domain`, `native_duration`의 계산과 검증을 공유한다.
+`motion_error`는 기존 오류 타입과 변형을 담는다. `geometry`는 자세 비트 비교를,
+`dynamics`는 힘을 소비하지 않는 동적 자세·속도 예측을, `body_controls`는 키네마틱
+명령 정지를 담당한다. KCC와 증명 모듈 모두 이 함수를 호출한다. 경로 admission·저널,
+`MAX_PROOF_WORK`/`Work`, 저장 exact 레코드는 P3-2·P3-3에서 처리한다.
+
+| 이전 시험 | 제품 경로 시험과 단언 | 비교에서 제외한 단언 |
+| --- | --- | --- |
+| `p1a_compare_rigid_materials`, `p1a_compare_contacts_sensors`, `p1a_compare_collider_gallery` | 기존 sandbox 시험에 300틱 무오류·바닥 비관통, gallery chain 교차 금지 추가 | 증명 정지 틱과 모드별 겹침·시간 보고 |
+| `p1a_compare_joints_lab`, `p1a_compare_breakout_gap` | 관절 7개와 weld 앵커 간격·바닥 비관통, 벽돌 틈 진입·명중·CCD·300틱 진행 | 증명 모드와의 진행·출력 비교 |
+| `p1a_compare_thin_mesh_fall`, `p1a_compare_box_stack` | 고속 공의 첫 CCD clamp와 얇은 mesh 비관통, 상자 8개의 마지막 60틱 지지·정지·겹침 한도 | 비교 모드 정지·전체 틱 타이밍 |
+| `p1b_compare_rotating_platform`, `p1b_compare_moving_platform`, `p1b_compare_squeeze_release` | 300틱 접지와 drift 한도·두 번 실행의 해시, 끼임 간격·벽이 열리고 탈출하는 틱 | proof carry와 stall 타이밍 |
+| `p1b_compare_crowd_64` | `native_crowd_replays_64_actors_through_405_ticks`에서 50ms×81프레임의 위치·길찾기 카운터·Native 복원 재생 및 진행을 비교 | 두 모드 release 시간과 각 모드의 진단 샘플 |
+| `p2b_compare_finite_mass_push` | `p2b_character_push_uses_virtual_mass_and_stores_the_opposite_impulse`의 상자 이동·속도와 캐릭터 반작용 | 모드별 운동량 출력 |
+| `p2b_compare_incoming_impact_and_dynamic_support` | `p2b_incoming_dynamic_impact_stops_at_the_actor_and_game_code_supplies_knockback`, `dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor`의 피격·게임 넉백·동적 지지체 실제 이동/회전 | 모드별 충돌 속도와 운반량 출력 |
+| `p2b_compare_incoming_kinematic_wall` | `fast_incoming_wall_pushes_an_idle_capsule_without_passing_through`의 빠른 벽 이동과 캡슐 비관통 | 모드별 위치 출력 |
+| `p2b_compare_passive_knockback`, `p2b_compare_platform_and_rider_at_wall`, `p1b_tests.rs` KCC 조작 | 제품의 두 공간에서 캐릭터가 상자를 밀 때 합산 운동량, 발판·탑승자의 구간 정지·겹침·접지·운반 없음, 이동·회전 지지체와 두 캐릭터 통과 방지를 검사 | proof 분기와 계측 전용 observer |
+| `squeeze_substeps_preserve_force_targets_and_original_motion_time`, `path_splits_keep_other_targets_forces_joint_load_and_full_tick_motion`, `path_impact_preserves_true_hit_time_and_the_other_bodies_full_tick` | 차단 구간의 시작 자세, 나머지 바디의 전체 틱 힘과 목표, 관절 하중과 틱 간 지속력, 승인된 시작·끝 자세의 명중을 검사 | exact 충돌 시각과 native kernel 조각·cadence 단언 |
+| `controller_preview_preserves_jump_and_does_not_duplicate_dynamic_pushes` | 경로의 세 구간에서 대기 점프·수평/수직 충격 한 번 적용, 동적 상자 충격과 반작용, 착지 뒤 재발사 금지 | exact preview 호출 수와 단일 구간의 위치 비트 동등 |
+| `character_runtime_admission_*` 두 건 | 지지체 삭제와 재등록·clear 이후 캡처, 지지체에서 준비한 점프의 1회 적용, 복원 뒤 6틱 바이트 동등 | proof preview 이력의 저장 행 개수 |
+| `native_snapshot_retains_path_stop_and_rotating_piecewise_motion_queries` | 정지한 매듭·탑승자 운반, 회전 물체의 시작·끝 보간과 투사체 hit, 장애물을 제거해 복원 후 6틱 동안 자세·운반·hit·phase·snapshot 바이트 동등 | 동일 끝점인 회전 경로의 중간 exact hit |
+| 신규 `sensor_dash_and_native_ccd_each_respect_collision_filters` | 같은 제품 틱에 센서 대시의 안전한 이동과 일반 CCD clamp가 각각 호환되는 고체에서 멈추며, 먼저 있는 센서와 마스크 제외 고체가 방해하지 않음을 확인 | — |
+
+`p2a_compare_soft_ccd_at_first_contact`는 일반 Rapier 설정 두 개의 접촉·비관통·재실행
+검사와 시간 측정을 유지한다. 오류·거절 시험 `preapply_capacity_rejection_*`,
+`zero_progress_rejection_*`, `rejected_frame_retry_*`, `injected_native_tick_failure_*`,
+`planar_legacy_inputs_*`는 P3-2에서 다룬다.
+
+
+비교 함수 14개(P1a 7, P1b 4, ignored P2b 3)를 제거했다. 기준 소스에서 해당 함수의
+속성·본문은 386줄이다. 공통 함수 이동과 대체 시험을 포함한 Core diff는 1,387줄 삭제,
+994줄 추가다. 강제 스위치 사용처는 함수 정의를 빼고 rigid 5→4, character 42→34다.
+character 34곳에는 기존 증명 fixture가 넘기는 함수 참조 1곳과 시험 전용 스위치 전환 시험
+1곳이 포함된다. 제품 회귀는 이 스위치를 호출하지 않는다.
+
+통합 물리 Web의 64명·405틱 SHA-256은
+`486c58c1e2a2fec256d42c63fc567da28d89576a5305d3c6be24ec8d96f9a301`로 유지됐다.
+최소·탑다운·벽돌 깨기·Platformer 템플릿을 같은 입력으로 생성해 각각
+`node scripts/ferrum-runtime-replay.mjs update-fixture`를 실행했다. 기존 Wasm이 저장한
+18개 파일은 기존 fixture와 일치했다. 새 Wasm의 소스 지문과 저장 파일 지문은
+`e619cfe342ccb710`이다. 기존 `b8752eb11c6f9821`과 대조해 외부 Native 헤더,
+중첩 Engine 레코드 둘, Physics snapshot 헤더에 새 지문을 반영하고 종속 CRC를
+안쪽부터 재계산하면 파일 전체 바이트가 일치했다. 네 JSON fixture는 Native SHA-256,
+스냅샷 및 리플레이 해시만 갱신했다. 공개 API, TS 타입, ABI, 공개 문서, 형식 버전 변경은 없다.
+
+Core 전체 단위 3,829개와 통합 1개, Clippy `--all-targets -- -D warnings`, Rust 포맷이
+통과했다. 전체 실행에서 제외되는 선택 시험 중 `p2a_compare_soft_ccd_at_first_contact`는
+별도로 통과했다. 캐시의 wasm-bindgen과 wasm-opt를 PATH에 두어 `wasm-pack build --mode no-install`로
+Wasm release를 빌드하고 `native-wasm-source-identity`와 `pnpm test:web` 292개를 확인했다.
+공개 API·공개 타입·Rust 시험 구조·문서 링크 검사, 네 패키지 tarball과 create-game 템플릿
+보고서도 통과했다. Chromium 로컬 통합 물리 Web과 `physics-demo-suite` 7개 장면은 최종
+Wasm으로 통과했다. `smoke:hd2d-combat`은 사용자 지시대로 실행 범위에서 제외했다.

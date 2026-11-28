@@ -715,12 +715,11 @@ impl PhysicsWorld3d {
                                                 body, other, dt, &schedule,
                                             );
                                         }
-                                        let predicted =
-                                            super::super::character_dynamics::predicted_pose(
-                                                body,
-                                                self.backend.gravity,
-                                                dt,
-                                            );
+                                        let predicted = super::super::dynamics::predicted_pose(
+                                            body,
+                                            self.backend.gravity,
+                                            dt,
+                                        );
                                         let local = other
                                             .position_wrt_parent()
                                             .copied()
