@@ -344,7 +344,7 @@ fn character_runtime_admission_cold_move_state_velocity_is_not_reconstructed() {
 
 fn path_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
     let (world, actor, platform) = support_fixture(PhysicsWorld3d::force_character_motion_proof);
-    assert_eq!(world.path_scratch.saved_character_payload_counts(), (2, 2));
+    assert_eq!(world.path_scratch.saved_character_payload_counts(), 2);
     (world, actor, platform)
 }
 
@@ -1611,7 +1611,6 @@ fn precise_completed_query_payload_valid_crc_damage_keeps_native_source_unchange
         ..WorldConfig::default()
     })
     .unwrap();
-    world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
     world
         .create_body(
@@ -1627,7 +1626,7 @@ fn precise_completed_query_payload_valid_crc_damage_keeps_native_source_unchange
         .unwrap();
     world.step_checked().unwrap();
     let saved = world.capture_snapshot().unwrap();
-    for case in 0..16 {
+    for case in 0..8 {
         let mut candidate = PhysicsWorld3d::from_snapshot(&saved).unwrap();
         candidate.step_motion.test_corrupt_precise_payload(case);
         reject_fixture(&candidate, &saved, &format!("precise query payload {case}"));

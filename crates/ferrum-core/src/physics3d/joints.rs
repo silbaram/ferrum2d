@@ -201,21 +201,6 @@ impl PhysicsWorld3d {
         Domain::new(start, tick * end_fraction)
     }
 
-    fn record_committed_backend_prefix(&mut self, before: Time) {
-        let after = self.actual_motion_completed_time();
-        if after > before {
-            // A rejected later CCD slice does not undo earlier slice writes.
-            // Capture their trace before the next step_backend resets it, and
-            // advance planar bookkeeping for only their physical Native time.
-            let seconds = self
-                .backend
-                .physics_pipeline
-                .solver_motion_committed_seconds();
-            self.advance_planar_angles(seconds);
-            self.record_step_motion_segment(after / Time::from(self.config.step_seconds));
-        }
-    }
-
     pub(super) fn step_with_joints(&mut self, start_fraction: Time, end_fraction: Time) {
         self.character_motion
             .backend_motion
@@ -234,15 +219,8 @@ impl PhysicsWorld3d {
             None
         };
         if self.joints.is_empty() {
-            let before = self.actual_motion_completed_time();
-            if !self.step_backend(self.backend.integration_parameters.dt, domain) {
-                self.record_committed_backend_prefix(before);
-                return;
-            }
-            if self.backend_motion_enabled() {
-                self.record_step_motion_segment(end_fraction);
-            }
-            self.advance_planar_angles(self.backend.integration_parameters.dt);
+            self.step_backend(self.backend.integration_parameters.dt, domain);
+            self.refresh_queries();
             return;
         }
         // Rapier only exposes impulses from its final internal substep. Run the
@@ -324,9 +302,7 @@ impl PhysicsWorld3d {
             } else {
                 None
             };
-            let before = self.actual_motion_completed_time();
             if !self.step_backend(params.dt, pass_domain) {
-                self.record_committed_backend_prefix(before);
                 break;
             }
             self.advance_planar_angles(self.backend.integration_parameters.dt);
@@ -335,12 +311,6 @@ impl PhysicsWorld3d {
                     || !self.solve_ratio_joints(ConstraintPass::Positions))
             {
                 break;
-            }
-            if self.backend_motion_enabled() {
-                self.record_step_motion_segment(
-                    start_fraction
-                        + (end_fraction - start_fraction) * (pass as Time / passes as Time),
-                );
             }
             self.finish_joints();
         }
@@ -692,9 +662,6 @@ impl PhysicsWorld3d {
         Ok(data)
     }
 }
-
-#[cfg(test)]
-mod partial_prefix_tests;
 
 fn apply_frame_springs(data: &mut rp::GenericJoint, desc: &JointDesc) -> Result<(), PhysicsError> {
     if !valid_spring_response(desc.linear_spring) || !valid_spring_response(desc.angular_spring) {

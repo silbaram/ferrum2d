@@ -127,12 +127,16 @@ pub(super) struct CharacterRuntime {
     #[serde(skip)]
     collisions: Vec<CharacterCollision>,
     pub tick_velocity: [f32; 3],
+    #[serde(skip)]
     pub carry_fraction: super::motion_time::Time,
+    #[serde(skip)]
     pub carry_blocker: Option<BodyId>,
+    #[serde(skip)]
     pub motion_stop: Option<super::character_motion::MotionStop>,
     pub external_velocity: [f32; 3],
     pub external_force: [f32; 3],
     pub pending_impulse: [f32; 3],
+    #[serde(skip)]
     pub contact_velocity: [f32; 3],
     #[serde(skip)]
     pub free_velocity: [f32; 3],

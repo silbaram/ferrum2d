@@ -91,7 +91,7 @@ impl EventBuffer {
 pub(super) struct EventCollector(
     Mutex<EventBuffer>,
     pub(super) Mutex<super::contact_impulses::ImpulseBuffer>,
-    pub(super) Mutex<super::motion_trace::MotionTrace>,
+    #[serde(skip)] pub(super) Mutex<super::motion_trace::MotionTrace>,
 );
 
 impl EventCollector {

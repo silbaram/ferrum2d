@@ -1,11 +1,11 @@
-//! Completed-step capture consumes the actual tick's remaining proof work.
+//! Completed-step capture reserves work before publishing a query BVH.
 //! Failure keeps the existing unavailable-capture contract, never a no-hit.
 use super::*;
 use crate::physics3d::{motion_error::TrajectoryError, motion_work::Work};
 
 impl StepMotion {
     pub(in crate::physics3d) fn invalidate_capture(&mut self) {
-        self.exact_failed = true;
+        self.capture_failed = true;
         self.ready = false;
     }
 
@@ -57,8 +57,7 @@ impl StepMotion {
             })
             .ok_or(TrajectoryError::WorkLimit)?;
         // These are logical node/storage/phase units, not CPU instructions or
-        // allocator/RSS guarantees. This reservation also covers cleanup/refit
-        // after a later fallible exact bound, so no partial tree is published.
+        // allocator/RSS guarantees. It covers the complete tree update.
         work.charge(topology)
     }
 
@@ -77,34 +76,17 @@ impl StepMotion {
             let Some(collider) = colliders.get(target.collider) else {
                 continue;
             };
-            let bounds = match &target.exact {
-                Some(exact) => match exact.motion.bounds(
-                    collider.shape(),
-                    exact.start_time,
-                    exact.end_time,
-                    work,
-                ) {
-                    Ok(bounds) => bounds,
-                    Err(_) => {
-                        self.exact_failed = true;
-                        continue;
-                    }
-                },
-                // Preserve legacy authored/non-exact interpolation. This path
-                // is not claimed to be an exact Native F32 curve certificate.
-                None => motion_bounds(collider.shape(), &target.motion),
-            };
+            let bounds = motion_bounds(collider.shape(), &target.motion);
             self.bvh
                 .insert_or_update_partially(bounds, index as u32, 0.);
         }
-        // All topology work was admitted before the first partial write. A
-        // failed bound therefore still completes the original valid refit.
+        // All topology work was admitted before the first partial write.
         for index in self.segments.len()..self.leaves {
             self.bvh.remove(index as u32);
         }
         self.leaves = self.segments.len();
         self.bvh.refit(&mut self.workspace);
-        self.ready = !self.exact_failed;
+        self.ready = !self.capture_failed;
     }
 }
 

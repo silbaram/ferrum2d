@@ -79,9 +79,8 @@ fn read_world<'de, D: serde::Deserializer<'de>>(source: D) -> Result<PhysicsWorl
 }
 
 /// Native checkpoint format. Changing persistent fields requires a new version.
-/// Version7 stores private trajectory domains and normalized controller/path
-/// fractions as f64; original native observer labels and physical dt remain f32.
-pub const PHYSICS_SNAPSHOT_VERSION: u32 = 7;
+/// Version 8 stores the interpolated projectile capture and prescribed path stops.
+pub const PHYSICS_SNAPSHOT_VERSION: u32 = 8;
 /// Maximum encoded checkpoint size, including its envelope.
 pub const PHYSICS_SNAPSHOT_MAX_BYTES: usize = 64 * 1024 * 1024;
 const HEADER: usize = 32;

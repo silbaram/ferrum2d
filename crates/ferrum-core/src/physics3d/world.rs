@@ -416,6 +416,7 @@ impl PhysicsWorld3d {
                 return;
             }
         }
+        self.record_interpolated_step_motion();
         if proof {
             let mut work = self.saved_motion_proof_work();
             self.finish_step_motion(&mut work);
@@ -423,7 +424,6 @@ impl PhysicsWorld3d {
                 self.step_motion.invalidate_capture();
             }
         } else {
-            self.record_interpolated_step_motion();
             self.finish_interpolated_step_motion();
         }
         self.query_updates.clear();

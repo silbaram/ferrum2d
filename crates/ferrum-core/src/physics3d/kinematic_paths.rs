@@ -24,7 +24,9 @@ pub(super) struct PathScratch {
     ids: Vec<BodyId>,
     stopped: Vec<Option<Time>>,
     stopped_bodies: Vec<BodyId>,
+    #[serde(skip)]
     pending_stops: Vec<BodyId>,
+    #[serde(skip)]
     preview: Vec<super::character::CharacterPreview>,
     targets: Vec<(rp::RigidBodyHandle, rp::Pose, rp::Pose)>,
     characters: Vec<(BodyId, CharacterState)>,
