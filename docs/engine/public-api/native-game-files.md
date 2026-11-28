@@ -5,6 +5,7 @@
 세션의 현재 Engine을 교체한다. 저장된 Native 시간·상태·출력 큐를 초기 설정으로 덮어쓰지 않는다.
 
 파일은 같은 Rust/SDK 빌드에서 사용한다. 형식·빌드·길이·CRC 검사는 인증이나 버전 간 마이그레이션이 아니다.
+현재 물리 snapshot은 내부 버전 8이다. 외부 F2DFILE v1의 7개 section과 Engine checkpoint 코덱 버전 2를 유지한다.
 복원 검사는 저장된 collider 형상과 local pose에 공개 생성 API와 같은 범위(크기 0.0001~10000, PlanarXy Z 30000,
 Y축 capsule, 평면 밖 offset 금지)를 다시 적용하고, 저장된 solver hint가 contact graph와 맞는지 확인한다.
 범위를 벗어나거나 맞지 않는 파일은 현재 게임을 바꾸지 않고 `prepare` 단계에서 거부된다.

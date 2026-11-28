@@ -1,6 +1,6 @@
 # 3D 물리 운동 증명 방식 검토
 
-상태: 사용자 결정 B(허용 오차 방식 전환)·P1a·P1b 비교 완료·P2a 강체 경로 전환 완료(PR #114, 2026-11-27 main 머지)·P2b 제품 경로 확정(작업 브랜치).
+상태: P2b 제품 경로와 P3-1·P3-2 병합. P3-3·P3-4의 Core 정리를 같은 로컬 브랜치에서 진행했다. Vendor 정리는 P3-5에 남아 있다.
 
 관련 문서: [통합 3D 물리의 회전 상자 접촉 기록](unified-3d-physics-plan.md#해결-회전-상자-접촉의-운동-증명-2026-11-22), [PR CI 정리](ci-and-studio-distribution-plan.md)(빌드 시간 조사의 출발점).
 
@@ -1255,8 +1255,7 @@ Native 파일의 독립적인 decode 예산을 남긴다.
 | --- | --- | --- |
 | P3-1 제품 경계와 시험 이관 | 물리 틱 시간·자세·예측을 공통 모듈로 분리하고, 제품 시험에 넘긴 비교 모드와 계측 코드를 정리한다. | 64명 상태 해시를 유지하고 Native 파일의 Core 지문과 종속 CRC만 바뀌는지 확인한다. 복합 매듭의 힘·관절·입력, 센서 대시와 CCD 필터, 복원 뒤 명중·운반·경로 진행을 독립 시험으로 검사한다. |
 | P3-2 경로 틱 사전 검사와 저널 | 경로와 출력의 용량 검사, 오류 소유권, 틱 시작 전과 틱 중 실패 경계를 분리한다. 약 1–4천 줄. | 기존 예산에 걸리던 사례의 오류가 달라질 수 있다. 경로 16개와 비캐릭터 대시의 실제 거절, 실패 주입, 관절·체크포인트를 비교한다. 실제 mutation 순서를 확인한 뒤 필요한 복원만 유지한다. |
-| P3-3 증명 실행 연결과 저장 증명 레코드 제거 | `StepMotion` exact 경로와 저장 proof 레코드, `MotionTrace` 및 `BackendEvents`, 강제 스위치와 증명 진입을 제거한다. 약 3–8천 줄. | 일반 CCD·투사체·발판과 저장 손상 거절을 유지한다. 실제 payload 배치가 바뀔 때 내부 버전을 올리고 fixture를 재생성한다. |
-| P3-4 Core 증명 파일 삭제 | 옛 캐릭터 풀이·`character_motion`·`solver_trajectory`·`rounded`를 한 PR에서 정리한다. 등록을 끊은 파일은 캐릭터 풀이(5–8천 줄), backend·representable·보조 캐릭터 모듈(각 약 5–10천 줄), solver 진입·접촉·rounded 하위(각 약 5–10천 줄) 커밋으로 나눈다. | 제품 유틸리티, CCD 및 저장 참조를 보존한다. 혼합 파일의 수정이 한 PR에서 검토하기 어려운 규모면 그때 분할을 보고한다. |
+| P3-3·P3-4 단일 PR | 공통 작업 예산 분리, 저장과 실행 연결 제거, 옛 캐릭터 풀이·정확 궤적·저널 삭제를 영역별 커밋으로 진행한다. | 물리 snapshot v8, 일반 CCD·투사체·발판, 손상 거절, 런타임 비교와 fixture 재생성이 필요하다. 등록을 끊은 Core 파일은 같은 PR에서 실제로 삭제한다. |
 | P3-5 vendor 증명 훅 제거와 최종 측정 | Rapier callback·Prepared Native CCD·logical clock, Parry exact metering과 전용 시험을 2–5천 줄 범위에서 정리한다. 같은 환경과 옵션으로 cold build와 gzip 크기를 다시 잰다. | 일반 CCD, 마찰·반발·축 잠금·KCC, broad phase와 저장 그래프를 비교한다. 혼합 파일에서 공통 수식과 관측을 유지한다. |
 
 후속 PR은 Core test·Clippy·포맷, Wasm release와 소스 지문, SDK 및 Native 저장·재생,
@@ -1274,8 +1273,11 @@ Wasm 지문과 Native 저장 SHA가 바뀔 수 있다. 저장본은 지문·종�
   폐기 대상 값은 기존 자리에 0을 쓴다. v2 압축은 P3 범위에서 제외한다.
 - Native 저장 파일과 체크포인트의 same-build 계약을 유지한다. 내부 형식 버전은
   실제 payload 배치가 바뀌는 PR에서 올린다.
-- P3는 위 다섯 단계로 진행한다. 모듈에서 등록을 끊은 Core 파일은 P3-4의 한 PR에서
-  커밋 단위로 나눠 지운다. 혼합 파일의 수정량이 큰 경우 분할이 필요한 근거를 보고한다.
+- P3-3과 P3-4를 한 PR로 진행한다. 증명 실행을 끊고 등록을 해제한 파일까지 같은 PR에서
+  지운다. 영역별 커밋을 사용한다. Vendor 증명 훅의 제거와 최종 측정은 P3-5에서 한다.
+- 물리 snapshot은 7에서 8로 올린다. Engine 직접 필드 배치를 바꾸는 경우 Engine 코덱도 올리고,
+  외부 F2DFILE의 7-section 배치를 유지하는 경우 v1을 사용한다. 공개 오류 variant와 ordinal을
+  유지하고 현재 발생하지 않는 값은 예약 값으로 기록한다.
 
 ### P3-1 결과
 
@@ -1408,3 +1410,112 @@ Rust 시험 구조 검사, `ferrum-web`·`studio-kit`·`create-game`·`agents` t
 
 마을 전투에서 집계한 Wasm 구간은 약 4.4% 길었다. 프레임 계측이 물리 이외 작업도
 포함하므로 이 표로 물리 적분 시간만의 차이를 산출할 수 없다.
+
+### P3-3 결과 · P3-4 포함
+
+PR #119를 병합한 `1f5db149`을 기준으로 증명 실행과 Core 소스를 제거했다. 물리 틱의
+사전 거절은 Engine의 checked 진단에 남긴다. 지정 경로 정지는 해당 매듭 구간의 시작 자세에서
+처리한다. 캐릭터의 접지 보조 질의, Rapier KCC·동적 지지체 운반과 밀기, 센서 대시,
+일반 CCD와 접촉 관측, Parry 시작·끝 보간 투사체 질의는 기존 제품 경로를 사용한다.
+
+물리 snapshot v8에서 `TargetMotion.exact`와 실패 bit, `EventCollector`의 solver motion trace,
+캐릭터 `motion_stop`·옛 결합 자료와 경로의 preview·pending stop을 뺐다. 단계 캡처는
+일반 BVH의 독립 작업 예산을 사용한다. 입력·힘, 경로 진행률, 지지체와 충돌 이벤트의
+저장은 유지한다. v7 이하 거절과 v8의 잘못된 참조·CRC·구간 수치의 거절을 확인하는 시험을
+남겼다. Engine 직접 Serde 필드의 배치가 같으므로 내부 코덱 버전은 2다. 바깥 F2DFILE은
+v1의 7-section과 Core/SDK가 같은 빌드의 파일을 복원하는 계약을 유지한다.
+공개 캐릭터 28-word·진단 71-word의 예약 위치는 0을 쓴다.
+`UnresolvedMotion`의 공개 variant와 ordinal을 유지하며 제품 경로에서는 그 값을 만들지 않는다.
+
+| 이관한 시험 | 유지한 제품 단언 |
+| --- | --- |
+| `actual_character_trajectory_*` | `kinematic_replay_tests`에서 바디별 추가 solver/PGS 반복 설정, 한 틱 변위와 복원 후 6틱의 바이트를 확인한다. 내부 커널의 정확 경계 단언은 삭제했다. |
+| `snapshot::tests::actual_paths`와 `file_candidate::tests::actual_native_ccd` | 양쪽의 `interpolated_motion`에서 일반 운동 관측의 손상 거절, 회전 대상 질의의 복원·재실행, 일반 CCD clamp 및 파일 디코드 한도를 검사한다. |
+| `character_runtime_admission_*preview*` | 실제 지정 발판 경로가 남긴 운반 합계·매듭 시각의 손상 거절과 작업량을 검사한다. 대기 점프·입력·외력·지지체의 복원과 재생을 유지한다. |
+| `step_motion::finish::tests` | 일반 BVH의 작업량 소진에서 이전 트리를 보존하고 질의를 실패로 알려 준 뒤, 다음 틱과 복원에서 같은 값으로 진행한다. |
+| `near_skin_tests`, `kinematic_limit_tests`, `character_squeeze_tests`, `angular_ccd_bounds_tests` | 읽기 전용 probe와 일반 Parry 접촉, KCC·Rapier 실행 결과를 사용해 원자성·발판과 캐릭터의 정지·CCD·입력 소비를 검사한다. 증명 시간·row·preview 카운터의 검사만 제거했다. |
+| 이전 밀집 센서 사전 검사 회귀 | 밀집 센서가 있는 일반 틱과 발판 진행을 계속 확인한다. 지운 증명 저널을 직접 호출하던 대조군은 제거했다. |
+
+Core에서 아래 증명 훅을 호출하는 곳은 없다. P3-5에서 정리할 vendor 위치를 적었다.
+
+| 위치 | 남은 vendor 연결 |
+| --- | --- |
+| Rapier `pipeline/{event_handler,solver_motion,physics_pipeline/{mod,solve,substep}}.rs` 및 `dynamics/solver/` | 사용자 solver motion callback과 logical clock·decision, 통과 구간의 관측 콜백과 동반 시험 |
+| Rapier `dynamics/ccd/{ccd_solver,sweeps}.rs` | `apply_prepared`와 준비된 CCD clamp/crossing 콜백. 일반 clamp와 CCD 진단은 유지한다. |
+| Rapier `pipeline/rigid_step_credit.rs`·`geometry/broad_phase_bvh/step_credit.rs`, Parry `partitioning/bvh/bvh_tree.rs` | `RigidStepCredit`와 broad-phase 복사·복원, Parry BVH의 step-credit sizing/copy |
+| Parry `query/{contact/metered,sweep_toi/proxy_distance,native_work}.rs` | `contact_point_cloud_metered`, `proxy_distance_with_local_witness_metered`와 계량 callback/export. 일반 cast·query·저장 검증은 유지한다. |
+
+`build.rs`와 JS 소스 지문 검사는 파일을 순회한다. 삭제한 Core 증명 파일이 대상에 남지 않으며,
+Rust 구조 검사는 보존한 시험 파일의 등록을 확인한다.
+
+Core Rust diff의 삭제는 비시험 **62,905줄**, 시험 **53,453줄**이다. 이름 변경을 감지한
+diff에서 기존 소스의 삭제 hunk를 세고, 시험 파일과 Rust 구문의 `#[cfg(test)]`·`#[test]`
+범위로 분류했다. 비시험에는 이전에 제품에서 도달하지 않던 증명 소스도 들어간다.
+기존 테스트에서 관절 없는 틱의 평면 누적 각도 갱신이 빠진 것을 발견해 복구했다. 이 갱신은
+다회전 자세와 기존 2D 바디를 보존하는 제품 동작이다.
+
+#### 상태 대조와 리플레이
+
+| 템플릿 | 고정 입력 프레임 | 기본 Native 레시피의 관측 |
+| --- | ---: | --- |
+| `minimal` | 2 | 16-word 바디 상태 일치 |
+| `breakout` | 40 | 16-word 바디 상태 일치 |
+| `topdown` | 32 | 16-word 바디 상태 일치 |
+| `platformer` | 40 | 16-word 바디 상태 일치 |
+
+두 빌드의 템플릿 레시피를 같은 고정 프레임으로 돌리고 각 프레임에서 바디·캐릭터 ABI,
+게임플레이 이벤트와 발판 진행을 읽었다. 해당 레시피에는 추적 가능한 등록 캐릭터 행·투사체
+피격 이벤트·지정 발판 진행 레코드가 없었다. 별도 공간 발판의 300틱에서는 28-word 캐릭터
+상태와 바디 상태·발판 진행값이 매 틱 일치했다. 별도 투사체의 32틱에서는 양쪽 모두 8번째
+틱에 대상 체력이 10에서 7로 줄었고 틱별 피해와 이벤트가 일치했다.
+
+7개 물리 실험실의 원본 Physics Spec을 각각 300틱 수동 스텝으로 실행했다. 매 틱의 모든
+샘플 바디 상태가 두 빌드에서 일치했다. 관절 실험실의 상태 SHA-256은
+`2ab514ecf617433a49311717704a7df8a7cf836fc64176ebfd544f26b462d72a`다.
+64명·405틱 상태 해시는
+`486c58c1e2a2fec256d42c63fc567da28d89576a5305d3c6be24ec8d96f9a301`이고,
+저장 뒤 6틱 재생도 일치했다.
+
+비교용 관측을 끄고 `node scripts/ferrum-runtime-replay.mjs update-fixture`로 템플릿
+fixture 네 개를 갱신했다. 같은 빌드 정책의 지문과 종속 hash, 직렬화 payload가 바뀌었다.
+기준 저장 18개를 같은 레시피로 다시 만들었을 때 원래 fixture와 일치했고, 최종 저장은
+기준보다 파일당 19바이트 줄었다. Wasm에 내장된 Core 지문은 `e3ddb36aa7e8d3a3`에서
+`89bb1a804c4f83ad`로 바뀌었으며, 검사 대상 소스 수는 1,459에서 1,346으로 줄었다.
+
+#### 중간 빌드 측정
+
+P3-0과 같은 AMD Ryzen AI Max+ 395, WSL2 x86-64, Rust 1.97.1, wasm-pack 0.15.0 환경에서
+각각 빈 `CARGO_TARGET_DIR`과 기존 로컬 레지스트리 캐시를 사용했다. 두 빌드는 순서대로
+실행했다. Wasm 크기의 `1f5db149` 열은 소스 지문이 일치하는 기준 배포본을 쟀다.
+
+| 작업·산출물 | P3-0 `5d0097e7` | P3-2 `1f5db149` | P3-3·P3-4 |
+| --- | ---: | ---: | ---: |
+| Core 디버그 cold `cargo test --no-run` | 91.08초 | | **77.62초** |
+| cold Wasm release | 159.16초 | | **142.02초** |
+| `ferrum_core_bg.wasm` | 10,027,707 bytes | 10,464,855 bytes | **8,441,026 bytes** |
+| `gzip -n -9` | 3,490,382 bytes | 3,688,026 bytes | **2,852,717 bytes** |
+
+```bash
+p3_dir="$PWD/artifacts/physics-p3-3"
+export RUSTUP_TOOLCHAIN=stable CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=8
+CARGO_TARGET_DIR="$p3_dir/native-verified" /usr/bin/time -f '%e' \
+  cargo +stable test --no-run --locked --offline --manifest-path crates/ferrum-core/Cargo.toml
+# 설치된 wasm-bindgen 0.2.120과 wasm-opt 117을 PATH에 둔다.
+CARGO_TARGET_DIR="$p3_dir/wasm-verified" /usr/bin/time -f '%e' \
+  wasm-pack build --mode no-install crates/ferrum-core --release --target web --out-dir ../../packages/ferrum-web/pkg
+wc -c < packages/ferrum-web/pkg/ferrum_core_bg.wasm
+gzip -n -9 -c packages/ferrum-web/pkg/ferrum_core_bg.wasm | wc -c
+```
+
+#### 최종 검증
+
+- Core 전체는 `cargo test` 단위 3,226개와 통합 1개가 통과했다. 기존 ignore는 3개다.
+  최종 시험 소스의 `cargo clippy --all-targets -- -D warnings`와 `cargo fmt --check`도 통과했다.
+  증명 전용 진단 분기를 지운 뒤 영향을 받는 캐릭터·좁은 지형 시험 39개를 다시 확인했다.
+- 최종 Wasm release, `native-wasm-source-identity`와 그 회귀 5개, `pnpm test:web` 292개,
+  공개 API·공개 타입·문서 링크·Rust 시험 구조 검사, 네 패키지 tarball과 생성 템플릿 보고서가 통과했다.
+- 로컬 Chromium 148에서 `smoke:unified-physics-web`과 기본·설정 지정 수동 및 자동 RAF
+  `native-checked-error-probe`를 통과했다. Platformer와 물리 실험실 7개 장면은 Vite 빌드 뒤
+  `browser-render-smoke.mjs` 기본·`physics-demo-suite` 모드로 검증했다.
+  마을 전투는 `village-game-quality-browser-smoke.mjs`의 효과·LOD와 두 번 반복을 합한
+  8개 조합이 통과했다. `smoke:hd2d-combat`은 요청한 실행 범위에서 제외했다.
