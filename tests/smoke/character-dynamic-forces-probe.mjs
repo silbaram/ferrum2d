@@ -2,13 +2,35 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+// Distance from the capsule axis to the oriented box. The relative point
+// moves along a segment, so squared distance to the box is convex.
+function capsuleBoxDepth({ actor, box, rotation: [x, y, z, w] }) {
+  const distance = t => {
+    const [dx, dy, dz] = [actor[0] - box[0], actor[1] - box[1] + t, actor[2] - box[2]];
+    const local = [
+      (1 - 2*y*y - 2*z*z)*dx + 2*(x*y + w*z)*dy + 2*(x*z - w*y)*dz,
+      2*(x*y - w*z)*dx + (1 - 2*x*x - 2*z*z)*dy + 2*(y*z + w*x)*dz,
+      2*(x*z + w*y)*dx + 2*(y*z - w*x)*dy + (1 - 2*x*x - 2*y*y)*dz,
+    ];
+    return Math.hypot(...local.map(v => Math.max(0, Math.abs(v) - 0.5)));
+  };
+  let start = -0.5, end = 0.5;
+  for (let i = 0; i < 48; i++) {
+    const left = (2 * start + end) / 3, right = (start + 2 * end) / 3;
+    if (distance(left) < distance(right)) end = right;
+    else start = left;
+  }
+  return Math.max(0, 0.25 - distance((start + end) * 0.5));
+}
+
 export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
   const directory = resolve("artifacts/physics-3d/goal-closure/character-force-bridge/browser");
   await mkdir(directory, { recursive: true });
   const report = { format: "ferrum2d.character-dynamic-forces.browser", version: 1, status: "running", packageEvidence };
   try {
     const results = await page.evaluate(async () => {
-      const { createEngine, UNIFIED_PHYSICS_STATE_LAYOUT: B, UNIFIED_PHYSICS_CHARACTER_LAYOUT: C } = await import("@ferrum2d/ferrum-web/core");
+      const { createEngine, UNIFIED_PHYSICS_STATE_LAYOUT: B, UNIFIED_PHYSICS_CHARACTER_LAYOUT: C,
+        UNIFIED_PHYSICS_COLLISION_LAYOUT: E } = await import("@ferrum2d/ferrum-web/core");
       const raf = window.requestAnimationFrame, cancel = window.cancelAnimationFrame, pending = new Map();
       let serial = 0, time = 0;
       window.requestAnimationFrame = callback => { pending.set(++serial, callback); return serial; };
@@ -31,7 +53,7 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
             e.useDataScene(); e.configureUnifiedPhysics({ space, gravity: [0, 0, 0], lengthUnit: 1, stepSeconds: 0.01 });
             const actor = e.spawnUnifiedPhysicsBody({ kind: "kinematic-position",
               collider: { shape: { type: "capsule", halfHeight: 0.5, radius: 0.25 } } });
-            const box = e.spawnUnifiedPhysicsBody({ pose: { position: [100, 0, 0] }, canSleep: false,
+            const box = e.spawnUnifiedPhysicsBody({ pose: { position: [100, 0, 0] }, canSleep: false, ccd: true,
               collider: { shape: { type: "box", halfExtents: [0.5, 0.5, 0.5] }, density: 2, friction: 0 } });
             const handles = new Uint32Array([actor.entityId, actor.entityGeneration]);
             const all = new Uint32Array([actor.entityId, actor.entityGeneration, box.entityId, box.entityGeneration]);
@@ -72,10 +94,62 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
             }
             const replayed = trace();
             const last = replayed.at(-1), av = last.characterFloats[C.velocity], bv = last.floats[B.stride + B.linearVelocity];
+            // Compare fresh worlds with identical fixture order. A reused
+            // Rapier arena can order otherwise equivalent manifold points differently.
+            const traceImpact = async controlled => {
+              const sim = await createEngine(() => {});
+              try {
+                sim.useDataScene();
+                const dt = Math.fround(0.01);
+                sim.configureUnifiedPhysics({ space, gravity: [0, 0, 0], lengthUnit: 1, stepSeconds: dt });
+                sim.configureAutoRigidBodyStep(false);
+                const capsule = sim.spawnUnifiedPhysicsBody({ kind: "kinematic-position",
+                  collider: { shape: { type: "capsule", halfHeight: 0.5, radius: 0.25 } } });
+                if (controlled) sim.configureUnifiedPhysicsCharacter(capsule, config);
+                const target = sim.spawnUnifiedPhysicsBody({ ccd: true, canSleep: false,
+                  pose: { position: [1.5, 0, 0] }, linearVelocity: [-200, 0, 0],
+                  collider: { shape: { type: "box", halfExtents: [0.5, 0.5, 0.5] }, density: 2, friction: 0 } });
+                const ids = new Uint32Array([capsule.entityId, capsule.entityGeneration, target.entityId, target.entityGeneration]);
+                sim.setUnifiedPhysicsCollisionEventsEnabled(true);
+                const rows = Array.from({ length: 32 }, () => {
+                  sim.stepRigidBodies(dt);
+                  const { floats } = sim.queryUnifiedPhysicsBodyStates(ids);
+                  const row = {
+                    actor: [...floats.slice(B.position, B.position + 3)],
+                    box: [...floats.slice(B.stride + B.position, B.stride + B.position + 3)],
+                    rotation: [...floats.slice(B.stride + B.rotation, B.stride + B.rotation + 4)],
+                    boxVelocity: floats[B.stride + B.linearVelocity],
+                    contact: false,
+                  };
+                  const events = sim.drainUnifiedPhysicsCollisionEvents();
+                  for (let i = 0; i < events.count; i++) {
+                    const offset = i * E.stride;
+                    const first = events.words[offset + E.first + E.entity];
+                    const second = events.words[offset + E.second + E.entity];
+                    row.contact ||= events.words[offset + E.phase] === E.enter
+                      && !(events.words[offset + E.flags] & E.sensorFlag)
+                      && ((first === capsule.entityId && second === target.entityId)
+                        || (first === target.entityId && second === capsule.entityId));
+                  }
+                  return row;
+                });
+                let knockbackX;
+                if (controlled && rows.some(row => row.contact)) {
+                  // Decision B delivers solid input events. Game code applies knockback.
+                  sim.applyUnifiedPhysicsCharacterImpulses(ids.subarray(0, 2), new Float32Array([-10, 0, 0]));
+                  sim.stepRigidBodies(dt);
+                  knockbackX = sim.queryUnifiedPhysicsBodyStates(ids).floats[B.position];
+                }
+                return { rows, knockbackX };
+              } finally { sim.destroy(); }
+            };
+            const { rows: impact, knockbackX } = await traceImpact(true);
+            const { rows: baseline } = await traceImpact(false);
             results.push({ space, first, second, cleared,
               forceVelocities: [first, second, cleared].map(s => s.characterFloats[C.velocity]),
               expected, replayed, errors, actorVelocity: av, boxVelocity: bv,
-              boxX: last.floats[B.stride + B.position], totalMomentum: 2 * av + 2 * bv, cost });
+              boxX: last.floats[B.stride + B.position], totalMomentum: 2 * av + 2 * bv,
+              impact, baseline, knockbackX, cost });
           } finally { checkpoint?.dispose(); e.destroy(); }
         }
         return results;
@@ -86,9 +160,26 @@ export async function probeCharacterDynamicForces(page, packageEvidence = {}) {
       assert(r.forceVelocities[1] > r.forceVelocities[0]);
       assert.equal(r.forceVelocities[2], r.forceVelocities[1], "Force clear must retain velocity without replaying impulse");
       assert(r.errors.every(Boolean)); assert.deepEqual(r.replayed, r.expected, "Rejected force batches must not alter pending input or replay");
-      assert(r.boxX > 0.3 && r.boxVelocity > 2 && r.boxVelocity < 3, "The real dynamic body must receive a finite reaction");
-      assert(Math.abs(r.actorVelocity - r.boxVelocity) < 0.1);
+      // The KCC push and its reaction conserve passive momentum without enforcing
+      // the old solver's shared post-contact velocity.
+      assert(r.boxX > 0.3 && r.boxVelocity > 2 && r.boxVelocity < 4, "The real dynamic body must receive a finite reaction");
+      assert(r.actorVelocity > 0 && r.actorVelocity < 5);
       assert(Math.abs(r.totalMomentum - 10) < 0.1, "No duplicate backend impulse or infinite-mass push");
+      assert(r.impact.some(row => row.contact), "Game code must receive the incoming solid contact");
+      assert(r.baseline.some(row => row.contact), "The ordinary capsule must receive the same contact");
+      assert(r.impact.every(({ actor, box }) => Math.abs(actor[0]) < 1e-5 && box[0] > actor[0]),
+        "Incoming CCD must not move the actor or pass through it");
+      assert(r.impact.at(-1).boxVelocity > -0.1, "The kinematic contact must stop or deflect the box");
+      r.overlap = r.impact.map(capsuleBoxDepth);
+      r.baselineOverlap = r.baseline.map(capsuleBoxDepth);
+      for (const [tick, depth] of r.overlap.entries()) {
+        assert(depth <= r.baselineOverlap[tick] + 1e-6,
+          `${r.space} tick ${tick + 1}: character ${depth} exceeds Rapier ${r.baselineOverlap[tick]}`);
+      }
+      const firstOverlap = r.baselineOverlap.findIndex(depth => depth > 0.005);
+      assert(firstOverlap === -1 || r.baselineOverlap.slice(firstOverlap).some(depth => depth <= 0.005),
+        `${r.space}: the ordinary capsule did not recover within the 32-tick sample`);
+      assert(r.knockbackX < -0.049, "The game-authored impulse must move the actor");
       assert(r.cost.frames > 0 && r.cost.nativeFrames === r.cost.frames);
       assert(Number.isFinite(r.cost.maxRustMs) && r.cost.maxRustMs < 500);
     }

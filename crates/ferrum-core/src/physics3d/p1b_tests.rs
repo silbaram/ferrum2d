@@ -20,6 +20,8 @@ impl Mode {
     pub(crate) fn configure(self, world: &mut PhysicsWorld3d) {
         if matches!(self, Self::Kcc) {
             world.enable_experimental_character_kcc();
+        } else {
+            world.force_character_motion_proof();
         }
         assert_eq!(
             world.backend_motion_enabled(),
@@ -251,7 +253,7 @@ fn p1b_kcc_keeps_support_when_the_platform_descends_and_reverses() {
 }
 
 #[test]
-fn p1b_kcc_finds_walkable_ground_past_an_overlapping_wall() {
+fn p1b_kcc_preserves_walkable_ground_when_a_wall_pushes_the_rider() {
     let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
     let floor = body(
         &mut world,
@@ -290,8 +292,8 @@ fn p1b_kcc_finds_walkable_ground_past_an_overlapping_wall() {
     world.step_checked().unwrap();
     let position = world.body_state(rider).unwrap().pose.position;
     assert!(
-        position[0] + 0.25 > 0.49 - 0.25,
-        "wall must overlap the rider"
+        position[0] < 0. && position[0] + 0.25 <= 0.49 - 0.25 + 0.005,
+        "wall must push without passing through the grounded rider: {position:?}"
     );
     assert_eq!(
         world.character_state(rider).unwrap().ground.unwrap().body,
@@ -389,6 +391,96 @@ fn p1b_kcc_resolves_peer_contacts_and_keeps_the_ordinary_step() {
             - world.body_state(left).unwrap().pose.position[0]
             > 0.51
     );
+}
+
+#[test]
+fn p2b_kcc_capsules_cannot_swap_places_in_one_tick() {
+    let mut world = PhysicsWorld3d::new(WorldConfig {
+        gravity: [0.; 3],
+        step_seconds: 0.1,
+        ..WorldConfig::default()
+    })
+    .unwrap();
+    let left = character(&mut world, [-1., 0., 0.]);
+    let right = character(&mut world, [1., 0., 0.]);
+    Mode::Kcc.configure(&mut world);
+    for (id, vx) in [(left, 20.), (right, -20.)] {
+        world
+            .set_character_input(
+                id,
+                CharacterInput {
+                    velocity: [vx, 0., 0.],
+                    ..CharacterInput::default()
+                },
+            )
+            .unwrap();
+    }
+    world.step_checked().unwrap();
+    let separation = world.body_state(right).unwrap().pose.position[0]
+        - world.body_state(left).unwrap().pose.position[0];
+    assert!(separation >= 0.5 - 1e-5, "separation={separation}");
+    assert!(world.character_state(left).unwrap().blocked_by_character);
+    assert!(world.character_state(right).unwrap().blocked_by_character);
+}
+
+#[test]
+fn p2b_compare_platform_and_rider_at_wall() {
+    for mode in MODES {
+        let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+        let platform = body(
+            &mut world,
+            BodyKind::KinematicPosition,
+            [0.; 3],
+            Shape::Box {
+                half_extents: [0.5, 0.2, 2.],
+            },
+        );
+        body(
+            &mut world,
+            BodyKind::Fixed,
+            [1.4, 1., 0.],
+            Shape::Box {
+                half_extents: [0.1, 2., 2.],
+            },
+        );
+        let rider = character(&mut world, [0.28, 0.959, 0.]);
+        mode.configure(&mut world);
+        for _ in 0..4 {
+            world.step_checked().unwrap();
+        }
+        assert_eq!(
+            world.character_state(rider).unwrap().ground.unwrap().body,
+            platform
+        );
+        let path = KinematicPath {
+            body: platform,
+            sweep_sensors: false,
+            knots: vec![(
+                1.,
+                Pose {
+                    position: [1.5, 0., 0.],
+                    ..Pose::default()
+                },
+            )],
+        };
+        let before_rider = world.body_state(rider).unwrap().pose;
+        let result = world.step_with_kinematic_paths(&[path]);
+        let platform_x = world.body_state(platform).unwrap().pose.position[0];
+        let rider_x = world.body_state(rider).unwrap().pose.position[0];
+        let ground = world.character_state(rider).unwrap().grounded;
+        let overlap = ((platform_x + 0.5).min(1.5) - (platform_x - 0.5).max(1.3)).max(0.);
+        println!("P2B_PLATFORM_WALL mode={mode:?} result={result:?} platform_x={platform_x} rider_x={rider_x} grounded={ground} overlap={overlap}");
+        result.unwrap();
+        assert!(
+            overlap <= 0.005 && ground,
+            "{mode:?}: overlap={overlap}, grounded={ground}"
+        );
+        assert_eq!(world.step_statistics().kinematic_path_stops, 1);
+        if matches!(mode, Mode::Kcc) {
+            assert_eq!(platform_x, 0.);
+            assert_eq!(world.body_state(rider).unwrap().pose, before_rider);
+        }
+    }
 }
 
 fn compare_platform(rotates: bool) {

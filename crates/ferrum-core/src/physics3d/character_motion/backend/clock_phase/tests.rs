@@ -747,6 +747,7 @@ fn distance(w: &PhysicsWorld3d, a: BodyId, b: BodyId) -> f32 {
 #[test]
 fn engine_event_prefix_keeps_full_credit_real_contact_stop_and_snapshot_continuation() {
     let (mut w, bar, actor) = engine_fixture(true, [1.2, 1.3, 0.]);
+    w.force_character_motion_proof();
     w.set_step_motion_enabled(true);
     let initial = w.capture_snapshot().unwrap();
     w.step_checked().unwrap();
@@ -780,6 +781,7 @@ fn engine_event_prefix_keeps_full_credit_real_contact_stop_and_snapshot_continua
     );
     let accepted = w.capture_snapshot().unwrap();
     w.restore_snapshot(&initial).unwrap();
+    w.force_character_motion_proof();
     w.step_checked().unwrap();
     assert_eq!(
         w.capture_snapshot().unwrap().encoded_bytes(),

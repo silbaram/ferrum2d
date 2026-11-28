@@ -106,8 +106,7 @@ fn locomotion_does_not_hit_the_old_pose_of_a_receding_wall() {
     w.step();
     assert!((w.body_state(a).unwrap().pose.position[0] - 2.0).abs() < 0.001);
 }
-#[test]
-fn fast_incoming_wall_pushes_an_idle_capsule_without_passing_through() {
+fn incoming_wall_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
     let mut w = world();
     let a = actor(&mut w, pose(0.0, 0.0, 0.0));
     let wall = block(
@@ -117,9 +116,28 @@ fn fast_incoming_wall_pushes_an_idle_capsule_without_passing_through() {
         [0.25, 2.0, 5.0],
     );
     w.set_kinematic_target(wall, pose(-3.0, 0.0, 0.0)).unwrap();
+    (w, a, wall)
+}
+
+#[test]
+fn fast_incoming_wall_pushes_an_idle_capsule_without_passing_through() {
+    let (mut w, a, _) = incoming_wall_fixture();
     w.step();
     let p = w.body_state(a).unwrap().pose.position;
-    assert!((p[0] + 3.51).abs() < 0.02, "{p:?}");
+    assert!((p[0] + 3.51).abs() <= 0.005, "{p:?}");
+}
+
+#[test]
+#[ignore = "P2b records the KCC candidate's prescribed kinematic wall regression"]
+fn p2b_compare_incoming_kinematic_wall() {
+    for mode in super::p1b_tests::MODES {
+        let (mut w, a, wall) = incoming_wall_fixture();
+        mode.configure(&mut w);
+        w.step_checked().unwrap();
+        let actor_x = w.body_state(a).unwrap().pose.position[0];
+        let wall_x = w.body_state(wall).unwrap().pose.position[0];
+        println!("P2B_KINEMATIC_WALL mode={mode:?} actor_x={actor_x} wall_x={wall_x}");
+    }
 }
 #[test]
 fn incoming_wall_preserves_the_capsules_tangent_locomotion() {
@@ -161,7 +179,48 @@ fn incoming_elevator_catches_a_previously_unsupported_capsule() {
     w.step();
     let y = w.body_state(a).unwrap().pose.position[1];
     assert!((y - 2.61).abs() < 0.02, "{y}");
-    assert!(w.character_state(a).unwrap().grounded);
+    assert_eq!(w.character_state(a).unwrap().ground.unwrap().body, p);
+    w.set_kinematic_target(p, pose(0., 2.25, 0.)).unwrap();
+    w.step_checked().unwrap();
+    let carried = w.character_state(a).unwrap();
+    assert_eq!(carried.ground.unwrap().body, p);
+    assert_eq!(carried.carried_by, Some(p));
+    assert!((carried.carry_translation[1] - 0.25).abs() < 0.005);
+}
+
+#[test]
+fn rotating_kinematic_crosses_the_capsules_path_between_clear_endpoints() {
+    use rapier3d::parry::query::contact;
+    use rapier3d::prelude::Rotation;
+    let mut w = world();
+    let actor = actor(&mut w, pose(1., 0., -1.));
+    let door = block(
+        &mut w,
+        BodyKind::KinematicPosition,
+        Pose::default(),
+        [2., 0.5, 0.1],
+    );
+    let fixtures = [actor, door]
+        .map(|id| super::colliders::native_collider(w.collider_ids(id).unwrap().next().unwrap()));
+    let target = Pose {
+        rotation: Rotation::from_rotation_y(std::f32::consts::FRAC_PI_2).to_array(),
+        ..Default::default()
+    };
+    w.refresh_queries();
+    let overlap = |w: &PhysicsWorld3d, door_pose: &rapier3d::prelude::Pose| {
+        let [actor, door] = fixtures.map(|id| &w.backend.colliders[id]);
+        contact(actor.position(), actor.shape(), door_pose, door.shape(), 0.)
+            .unwrap()
+            .map_or(0., |hit| (-hit.dist).max(0.))
+    };
+    assert_eq!(overlap(&w, w.backend.colliders[fixtures[1]].position()), 0.);
+    assert_eq!(overlap(&w, &super::world::native_pose(target)), 0.);
+    w.set_kinematic_target(door, target).unwrap();
+    w.step_checked().unwrap();
+    let state = w.character_state(actor).unwrap();
+    assert!(state.blocked_by_moving_obstacle, "{state:?}");
+    assert!(state.translation.into_iter().any(|x| x.abs() > 0.1));
+    assert!(overlap(&w, w.backend.colliders[fixtures[1]].position()) <= 0.005);
 }
 
 #[test]

@@ -393,6 +393,7 @@ fn path_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
             }),
         )
         .unwrap();
+    world.force_character_motion_proof();
     world.step();
     assert!(world.character_state(actor).unwrap().grounded);
     world
@@ -516,6 +517,7 @@ fn character_runtime_admission_preview_stale_support_clear_reenable_and_new_axis
         .unwrap();
     let before = world.capture_snapshot().unwrap();
     let mut restored = PhysicsWorld3d::from_snapshot(&before).unwrap();
+    restored.force_character_motion_proof();
     for _ in 0..6 {
         world.step();
         restored.step();
@@ -838,6 +840,71 @@ fn character_runtime_admission_real_preview_counts_have_exact_budget_without_rei
 }
 
 #[test]
+fn rapier_path_checkpoint_replays_support_preview_and_pending_jump() {
+    use crate::physics3d::KinematicPath;
+
+    let (mut world, actor, _) = fixture();
+    let target = |x| Pose {
+        position: [x, 1.1405, 0.],
+        ..Pose::default()
+    };
+    let platform = world
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::KinematicPosition,
+                pose: target(0.),
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [10., 0.1, 10.],
+            }),
+        )
+        .unwrap();
+    world
+        .set_character_input(actor, CharacterInput::default())
+        .unwrap();
+    world.step_checked().unwrap();
+    let path = KinematicPath {
+        body: platform,
+        sweep_sensors: false,
+        knots: vec![(0.5, target(0.25)), (1., target(0.))],
+    };
+    world
+        .step_with_kinematic_paths(std::slice::from_ref(&path))
+        .unwrap();
+    assert_eq!(
+        world.character_state(actor).unwrap().carried_by,
+        Some(platform)
+    );
+    world
+        .set_character_input(
+            actor,
+            CharacterInput {
+                jump_speed: 7.,
+                ..CharacterInput::default()
+            },
+        )
+        .unwrap();
+    let saved = world.capture_snapshot().unwrap();
+    let mut restored = PhysicsWorld3d::from_snapshot(&saved).unwrap();
+    for tick in 0..6 {
+        for candidate in [&mut world, &mut restored] {
+            candidate
+                .step_with_kinematic_paths(std::slice::from_ref(&path))
+                .unwrap();
+            let state = candidate.character_state(actor).unwrap();
+            assert!(!state.grounded);
+            assert_eq!(state.vertical_speed, 7.);
+        }
+        assert_eq!(
+            world.capture_snapshot().unwrap().encoded_bytes(),
+            restored.capture_snapshot().unwrap().encoded_bytes(),
+            "rollback continuation changed on tick {tick}",
+        );
+    }
+}
+
+#[test]
 fn character_runtime_admission_grounded_jump_is_retained_then_consumed_once() {
     let (mut world, actor, _) = path_fixture();
     assert!(world.character_state(actor).unwrap().grounded);
@@ -860,6 +927,7 @@ fn character_runtime_admission_grounded_jump_is_retained_then_consumed_once() {
         before.encoded_bytes()
     );
     let mut restored = PhysicsWorld3d::from_snapshot(&before).unwrap();
+    restored.force_character_motion_proof();
     let dt = world.config().step_seconds;
     for _ in 0..6 {
         let start = world.body_state(actor).unwrap().pose.position[1];
@@ -1540,6 +1608,7 @@ fn precise_completed_query_payload_valid_crc_damage_keeps_native_source_unchange
         ..WorldConfig::default()
     })
     .unwrap();
+    world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
     world
         .create_body(

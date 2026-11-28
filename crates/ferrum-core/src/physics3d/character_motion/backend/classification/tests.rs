@@ -271,6 +271,7 @@ fn empty_selection_and_existing_failures_never_publish_tags_or_consume_a_pending
 fn selected_pusher_handoff_preserves_checked_squeeze_endpoints_and_native_call_count() {
     for kind in [BodyKind::KinematicPosition, BodyKind::KinematicVelocity] {
         let mut w = world();
+        w.force_character_motion_proof();
         let actor = character(&mut w);
         body(&mut w, BodyKind::Fixed, -1., 0.);
         let pusher = body(&mut w, kind, 3., 0.);

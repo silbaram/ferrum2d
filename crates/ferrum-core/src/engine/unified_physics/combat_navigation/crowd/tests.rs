@@ -47,7 +47,7 @@ fn native_crowd_routes_around_resting_peer_and_reaches_target() {
         pos(&e, actor)
     );
     assert!(steered > 0);
-    assert_eq!(pos(&e, peer)[0], 1.5);
+    assert!((pos(&e, peer)[0] - 1.5).abs() <= 0.005);
     let stats = e.data_scene_combat_crowd_stats();
     assert_eq!(&stats[..2], &[1, 1]);
     assert!(stats[2] >= 2 && stats[4] > 0, "{stats:?}");

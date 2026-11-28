@@ -334,11 +334,10 @@ impl PhysicsWorld3d {
     /// Internal Engine execution must consume the checked outcome; a failed
     /// actual-motion suffix is never an instruction to run a second solver.
     pub(crate) fn step_checked(&mut self) -> Result<(), PhysicsError> {
-        #[cfg(test)]
-        if self.experimental_character_kcc_enabled() {
-            return self.step_experimental_character_kcc(&[]);
+        if !self.characters.is_empty() && !self.backend_motion_enabled() {
+            return self.step_character_kcc();
         }
-        if self.has_moving_character_obstacles() || self.backend_motion_enabled() {
+        if self.backend_motion_enabled() {
             self.step_kinematic_tick(&[]);
             return self.actual_motion_result();
         }
@@ -373,6 +372,8 @@ impl PhysicsWorld3d {
     }
 
     pub(super) fn begin_fixed_step_with_paths(&mut self, prescribed_paths: bool) -> bool {
+        #[cfg(test)]
+        let prescribed_paths = prescribed_paths || self.character_motion.reject_staged_tick;
         self.begin_backend_motion_tick();
         if prescribed_paths || self.backend_motion_enabled() {
             if let Err(error) = self
@@ -415,7 +416,20 @@ impl PhysicsWorld3d {
         for runtime in self.joints.values_mut() {
             runtime.state = super::JointState::default();
         }
+        #[cfg(test)]
+        if std::mem::take(&mut self.character_motion.reject_staged_tick) {
+            self.character_motion
+                .backend_motion
+                .fail(super::solver_trajectory::TrajectoryError::WorkLimit);
+            self.finish_fixed_step();
+            return false;
+        }
         true
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reject_next_staged_tick_for_test(&mut self) {
+        self.character_motion.reject_staged_tick = true;
     }
     pub(super) fn finish_fixed_step(&mut self) {
         let rejected =
@@ -429,8 +443,10 @@ impl PhysicsWorld3d {
                 return;
             }
         }
-        // Capture consumes the same tick ledger after actual approval; it
-        // never creates a fresh proof allowance or changes actual tick credit.
+        if !self.backend_motion_enabled() {
+            self.record_interpolated_step_motion();
+        }
+        // Capture keeps the tick's existing memory/work allowance.
         let mut work = self.saved_motion_proof_work();
         self.finish_step_motion(&mut work);
         if self.commit_saved_motion_proof_work(work).is_err() {

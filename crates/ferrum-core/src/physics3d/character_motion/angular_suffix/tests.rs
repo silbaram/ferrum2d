@@ -256,6 +256,7 @@ fn angular_suffix_actual_solver_curve_and_second_character_control_keep_clearanc
         w.set_step_motion_enabled(true);
         let tick = f64::from(w.config().step_seconds);
         let saved = w.capture_snapshot().unwrap();
+        w.force_character_motion_proof();
         w.step_checked().unwrap();
         assert_eq!(w.actual_motion_completed_time(), tick);
         assert!(separation(&w, bar, actor) > 0.);
@@ -423,6 +424,7 @@ fn angular_suffix_actual_solver_curve_and_second_character_control_keep_clearanc
             continuation.push(w.capture_snapshot().unwrap());
         }
         w.restore_snapshot(&saved).unwrap();
+        w.force_character_motion_proof();
         w.step_checked().unwrap();
         assert_eq!(w.actual_motion_completed_time(), tick);
         assert_eq!(
@@ -447,6 +449,7 @@ fn angular_suffix_fixed_wall_stops_the_bar_on_its_original_solver_curve() {
     let (mut w, bar, actor, left, _) = fixture(false, false, 0., LeftWall::Original);
     w.set_step_motion_enabled(true);
     let tick = f64::from(w.config().step_seconds);
+    w.force_character_motion_proof();
     w.step_checked().unwrap();
     assert_eq!(w.actual_motion_completed_time(), tick);
     assert_eq!(w.step_statistics().kinematic_character_stops, 0);
@@ -508,6 +511,7 @@ fn angular_suffix_fixed_wall_stops_the_bar_on_its_original_solver_curve() {
 fn angular_suffix_retains_static_ceiling_and_old_stop_prefix_for_single_and_aggregate() {
     for extra in [false, true] {
         let (mut w, bar, actor, left, top) = fixture(extra, true, 0., LeftWall::Original);
+        w.force_character_motion_proof();
         w.step();
         assert!(separation(&w, bar, actor) >= 0.);
         assert!(separation(&w, left, actor) >= 0.);

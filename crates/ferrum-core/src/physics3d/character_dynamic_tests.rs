@@ -101,42 +101,101 @@ fn character_external_impulse_is_consumed_once() {
 }
 
 #[test]
-fn finite_mass_dynamic_impact_splits_the_tick_and_conserves_momentum() {
-    let mut w = world();
-    let a = actor(&mut w, 0., 2.);
-    let b = dynamic(&mut w, 1.);
-    w.set_character_input(
-        a,
-        CharacterInput {
-            velocity: [10., 0., 0.],
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    w.step();
-    let actor = w.body_state(a).unwrap();
-    let dynamic = w.body_state(b).unwrap();
-    assert!(
-        (actor.linear_velocity[0] - 5.).abs() < 0.01,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!(
-        (dynamic.linear_velocity[0] - 5.).abs() < 0.01,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!(
-        (actor.pose.position[0] - 0.745).abs() < 0.01,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!(
-        (dynamic.pose.position[0] - 1.255).abs() < 0.01,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!((2. * actor.linear_velocity[0] + 2. * dynamic.linear_velocity[0] - 20.).abs() < 0.01);
+#[ignore = "P2b measures the finite-mass reaction in the trial and baseline"]
+fn p2b_compare_finite_mass_push() {
+    for mode in super::p1b_tests::MODES {
+        let mut w = world();
+        let a = actor(&mut w, 0., 2.);
+        let b = dynamic(&mut w, 1.);
+        mode.configure(&mut w);
+        w.set_character_input(
+            a,
+            CharacterInput {
+                velocity: [10., 0., 0.],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let result = w.step_checked();
+        let actor = w.body_state(a).unwrap();
+        let dynamic = w.body_state(b).unwrap();
+        let momentum = 2. * (actor.linear_velocity[0] + dynamic.linear_velocity[0]);
+        println!("P2B_FINITE_PUSH mode={mode:?} result={result:?} actor_x={} actor_vx={} dynamic_x={} dynamic_vx={} momentum={momentum}",
+            actor.pose.position[0], actor.linear_velocity[0],
+            dynamic.pose.position[0], dynamic.linear_velocity[0]);
+    }
 }
 
 #[test]
-fn incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent() {
+fn p2b_compare_passive_knockback() {
+    for space in [Space::PlanarXy, Space::Spatial] {
+        for mode in super::p1b_tests::MODES {
+            let mut w = PhysicsWorld3d::new(WorldConfig {
+                space,
+                gravity: [0.; 3],
+                step_seconds: 0.01,
+                ..WorldConfig::default()
+            })
+            .unwrap();
+            let a = w
+                .create_body(
+                    BodyDesc {
+                        kind: BodyKind::KinematicPosition,
+                        pose: Pose {
+                            position: [-2., 0., 0.],
+                            ..Pose::default()
+                        },
+                        ..BodyDesc::default()
+                    },
+                    ColliderDesc::new(Shape::Capsule {
+                        half_height: 0.5,
+                        radius: 0.25,
+                    }),
+                )
+                .unwrap();
+            w.enable_character(
+                a,
+                CharacterConfig {
+                    push_mass: 2.,
+                    step_height: 0.,
+                    snap_distance: 0.,
+                    ..CharacterConfig::default()
+                },
+            )
+            .unwrap();
+            let mut fixture = ColliderDesc::new(Shape::Box {
+                half_extents: [0.5; 3],
+            });
+            fixture.density = 2.;
+            fixture.friction = 0.;
+            let b = w
+                .create_body(
+                    BodyDesc {
+                        can_sleep: false,
+                        ..BodyDesc::default()
+                    },
+                    fixture,
+                )
+                .unwrap();
+            mode.configure(&mut w);
+            w.apply_character_impulse(a, [10., 0., 0.]).unwrap();
+            for _ in 0..50 {
+                w.step_checked().unwrap();
+            }
+            let actor = w.character_state(a).unwrap();
+            let dynamic = w.body_state(b).unwrap();
+            let momentum = 2. * (actor.velocity[0] + dynamic.linear_velocity[0]);
+            println!("P2B_PASSIVE space={space:?} mode={mode:?} actor_vx={} box_vx={} box_x={} momentum={momentum}",
+                actor.velocity[0], dynamic.linear_velocity[0], dynamic.pose.position[0]);
+            assert!(
+                (momentum - 10.).abs() < 0.1,
+                "{space:?} {mode:?}: momentum={momentum}"
+            );
+        }
+    }
+}
+
+fn incoming_dynamic_impact_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
     let mut w = world();
     let a = actor(&mut w, 0., 2.);
     let b = dynamic(&mut w, 1.);
@@ -149,63 +208,7 @@ fn incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent() {
     )
     .unwrap();
     w.set_velocity(b, [-10., 0., 0.], [0.; 3]).unwrap();
-    c12_checked_motion(
-        &mut w,
-        "incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent",
-    );
-    let actor = w.body_state(a).unwrap();
-    let dynamic = w.body_state(b).unwrap();
-    assert!(
-        actor.linear_velocity[0] < -4.8 && dynamic.linear_velocity[0] < -4.8,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!((2. * actor.linear_velocity[0] + 2. * dynamic.linear_velocity[0] + 20.).abs() < 0.01);
-    assert!(
-        dynamic.angular_velocity[1].abs() > 0.5,
-        "off-center impact must transfer angular momentum: {dynamic:?}"
-    );
-    assert!((actor.pose.position[2] - 0.2).abs() < 0.001, "{actor:?}");
-    let before = actor.pose.position[0];
-    c12_checked_motion(
-        &mut w,
-        "incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent",
-    );
-    assert!(
-        w.body_state(a).unwrap().pose.position[0] < before - 0.4,
-        "dynamic knockback must persist as external velocity"
-    );
-}
-
-#[test]
-fn simultaneous_capsules_share_one_dynamic_body_without_duplicate_impulses() {
-    let mut w = world();
-    let a = actor(&mut w, 0., 2.);
-    let b = actor(&mut w, 0.51, 2.);
-    let d = dynamic(&mut w, 1.02);
-    w.set_character_input(
-        a,
-        CharacterInput {
-            velocity: [9., 0., 0.],
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    w.step();
-    let states = [a, b, d].map(|id| w.body_state(id).unwrap());
-    for state in &states {
-        assert!((state.linear_velocity[0] - 3.).abs() < 0.01, "{states:?}");
-    }
-    assert!(
-        (states
-            .iter()
-            .map(|s| 2. * s.linear_velocity[0])
-            .sum::<f32>()
-            - 18.)
-            .abs()
-            < 0.01
-    );
-    assert!(states[1].pose.position[0] - states[0].pose.position[0] >= 0.509);
-    assert!(states[2].pose.position[0] - states[1].pose.position[0] >= 0.509);
+    (w, a, b)
 }
 
 #[test]
@@ -273,69 +276,100 @@ fn dynamic_force_is_never_consumed_or_applied_twice_by_character_previews() {
     }
 }
 
-#[test]
-fn dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor() {
-    for rotate in [false, true] {
-        let mut w = world();
-        let p = w
-            .create_body(
-                BodyDesc {
-                    kind: BodyKind::Dynamic,
-                    ccd: true,
-                    pose: Pose {
-                        position: [0., -0.1, 0.],
-                        ..Default::default()
-                    },
+fn dynamic_support_fixture(
+    rotate: bool,
+    mode: super::p1b_tests::Mode,
+) -> (PhysicsWorld3d, BodyId, BodyId) {
+    let mut w = world();
+    let p = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Dynamic,
+                ccd: true,
+                pose: Pose {
+                    position: [0., -0.1, 0.],
                     ..Default::default()
                 },
-                ColliderDesc::new(Shape::Box {
-                    half_extents: [2., 0.1, 2.],
-                }),
-            )
-            .unwrap();
-        let a = actor(&mut w, 1., 2.);
-        w.set_pose(
-            a,
-            Pose {
-                position: [1., 0.51, 0.],
+                ..Default::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [2., 0.1, 2.],
+            }),
+        )
+        .unwrap();
+    let a = actor(&mut w, 1., 2.);
+    w.set_pose(
+        a,
+        Pose {
+            position: [1., 0.51, 0.],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    mode.configure(&mut w);
+    c12_checked_motion(
+        &mut w,
+        "dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor",
+    );
+    assert!(w.character_state(a).unwrap().grounded);
+    if rotate {
+        w.set_velocity(p, [0.; 3], [0., 2., 0.]).unwrap();
+    } else {
+        w.set_body_options(
+            p,
+            &BodyOptions {
+                kind: BodyKind::Dynamic,
+                ccd: true,
+                lock_rotation: true,
                 ..Default::default()
             },
         )
         .unwrap();
-        c12_checked_motion(
-            &mut w,
-            "dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor",
-        );
-        assert!(w.character_state(a).unwrap().grounded);
-        if rotate {
-            w.set_velocity(p, [0.; 3], [0., 2., 0.]).unwrap();
-        } else {
-            w.set_body_options(
-                p,
-                &BodyOptions {
-                    kind: BodyKind::Dynamic,
-                    ccd: true,
-                    lock_rotation: true,
+        w.create_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                pose: Pose {
+                    position: [2.3, 0., 0.],
                     ..Default::default()
                 },
-            )
-            .unwrap();
-            w.create_body(
-                BodyDesc {
-                    kind: BodyKind::Fixed,
-                    pose: Pose {
-                        position: [2.3, 0., 0.],
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                ColliderDesc::new(Shape::Box {
-                    half_extents: [0.1, 2., 3.],
-                }),
-            )
-            .unwrap();
-            w.set_velocity(p, [10., 0., 0.], [0.; 3]).unwrap();
-        }
+                ..Default::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [0.1, 2., 3.],
+            }),
+        )
+        .unwrap();
+        w.set_velocity(p, [10., 0., 0.], [0.; 3]).unwrap();
+    }
+    (w, p, a)
+}
+
+#[test]
+#[ignore = "P2b compares incoming dynamic contact and dynamic support on both paths"]
+fn p2b_compare_incoming_impact_and_dynamic_support() {
+    for mode in super::p1b_tests::MODES {
+        let (mut w, a, b) = incoming_dynamic_impact_fixture();
+        mode.configure(&mut w);
+        w.step_checked().unwrap();
+        let actor_x_velocity = w.body_state(a).unwrap().linear_velocity[0];
+        let box_x_velocity = w.body_state(b).unwrap().linear_velocity[0];
+        let (mut w, p, a) = dynamic_support_fixture(false, mode);
+        let start = w.body_state(p).unwrap().pose.position[0];
+        w.step_checked().unwrap();
+        let platform_delta = w.body_state(p).unwrap().pose.position[0] - start;
+        let carry = w.character_state(a).unwrap().carry_translation[0];
+        println!("P2B_INCOMING mode={mode:?} actor_vx={actor_x_velocity} box_vx={box_x_velocity} support_delta={platform_delta} carry={carry}");
+    }
+}
+
+#[test]
+fn dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor() {
+    check_dynamic_support_carry(super::p1b_tests::Mode::Kcc);
+}
+
+fn check_dynamic_support_carry(mode: super::p1b_tests::Mode) {
+    for rotate in [false, true] {
+        let (mut w, p, a) = dynamic_support_fixture(rotate, mode);
         let start = super::world::native_pose(w.body_state(p).unwrap().pose);
         let mut anchor = rapier3d::prelude::Vector::new(1., 0., 0.);
         let local_anchor = start.inverse_transform_point(anchor);
@@ -368,6 +402,7 @@ fn dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor() {
                 );
             }
             assert_eq!(state.carried_by, Some(p));
+            assert!(state.grounded);
         }
     }
 }
@@ -496,64 +531,6 @@ fn dynamic_collision_reactions_only_follow_accepted_masked_and_clamped_motion() 
 }
 
 #[test]
-fn dense_finite_mass_chain_has_bounded_work_and_conserves_momentum() {
-    for count in [8, 32] {
-        let mut w = world();
-        let actors: Vec<_> = (0..count)
-            .map(|i| actor(&mut w, 0.51 * i as f32, 2.))
-            .collect();
-        let d = dynamic(&mut w, 0.51 * count as f32);
-        w.set_character_input(
-            actors[0],
-            CharacterInput {
-                velocity: [9., 0., 0.],
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        let checkpoint = w.capture_snapshot().unwrap();
-        let mut replay = PhysicsWorld3d::from_snapshot(&checkpoint).unwrap();
-        w.step();
-        replay.step();
-        let expected = 9. / (count + 1) as f32;
-        for &a in &actors {
-            let state = w.character_state(a).unwrap();
-            assert!(
-                !state.character_coupling_iteration_limit,
-                "count={count}: {state:?}"
-            );
-            assert!(
-                (w.body_state(a).unwrap().linear_velocity[0] - expected).abs() < 0.01,
-                "count={count}: {:?}; expected={expected}",
-                w.body_state(a).unwrap()
-            );
-            assert!(
-                state.character_coupling_iterations < 20_000,
-                "count={count}: {state:?}"
-            );
-        }
-        let total = actors
-            .iter()
-            .chain([&d])
-            .map(|&a| 2. * w.body_state(a).unwrap().linear_velocity[0])
-            .sum::<f32>();
-        assert!(
-            (total - 18.).abs() < 0.01,
-            "count={count}: momentum={total}"
-        );
-        assert!(
-            w.step_statistics().backend_steps <= 2,
-            "{:?}",
-            w.step_statistics()
-        );
-        assert_eq!(
-            w.capture_snapshot().unwrap().encoded_bytes(),
-            replay.capture_snapshot().unwrap().encoded_bytes()
-        );
-    }
-}
-
-#[test]
 fn finite_mass_bounds_distinguish_zero_minimum_and_invalid_values() {
     let mut w = world();
     let a = actor(&mut w, 0., 2.);
@@ -606,8 +583,13 @@ fn finite_mass_bounds_distinguish_zero_minimum_and_invalid_values() {
 
 #[test]
 fn external_knockback_is_consumed_at_walls_and_does_not_relaunch_after_landing() {
+    check_external_knockback(super::p1b_tests::Mode::Kcc);
+}
+
+fn check_external_knockback(mode: super::p1b_tests::Mode) {
     let mut w = world();
     let a = actor(&mut w, 0., 2.);
+    mode.configure(&mut w);
     let wall = w
         .create_body(
             BodyDesc {
@@ -632,6 +614,7 @@ fn external_knockback_is_consumed_at_walls_and_does_not_relaunch_after_landing()
 
     let mut w = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
     let a = actor(&mut w, 0., 2.);
+    mode.configure(&mut w);
     w.set_pose(
         a,
         Pose {
@@ -742,4 +725,435 @@ fn finite_character_crate_and_fixed_wall_share_the_accepted_stop() {
         "character must stop behind the actually stopped crate: {a:?}; {d:?}"
     );
     assert!(d.pose.position[0] <= 1.451, "{d:?}");
+}
+
+#[test]
+fn p2b_character_push_uses_virtual_mass_and_stores_the_opposite_impulse() {
+    let mut w = world();
+    let a = actor(&mut w, 0., 2.);
+    let b = dynamic(&mut w, 1.);
+    w.set_character_input(
+        a,
+        CharacterInput {
+            velocity: [10., 0., 0.],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    w.step();
+    let actor = w.body_state(a).unwrap();
+    let dynamic = w.body_state(b).unwrap();
+    // A persistent movement command sets speed, so measure the stored reaction
+    // separately from the actor's average movement over the tick.
+    assert!((0.48..0.5).contains(&actor.pose.position[0]), "{actor:?}");
+    assert!(
+        (4.5..4.8).contains(&dynamic.linear_velocity[0]),
+        "{dynamic:?}"
+    );
+    assert!(dynamic.pose.position[0] > 1.4);
+    let external = w.characters[&a].external_velocity[0];
+    assert!((2. * (external + dynamic.linear_velocity[0])).abs() < 0.1);
+    assert!(w.p1a_max_overlap() <= 0.005);
+}
+
+#[test]
+fn p2b_fast_incoming_ccd_matches_an_ordinary_rapier_capsule() {
+    for space in [Space::PlanarXy, Space::Spatial] {
+        let measure = |controlled| {
+            let mut w = PhysicsWorld3d::new(WorldConfig {
+                space,
+                gravity: [0.; 3],
+                length_unit: 1.,
+                step_seconds: 0.01,
+                ..WorldConfig::default()
+            })
+            .unwrap();
+            let a = w
+                .create_body(
+                    BodyDesc {
+                        kind: BodyKind::KinematicPosition,
+                        ..BodyDesc::default()
+                    },
+                    ColliderDesc::new(Shape::Capsule {
+                        half_height: 0.5,
+                        radius: 0.25,
+                    }),
+                )
+                .unwrap();
+            if controlled {
+                w.enable_character(
+                    a,
+                    CharacterConfig {
+                        push_mass: 2.,
+                        step_height: 0.,
+                        snap_distance: 0.,
+                        ..CharacterConfig::default()
+                    },
+                )
+                .unwrap();
+            }
+            let b = w
+                .create_body(
+                    BodyDesc {
+                        pose: Pose {
+                            position: [1.5, 0., 0.],
+                            ..Pose::default()
+                        },
+                        linear_velocity: [-200., 0., 0.],
+                        ccd: true,
+                        can_sleep: false,
+                        ..BodyDesc::default()
+                    },
+                    ColliderDesc {
+                        density: 2.,
+                        friction: 0.,
+                        ..ColliderDesc::new(Shape::Box {
+                            half_extents: [0.5; 3],
+                        })
+                    },
+                )
+                .unwrap();
+            let mut depths = [0.; 32];
+            let mut collision = false;
+            let mut events = Vec::new();
+            for depth in &mut depths {
+                w.step_checked().unwrap();
+                *depth = w.p1a_max_overlap();
+                assert_eq!(w.body_state(a).unwrap().pose.position[0], 0.);
+                assert!(w.body_state(b).unwrap().pose.position[0] > 0.);
+                w.drain_collision_events(&mut events);
+                collision |= events.iter().any(|event| {
+                    event.phase == CollisionPhase::Enter
+                        && (event.first.body, event.second.body) == (a, b)
+                });
+            }
+            assert!(collision, "{space:?}, controlled={controlled}");
+            depths
+        };
+        let baseline = measure(false);
+        let character = measure(true);
+        for (tick, (&reference, &controlled)) in baseline.iter().zip(&character).enumerate() {
+            assert!(
+                controlled <= reference + 1e-6,
+                "{space:?} tick {}: character {controlled} exceeds Rapier {reference}",
+                tick + 1,
+            );
+        }
+        let ticks_to_recover = match baseline.iter().position(|&depth| depth > 0.005) {
+            Some(first) => baseline[first..]
+                .iter()
+                .position(|&depth| depth <= 0.005)
+                .unwrap_or_else(|| panic!("{space:?}: baseline did not recover: {baseline:?}")),
+            None => 0,
+        };
+        let max = |depths: [f32; 32]| depths.into_iter().fold(0., f32::max);
+        println!(
+            "{space:?}: baseline max={}, character max={}, first seven baseline={:?}, character={:?}, ticks to recover={ticks_to_recover}",
+            max(baseline), max(character), &baseline[..7], &character[..7]
+        );
+    }
+}
+
+#[test]
+fn p2b_incoming_dynamic_impact_stops_at_the_actor_and_game_code_supplies_knockback() {
+    let (mut w, a, b) = incoming_dynamic_impact_fixture();
+    let mut events = Vec::new();
+    let mut collision = false;
+    let mut max_overlap = 0.0_f32;
+    for tick in 1..=3 {
+        w.step_checked().unwrap();
+        let actor = w.body_state(a).unwrap();
+        let projectile = w.body_state(b).unwrap();
+        // The capsule is kinematic on incoming contact. The scripted tangent
+        // must continue unaffected, even when CCD stops the box.
+        assert!(actor.pose.position[0].abs() < 0.00001, "{actor:?}");
+        assert!((actor.pose.position[2] - 0.2 * tick as f32).abs() < 0.00001);
+        // Rotation and lateral deflection can move the center past the
+        // unrotated contact plane. Measure the actual shape penetration.
+        assert!(projectile.pose.position[0] > 0.25, "{projectile:?}");
+        let overlap = w.p1a_max_overlap();
+        max_overlap = max_overlap.max(overlap);
+        assert!(
+            overlap <= 0.005 + 1e-6,
+            "tick={tick}: overlap={overlap}; {projectile:?}"
+        );
+        w.drain_collision_events(&mut events);
+        collision |= events.iter().any(|event| {
+            event.phase == CollisionPhase::Enter && (event.first.body, event.second.body) == (a, b)
+        });
+    }
+    assert!(collision, "game code needs a solid collision event");
+    let deflected = w.body_state(b).unwrap();
+    assert!(deflected.linear_velocity[0] > -2., "{deflected:?}");
+    assert!(deflected.angular_velocity[1].abs() > 0.5, "{deflected:?}");
+    w.apply_character_impulse(a, [-10., 0., 0.]).unwrap();
+    w.step_checked().unwrap();
+    let knockback_x = w.body_state(a).unwrap().pose.position[0];
+    assert!(knockback_x < -0.49);
+    println!(
+        "P2B_GAME_IMPULSE overlap={max_overlap} deflected_vx={} knockback_x={knockback_x}",
+        deflected.linear_velocity[0]
+    );
+}
+
+#[test]
+fn p2b_a_peer_blocks_the_capsule_without_pushing_the_box_behind_it() {
+    let mut w = world();
+    let a = actor(&mut w, 0., 2.);
+    let b = actor(&mut w, 0.51, 2.);
+    let d = dynamic(&mut w, 1.02);
+    w.set_character_input(
+        a,
+        CharacterInput {
+            velocity: [9., 0., 0.],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    w.step_checked().unwrap();
+    let states = [a, b, d].map(|id| w.body_state(id).unwrap());
+    // The peer is already one skin width away. KCC stops before it and
+    // cannot pass a push through it to the box.
+    assert!(w.character_state(a).unwrap().blocked_by_character);
+    assert!(states[0].pose.position[0].abs() <= 0.005, "{states:?}");
+    assert!(states[1].linear_velocity[0].abs() < 0.00001, "{states:?}");
+    assert!(states[2].linear_velocity[0].abs() < 0.00001, "{states:?}");
+    assert!(states[1].pose.position[0] - states[0].pose.position[0] >= 0.499);
+    assert!(states[2].pose.position[0] - states[1].pose.position[0] >= 0.509);
+}
+
+#[test]
+fn p2b_dense_capsule_chain_blocks_without_transferring_momentum() {
+    for count in [8, 32] {
+        let mut w = world();
+        let actors: Vec<_> = (0..count)
+            .map(|i| actor(&mut w, 0.51 * i as f32, 2.))
+            .collect();
+        let d = dynamic(&mut w, 0.51 * count as f32);
+        w.set_character_input(
+            actors[0],
+            CharacterInput {
+                velocity: [9., 0., 0.],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let checkpoint = w.capture_snapshot().unwrap();
+        let mut replay = PhysicsWorld3d::from_snapshot(&checkpoint).unwrap();
+        w.step();
+        replay.step();
+        // Peers constrain motion geometrically without sharing the lead actor's speed.
+        assert!(w.character_state(actors[0]).unwrap().blocked_by_character);
+        assert!(w.body_state(actors[0]).unwrap().pose.position[0].abs() <= 0.005);
+        for (i, &a) in actors.iter().enumerate() {
+            let state = w.character_state(a).unwrap();
+            assert!(
+                !state.character_coupling_iteration_limit,
+                "count={count}: {state:?}"
+            );
+            assert!(
+                state.character_pair_casts < count,
+                "count={count}: {state:?}"
+            );
+            if i > 0 {
+                assert!(
+                    state.velocity[0].abs() < 0.00001,
+                    "count={count}: {state:?}"
+                );
+                let previous = w.body_state(actors[i - 1]).unwrap().pose.position[0];
+                assert!(w.body_state(a).unwrap().pose.position[0] - previous >= 0.49999);
+            }
+        }
+        assert!(w.body_state(d).unwrap().linear_velocity[0].abs() < 0.00001);
+        assert!(
+            w.step_statistics().backend_steps <= 2,
+            "{:?}",
+            w.step_statistics()
+        );
+        assert_eq!(
+            w.capture_snapshot().unwrap().encoded_bytes(),
+            replay.capture_snapshot().unwrap().encoded_bytes()
+        );
+    }
+}
+
+#[test]
+fn p2b_review_dynamic_ceiling_retains_the_finite_mass_reaction() {
+    for ratio in [1., 10., 0.1] {
+        let mut w = world();
+        w.create_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                pose: Pose {
+                    position: [0., -0.1, 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [2., 0.1, 2.],
+            }),
+        )
+        .unwrap();
+        let a = actor(&mut w, 0., 2.);
+        w.set_pose(
+            a,
+            Pose {
+                position: [0., 0.51, 0.],
+                ..Pose::default()
+            },
+        )
+        .unwrap();
+        w.enable_character(
+            a,
+            CharacterConfig {
+                push_mass: 2.,
+                max_vertical_speed: 4.,
+                step_height: 0.,
+                ..CharacterConfig::default()
+            },
+        )
+        .unwrap();
+        w.step_checked().unwrap();
+        assert!(w.character_state(a).unwrap().grounded);
+        w.set_character_input(
+            a,
+            CharacterInput {
+                jump_speed: 4.,
+                ..CharacterInput::default()
+            },
+        )
+        .unwrap();
+        w.step_checked().unwrap();
+        assert!((w.character_state(a).unwrap().vertical_speed - 4.).abs() < 1e-6);
+        let ceiling_y = w.body_state(a).unwrap().pose.position[1] + 0.76;
+        let b = w
+            .create_body(
+                BodyDesc {
+                    kind: BodyKind::Dynamic,
+                    pose: Pose {
+                        position: [0., ceiling_y, 0.],
+                        ..Pose::default()
+                    },
+                    ..BodyDesc::default()
+                },
+                ColliderDesc {
+                    density: 2. * ratio,
+                    ..ColliderDesc::new(Shape::Box {
+                        half_extents: [1., 0.25, 0.5],
+                    })
+                },
+            )
+            .unwrap();
+        w.step_checked().unwrap();
+        let state = w.character_state(a).unwrap();
+        let box_speed = w.body_state(b).unwrap().linear_velocity[1];
+        assert!(state.hit_ceiling);
+        assert!(box_speed > 0.);
+        if ratio == 1. {
+            assert!(
+                (box_speed - 2.).abs() < 0.08,
+                "equal-mass box speed {box_speed}"
+            );
+        }
+        let momentum_per_actor_mass = state.vertical_speed + box_speed * ratio;
+        assert!(
+            (momentum_per_actor_mass - 4.).abs() < 0.04,
+            "mass ratio {ratio}: actor {}, box {box_speed}, P/m={momentum_per_actor_mass}",
+            state.vertical_speed
+        );
+        assert!(state.vertical_speed.abs() <= 4.);
+        w.capture_snapshot().unwrap();
+    }
+}
+
+#[test]
+fn p2b_review_heavy_box_does_not_create_rebound_and_replays_after_restore() {
+    let mut w = world();
+    let a = actor(&mut w, 0., 2.);
+    let b = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Dynamic,
+                pose: Pose {
+                    position: [0.51, 0., 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc {
+                density: 20.,
+                ..ColliderDesc::new(Shape::Box {
+                    half_extents: [0.25, 1., 0.5],
+                })
+            },
+        )
+        .unwrap();
+    w.set_character_input(
+        a,
+        CharacterInput {
+            velocity: [4., 0., 0.],
+            ..CharacterInput::default()
+        },
+    )
+    .unwrap();
+    let mut replay = PhysicsWorld3d::from_snapshot(&w.capture_snapshot().unwrap()).unwrap();
+    for step in 0..6 {
+        w.step_checked().unwrap();
+        replay.step_checked().unwrap();
+        let vx = w.body_state(b).unwrap().linear_velocity[0];
+        let reaction = w.characters[&a].external_velocity[0];
+        assert!(reaction >= -4.01, "step={step}, reaction={reaction}");
+        if step == 0 {
+            assert!(vx > 0. && reaction < 0.);
+            assert!(
+                (reaction + 10. * vx).abs() < 0.04,
+                "reaction={reaction}; box={vx}"
+            );
+        }
+        assert_eq!(
+            w.capture_snapshot().unwrap().encoded_bytes(),
+            replay.capture_snapshot().unwrap().encoded_bytes()
+        );
+    }
+}
+
+#[test]
+fn p2b_two_capsules_can_push_one_dynamic_body() {
+    let mut w = world();
+    let a = actor(&mut w, 0., 2.);
+    let c = actor(&mut w, 0., 2.);
+    for (id, z) in [(a, -0.4), (c, 0.4)] {
+        w.set_pose(
+            id,
+            Pose {
+                position: [0., 0., z],
+                ..Pose::default()
+            },
+        )
+        .unwrap();
+        w.set_character_input(
+            id,
+            CharacterInput {
+                velocity: [4., 0., 0.],
+                ..CharacterInput::default()
+            },
+        )
+        .unwrap();
+    }
+    let b = dynamic(&mut w, 0.51);
+    w.step_checked().unwrap();
+    let [first, second] = [a, c].map(|id| w.characters[&id].external_velocity[0]);
+    let speed = w.body_state(b).unwrap().linear_velocity[0];
+    assert!(
+        (-4. ..0.).contains(&first)
+            && (-4. ..0.).contains(&second)
+            && speed > 0.
+            && speed <= 4. * 2_f32.sqrt(),
+        "{first}, {second}, {speed}"
+    );
+    assert!(
+        (first + second + speed).abs() < 0.04,
+        "{first}, {second}, {speed}"
+    );
 }

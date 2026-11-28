@@ -88,6 +88,8 @@ pub use world::PhysicsWorld3d;
 pub(crate) mod p1b_tests;
 
 #[cfg(test)]
+mod character_crowd_benchmark_tests;
+#[cfg(test)]
 mod character_dynamic_tests;
 #[cfg(test)]
 mod character_motion_tests;

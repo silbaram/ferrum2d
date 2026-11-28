@@ -5808,16 +5808,10 @@ impl PhysicsWorld3d {
             return false;
         }
         #[cfg(test)]
-        if self.rigid_motion_proof_is_forced() {
+        if self.rigid_motion_proof_is_forced() || self.character_motion_proof_is_forced() {
             return true;
         }
-        self.step_motion.enabled
-            || !self.characters.is_empty()
-            || !self
-                .character_motion
-                .backend_motion
-                .prescribed_paths
-                .is_empty()
+        false
     }
 
     pub(in crate::physics3d) fn prepare_backend_motion(

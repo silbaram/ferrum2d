@@ -620,7 +620,6 @@ fn elevator_support_is_evaluated_after_the_platform_moves() {
 #[test]
 fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
     for sign in [1., -1.] {
-        let mut free: Option<(f32, [f32; 4])> = None;
         for blocked in [false, true] {
             let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
             let platform = block(
@@ -648,6 +647,19 @@ fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
             );
             checked_positive_steps(&mut world, 5);
             assert!(world.character_state(rider).unwrap().grounded);
+            if blocked {
+                // Simulate the previous slice's published diagnostics. A held
+                // support must not publish them again as this slice's work.
+                let previous = &mut world.characters.get_mut(&rider).unwrap().state;
+                previous.blocked_by_character = true;
+                previous.blocked_by_moving_obstacle = true;
+                previous.character_pair_casts = 9;
+                previous.character_pair_contact_checks = 9;
+                previous.moving_obstacle_casts = 9;
+                previous.moving_obstacle_contact_checks = 9;
+            }
+            let original = world.body_state(platform).unwrap().pose;
+            let before = position(&world, rider);
             world
                 .set_velocity(
                     platform,
@@ -659,33 +671,43 @@ fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
                 .set_character_input(
                     rider,
                     CharacterInput {
-                        velocity: [1., 0., 0.],
+                        velocity: [1., 0., if blocked { -2. * sign } else { 0. }],
                         ..Default::default()
                     },
                 )
                 .unwrap();
             checked_positive_steps(&mut world, 1);
             let state = world.character_state(rider).unwrap();
-            let rotation = world.body_state(platform).unwrap().pose.rotation;
             let [x, y, z] = position(&world, rider);
-            assert!(state.grounded && state.carried_by == Some(platform));
+            assert!(state.grounded);
+            assert_eq!(state.ground.unwrap().body, platform);
             assert_eq!(
                 (state.failed_moving_obstacle_casts, state.dropped_contacts),
                 (0, 0)
             );
-            assert!((y - 0.91).abs() < 1e-5);
-            if let Some((free_x, free_rotation)) = free {
-                // The wall is reached during the tick. The rider keeps the skin and
-                // nearly all free tangential travel, and the platform keeps spinning.
-                assert!((z * sign + 0.007).abs() < 1e-5, "z={z}");
+            assert!((y - before[1]).abs() <= 0.005, "y={y}, before={before:?}");
+            if blocked {
+                // A blocked rider stops the rotating carrier as a group.
                 assert!(
-                    (x - free_x).abs() < 0.002 && x > 1.014,
-                    "x={x}, free={free_x}"
+                    x > before[0] + 0.014 && (z - before[2]).abs() <= 0.012,
+                    "x={x}; z={z}"
                 );
-                assert_eq!(rotation, free_rotation);
+                assert!(!state.blocked_by_character && !state.blocked_by_moving_obstacle);
+                assert_eq!(
+                    state.character_pair_casts + state.character_pair_contact_checks,
+                    0
+                );
+                assert_eq!(
+                    state.moving_obstacle_casts + state.moving_obstacle_contact_checks,
+                    0
+                );
+                assert_eq!(state.carried_by, None);
+                assert_eq!(state.carry_translation, [0.; 3]);
+                assert_eq!(world.body_state(platform).unwrap().pose, original);
+                assert_eq!(world.step_statistics().kinematic_path_stops, 1);
             } else {
-                assert!(z * sign < -0.017, "free path must cross the physical wall");
-                free = Some((x, rotation));
+                assert!(x > 1.014 && z * sign < -0.017, "x={x}; z={z}");
+                assert_eq!(state.carried_by, Some(platform));
             }
         }
     }
@@ -794,7 +816,12 @@ fn platform_carry_is_swept_against_environment_walls() {
     let pos = position(&world, body);
     assert!((0.9..=1.01).contains(&pos[0]), "{pos:?}");
     assert!(world.character_state(body).unwrap().grounded);
-    assert!(position(&world, platform)[0] > 1.99);
+    let platform_x = position(&world, platform)[0];
+    assert!(
+        (platform_x - pos[0]).abs() < 0.005,
+        "rider={pos:?}; platform={platform_x}"
+    );
+    assert!(platform_x < 1.0);
 }
 
 #[test]
@@ -1004,13 +1031,12 @@ fn character_contact_limits_propagate_through_a_following_group() {
     for _ in 0..60 {
         checked_positive_steps(&mut world, 1);
         for pair in actors.windows(2) {
-            let gap = position(&world, pair[1])[0] - position(&world, pair[0])[0];
-            assert!(
-                gap >= 0.79,
-                "gap={gap}, a={:?}, b={:?}",
-                position(&world, pair[0]),
-                position(&world, pair[1])
-            );
+            let a = position(&world, pair[0]);
+            let b = position(&world, pair[1]);
+            // Ordinary KCC may slide a following capsule sideways. Check
+            // actual horizontal separation instead of the old shared X prefix.
+            let gap = (b[0] - a[0]).hypot(b[2] - a[2]);
+            assert!(gap >= 0.79, "gap={gap}, a={:?}, b={:?}", a, b);
             assert_eq!(world.character_state(pair[0]).unwrap().failed_pair_casts, 0);
         }
         assert!(position(&world, actors[7])[0] <= 7.51);

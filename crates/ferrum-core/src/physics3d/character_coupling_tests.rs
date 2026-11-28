@@ -115,9 +115,11 @@ fn capsule_chain_transmits_fixed_wall_obstruction_back_to_the_prescribed_pusher(
             assert!(pair[0] - pair[1] >= 0.499, "{positions:?}");
         }
         assert!(positions[count - 1] >= left + 0.499, "{positions:?}");
-        assert!(
-            (positions[count - 1] - left - 0.51).abs() < 0.02,
-            "{positions:?}"
+        // A squeeze cancels the proposed push and wall motion for this tick.
+        assert_eq!(x(&w, p), 3.);
+        assert_eq!(
+            positions,
+            (0..count).map(|i| -(i as f32)).collect::<Vec<_>>()
         );
         assert!(
             x(&w, p) - positions[0] >= 0.499,
@@ -266,7 +268,7 @@ fn a_distant_fast_obstacle_does_not_loosen_local_capsule_contact_tolerance() {
         .unwrap();
     for _ in 0..20 {
         w.step();
-        assert!(x(&w, b) - x(&w, a) >= 0.499, "{} {}", x(&w, a), x(&w, b));
+        assert!(x(&w, b) - x(&w, a) >= 0.495, "{} {}", x(&w, a), x(&w, b));
     }
 }
 
@@ -316,19 +318,12 @@ fn pair_contacts_reduce_reported_carry_to_the_accepted_motion() {
     )
     .unwrap();
     step_report_checked(&mut w, "accepted carry pair move");
-    assert!((x(&w, p) - 2.0).abs() < 0.001);
-    assert!(
-        (x(&w, a) + 0.02).abs() < 0.02 && (x(&w, b) - 0.49).abs() < 0.02,
-        "{} {}",
-        x(&w, a),
-        x(&w, b)
-    );
+    // The conservative stop keeps the platform and both riders at their starts.
+    assert_eq!(w.step_statistics().kinematic_path_stops, 1);
+    assert_eq!([x(&w, p), x(&w, a), x(&w, b)], [0., -1., 0.]);
     for id in [a, b] {
         let s = w.character_state(id).unwrap();
-        assert!(
-            s.carry_translation[0] > 0.0 && s.carry_translation[0] <= s.translation[0] + 0.001,
-            "{s:?}"
-        );
+        assert_eq!(s.carry_translation, [0.; 3]);
         assert!(s.grounded);
     }
     let snapshot = w.capture_snapshot().unwrap();
@@ -429,4 +424,315 @@ fn a_disabled_controller_does_not_push_an_enabled_character() {
     assert!((x(&w, b) + 3.51).abs() < 0.02, "{}", x(&w, b));
     assert_eq!(w.character_state(a).unwrap().translation, [0.0; 3]);
     assert_eq!(w.character_state(b).unwrap().character_pair_casts, 0);
+}
+
+#[test]
+fn p2b_review_door_stops_at_a_peer_outside_its_sweep() {
+    let mut w = world();
+    let door = wall(&mut w, -0.55, BodyKind::KinematicPosition);
+    let a = actor(&mut w, 0.);
+    let b = actor(&mut w, 0.60);
+    w.set_kinematic_target(door, pose(-0.25)).unwrap();
+    w.step_checked().unwrap();
+    assert_eq!(x(&w, door), -0.55);
+    assert_eq!(w.step_statistics().kinematic_path_stops, 1);
+    assert_eq!(x(&w, b), 0.60);
+    assert!(x(&w, b) - x(&w, a) >= 0.495);
+}
+
+#[test]
+fn p2b_review_converging_walls_stop_before_squeezing_a_capsule() {
+    for order in [[-1., 1.], [1., -1.]] {
+        let mut w = world();
+        let walls = order.map(|side| wall(&mut w, side, BodyKind::KinematicPosition));
+        let rider = actor(&mut w, 0.);
+        for (wall, side) in walls.into_iter().zip(order) {
+            w.set_kinematic_target(wall, pose(0.4 * side)).unwrap();
+        }
+        w.step_checked().unwrap();
+        assert_eq!(walls.map(|wall| x(&w, wall)), order);
+        assert_eq!(w.step_statistics().kinematic_path_stops, 2);
+        assert_eq!(x(&w, rider), 0.);
+        assert!(w.p1a_max_overlap() <= 0.005);
+    }
+}
+
+#[test]
+fn p2b_review_departing_rider_keeps_the_source_of_accepted_carry() {
+    use super::kinematic_paths::KinematicPath;
+
+    let mut w = world();
+    let platform = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::KinematicPosition,
+                pose: Pose {
+                    position: [0., -0.1, 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [0.25, 0.1, 1.],
+            }),
+        )
+        .unwrap();
+    let rider = actor(&mut w, 0.);
+    w.set_pose(
+        rider,
+        Pose {
+            position: [0., 0.51, 0.],
+            ..Pose::default()
+        },
+    )
+    .unwrap();
+    w.step_checked().unwrap();
+    assert_eq!(
+        w.character_state(rider).unwrap().ground.unwrap().body,
+        platform
+    );
+    w.set_character_input(
+        rider,
+        CharacterInput {
+            velocity: [8., 0., 0.],
+            ..CharacterInput::default()
+        },
+    )
+    .unwrap();
+    let at = |x| Pose {
+        position: [x, -0.1, 0.],
+        ..Pose::default()
+    };
+    w.step_with_kinematic_paths(&[KinematicPath {
+        body: platform,
+        sweep_sensors: false,
+        knots: vec![(0.5, at(0.1)), (1., at(0.2))],
+    }])
+    .unwrap();
+    let state = w.character_state(rider).unwrap();
+    assert!(!state.grounded, "{state:?}");
+    assert!(state.carry_translation[0] > 0.05, "{state:?}");
+    assert_eq!(state.carried_by, Some(platform), "{state:?}");
+}
+
+#[test]
+fn p2b_review_late_knot_rewinds_mover_but_keeps_prior_rapier_contacts() {
+    use super::kinematic_paths::KinematicPath;
+
+    let mut w = world();
+    let door = wall(&mut w, -1., BodyKind::KinematicPosition);
+    let rider = actor(&mut w, 0.);
+    let peer = actor(&mut w, 0.7);
+    let box_id = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Dynamic,
+                pose: Pose {
+                    position: [-0.26, 0., 2.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc {
+                friction: 0.,
+                ..ColliderDesc::new(Shape::Box {
+                    half_extents: [0.25; 3],
+                })
+            },
+        )
+        .unwrap();
+    let path = KinematicPath {
+        body: door,
+        sweep_sensors: false,
+        knots: vec![(0.5, pose(-0.40)), (1., pose(0.25))],
+    };
+    let checkpoint = w.capture_snapshot().unwrap();
+    let mut restored = PhysicsWorld3d::from_snapshot(&checkpoint).unwrap();
+    for world in [&mut w, &mut restored] {
+        world
+            .step_with_kinematic_paths(std::slice::from_ref(&path))
+            .unwrap();
+        assert_eq!(x(world, door), -1.);
+        assert!(x(world, rider).abs() < 1e-6);
+        assert_eq!(x(world, peer), 0.7);
+        assert_eq!(world.step_statistics().kinematic_path_stops, 1);
+        assert!(world.body_state(box_id).unwrap().linear_velocity[0] > 0.);
+        let mut events = Vec::new();
+        world.drain_collision_events(&mut events);
+        assert!(
+            events.iter().any(
+                |event| (event.first.body, event.second.body) == (door, box_id)
+                    && event.phase == CollisionPhase::Enter
+            ),
+            "{events:?}"
+        );
+    }
+    for tick in 1..=6 {
+        assert_eq!(
+            w.capture_snapshot().unwrap().encoded_bytes(),
+            restored.capture_snapshot().unwrap().encoded_bytes(),
+            "tick {tick}"
+        );
+        w.step_checked().unwrap();
+        restored.step_checked().unwrap();
+    }
+}
+
+#[test]
+fn p2b_review_planar_mover_push_has_no_depth_translation() {
+    let mut w = PhysicsWorld3d::new(WorldConfig {
+        space: Space::PlanarXy,
+        gravity: [0.; 3],
+        step_seconds: 0.1,
+        ..WorldConfig::default()
+    })
+    .unwrap();
+    let door = wall(&mut w, -0.75, BodyKind::KinematicPosition);
+    let rider = actor(&mut w, 0.);
+    let turn = rapier3d::prelude::Rotation::from_rotation_z(0.16).to_array();
+    w.set_kinematic_target(
+        door,
+        Pose {
+            rotation: turn,
+            ..pose(-0.4)
+        },
+    )
+    .unwrap();
+    w.step_checked().unwrap();
+    let state = w.character_state(rider).unwrap();
+    assert!(
+        state.moving_obstacle_casts > 0 && state.blocked_by_moving_obstacle,
+        "{state:?}"
+    );
+    assert!(x(&w, rider) > 0.02);
+    assert_eq!(state.translation[2], 0.);
+    assert_eq!(w.body_state(rider).unwrap().pose.position[2], 0.);
+}
+
+#[test]
+fn dynamic_support_reports_only_the_partial_carry_that_fits() {
+    for (wall_x, allowed_carry) in [(0.65, 0.27..0.30), (0.3601005, 0. ..1e-6)] {
+        let mut w = world();
+        let support = w
+            .create_body(
+                BodyDesc {
+                    kind: BodyKind::Dynamic,
+                    pose: Pose {
+                        position: [0., -0.1, 0.],
+                        ..Pose::default()
+                    },
+                    ..BodyDesc::default()
+                },
+                ColliderDesc::new(Shape::Box {
+                    half_extents: [5., 0.1, 5.],
+                }),
+            )
+            .unwrap();
+        let rider = actor(&mut w, 0.);
+        w.set_pose(
+            rider,
+            Pose {
+                position: [0., 0.51, 0.],
+                ..Pose::default()
+            },
+        )
+        .unwrap();
+        w.create_body(
+            BodyDesc {
+                kind: BodyKind::Fixed,
+                pose: Pose {
+                    position: [wall_x, 1., 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [0.1, 0.49, 1.],
+            }),
+        )
+        .unwrap();
+        w.step_checked().unwrap();
+        assert_eq!(
+            w.character_state(rider).unwrap().ground.unwrap().body,
+            support
+        );
+        w.set_velocity(support, [4., 0., 0.], [0.; 3]).unwrap();
+        w.step_checked().unwrap();
+        let state = w.character_state(rider).unwrap();
+        assert_eq!(state.carried_by, Some(support), "{state:?}");
+        assert!(
+            allowed_carry.contains(&state.carry_translation[0]) && state.carry_translation[0] > 0.,
+            "{state:?}"
+        );
+        assert!(x(&w, support) - state.carry_translation[0] > 0.05);
+        assert!((state.carry_translation[0] - x(&w, rider)).abs() < 1e-6);
+    }
+}
+
+#[test]
+fn late_knot_rewinds_rider_transport_but_allows_walking_off() {
+    use super::kinematic_paths::KinematicPath;
+
+    let mut w = world();
+    let platform = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::KinematicPosition,
+                pose: Pose {
+                    position: [0., -0.1, 0.],
+                    ..Pose::default()
+                },
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [0.3, 0.1, 1.],
+            }),
+        )
+        .unwrap();
+    let rider = actor(&mut w, 0.);
+    w.set_pose(
+        rider,
+        Pose {
+            position: [0., 0.51, 0.],
+            ..Pose::default()
+        },
+    )
+    .unwrap();
+    wall(&mut w, 1.4, BodyKind::Fixed);
+    w.step_checked().unwrap();
+    assert!(w.character_state(rider).unwrap().grounded);
+    let at = |x| Pose {
+        position: [x, -0.1, 0.],
+        ..Pose::default()
+    };
+    // The first cut carries the idle rider. At the second cut the carrier
+    // reaches the wall, undoing that earlier carry despite continued grounding.
+    w.step_with_kinematic_paths(&[KinematicPath {
+        body: platform,
+        sweep_sensors: false,
+        knots: vec![(0.5, at(0.2)), (1., at(1.2))],
+    }])
+    .unwrap();
+    let s = w.character_state(rider).unwrap();
+    assert_eq!(w.step_statistics().kinematic_path_stops, 1);
+    assert!(s.grounded && x(&w, rider).abs() < 1e-6);
+    assert_eq!(s.carry_translation, [0.; 3]);
+    assert_eq!(s.carried_by, None);
+
+    w.set_character_input(
+        rider,
+        CharacterInput {
+            velocity: [-7., 0., 0.],
+            ..CharacterInput::default()
+        },
+    )
+    .unwrap();
+    w.set_kinematic_target(platform, at(1.2)).unwrap();
+    w.step_checked().unwrap();
+    assert_eq!(x(&w, platform), 0.);
+    assert_eq!(w.step_statistics().kinematic_path_stops, 1);
+    let s = w.character_state(rider).unwrap();
+    assert!(x(&w, rider) < -0.65 && !s.grounded, "{s:?}");
+    assert_eq!(s.carried_by, None);
+    assert_eq!(s.carry_translation, [0.; 3]);
 }

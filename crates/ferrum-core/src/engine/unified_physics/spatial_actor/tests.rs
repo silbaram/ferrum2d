@@ -187,7 +187,35 @@ fn native_navigation_reaches_raised_floor_through_ramp() {
         "{:?}",
         e.data_scene_spatial_move_diagnostics()
     );
-    tick(&mut e, 240);
+    // KCC projects horizontal input onto the incline. Check that traversal
+    // keeps progressing and reaching the intended floor at the new speed.
+    let mut arrived = None;
+    let mut previous = at(&e, actor);
+    let mut incline = (0, 0.0, 0.0);
+    let mut flat = (0, 0.0);
+    for frame in 1..=300 {
+        tick(&mut e, 1);
+        let p = at(&e, actor);
+        let horizontal = (p[0] - previous[0]).hypot(p[2] - previous[2]);
+        if (0.9..3.1).contains(&previous[0]) {
+            assert!(horizontal > 0.001, "ramp stalled at tick {frame}: {p:?}");
+            assert!(p[1] - previous[1] >= -0.005, "ramp jitter at {frame}");
+        }
+        if (1.25..2.75).contains(&previous[0]) {
+            incline.0 += 1;
+            incline.1 += horizontal;
+            incline.2 += p[1] - previous[1];
+        } else if (0.2..0.8).contains(&previous[0]) {
+            flat.0 += 1;
+            flat.1 += horizontal;
+        }
+        previous = p;
+        if e.data_scene_spatial_move_status() == 2 {
+            arrived = Some(frame);
+            break;
+        }
+    }
+    println!("arrived={arrived:?}, incline={incline:?}, flat={flat:?}");
     let p = at(&e, actor);
     assert_eq!(e.data_scene_spatial_move_status(), 2, "{p:?}");
     assert!(

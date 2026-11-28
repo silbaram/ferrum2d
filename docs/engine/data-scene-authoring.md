@@ -1865,7 +1865,7 @@ Native peer 회피는 기존 `crowdAvoidance: { "padding": 0.1 }` 설정으로 �
   이미 padding 안에 있는 peer로부터 멀어지거나 접선 방향으로 빠져나오는 이동은 허용한다.
 - 회피 방향을 잠시 유지해 같은 peer 앞에서 방향을 계속 뒤집는 현상을 줄인다. 안전한 후보가 없거나
   예산이 부족하면 수평 이동을 대기한다. 모든 후보의 peer 검사와 구간 probe는 기존 outer update의1M work를
-  먼저 승인하며, 대기는 경로 실패나 새 A*로 처리하지 않는다. 점프·중력과 실제 coupled contact는 기존 tick이 담당한다.
+  먼저 승인하며, 대기는 경로 실패나 새 A*로 처리하지 않는다. 점프·중력과 실제 캡슐 접촉은 물리 틱에서 처리한다.
 - 기존 `dataSceneCombatCrowdStats()`에 정지 actor 수, 대기/peer 검사 누계, frame peer 검사/회피 이동 수를 기록한다.
   peer 검사 수는 filter 검사를 포함한 방문 수이며 실제 물리 solver의 pair cast 수와 구분한다.
 - 관측 속도 기반의 local steering이므로 전체 군중의 최적 경로·교착 해소나 미래 점프/발판 경로를 보장하지 않는다.
@@ -2038,6 +2038,8 @@ frameSearchWorkUnits/peakSearchWorkUnits의 복사본이며 구형 Wasm에서는
   겹친 spawn은 점진적으로 빠져나오며, 정지한 적을 강제로 밀지는 않는다.
   중간 경로점은 같은 보행면 또는 연결된 인접 보행면의 한 cell 이내에서 다음 점으로 진행할 수 있다.
   다음 점까지 전체 native sweep이 통과해야 하므로 벽의 필수 코너는 보존한다. 최종 정지 거리는 유지한다.
+- `crowdAvoidance`를 생략해도 KCC가 정지한 동료에 막히면 기존 길찾기의 장애물 검사로
+  돌아가는 경로를 찾는다.
 - 최초/목표 변경은 기존 지형 경로를 계산한다. crowd는 repath 간격마다 현재 peer를 피하는 경로로
   보강한다. peer AABB 모서리와 도착 원의 보조 node를 기존4096 node/작업 상한 안에 추가해
   큰 grid 사이의 좁은 틈도 표현한다. 보강 탐색이 실패해도 같은 목표의 유효한 기존 경로는 유지하며
@@ -2255,6 +2257,10 @@ native 캐릭터 컨트롤러를 설치한다. `kind: "kinematic-position"`과 c
 `character: {}`는 native 기본 설정을 사용하며 필드를 생략하면 컨트롤러를 만들지 않는다.
 `up`, `skinWidth`, `maxSlopeAngle`, `slideAngle`, `stepHeight`, `stepMinWidth`, `snapDistance`,
 `maxVerticalSpeed`, `pushMass`는 직접 구성 API와 같다. 길이·속도는 instance scale과 무관한 월드 단위다.
+양수 `pushMass`는 캐릭터가 동적 물체를 밀 때의 가상 질량이다. 반대 방향의 충격을 캐릭터의
+외부 속도에 반영한다. 들어오는 동적 물체에는 일반 키네마틱 캡슐로 작동하며 피격 넉백은 게임이 준다. `setUnifiedPhysicsCollisionEventsEnabled(true)`로 이벤트를 켜고
+`drainUnifiedPhysicsCollisionEvents()`에서 대상 캐릭터의 접촉 진입을 읽어
+`applyUnifiedPhysicsCharacterImpulses`로 충격을 전달한다.
 이동·점프는 반환된 entity handle을 모아 `setUnifiedPhysicsCharacterInputs`로 전달한다.
 `spatial.actor`로 같은 billboard 인스턴스를 지정하면 WASD와 `moveDataSceneSpatialActorTo`를
 native 컨트롤러가 처리한다. `actor.speed`는 0–1,000,000 월드 단위/초이며 대각선 입력은 정규화한다.

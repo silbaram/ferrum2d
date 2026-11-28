@@ -57,7 +57,7 @@ fn elevator_limits_progress_before_a_supported_capsule_is_squeezed() {
     assert_eq!(e.spatial_moving_platform_stats(), vec![0, 1]);
 }
 #[test]
-fn approaching_platforms_stop_together_at_relative_contact_time() {
+fn approaching_platforms_keep_their_last_clear_positions() {
     let mut e = engine(0.1);
     assert!(e.spatial_scene.configure_surfaces(
         &[
@@ -73,15 +73,17 @@ fn approaching_platforms_stop_together_at_relative_contact_time() {
     let left = e.spatial_scene.surfaces[0].bounds[0] + 0.5;
     let right = e.spatial_scene.surfaces[1].bounds[0] + 0.5;
     assert!(
-        (left + 0.5).abs() < 0.02 && (right - 0.5).abs() < 0.02,
+        right - left >= 0.995 && left > -1.0 && right < 1.0,
         "{left}, {right}"
     );
     let phases = e.capture_spatial_moving_platforms();
     assert!(
-        (phases[6] - 0.375).abs() < 0.005 && (phases[14] - 0.375).abs() < 0.005,
+        (phases[6] - phases[14]).abs() < 1e-6 && (0.25..0.375).contains(&phases[6]),
         "{phases:?}"
     );
     assert_eq!(e.spatial_moving_platform_stats(), vec![0, 2]);
+    tick(&mut e, 1);
+    assert_eq!(e.capture_spatial_moving_platforms(), phases);
 }
 #[test]
 fn obstacle_before_turnaround_does_not_disappear_when_tick_endpoint_returns() {
@@ -90,8 +92,8 @@ fn obstacle_before_turnaround_does_not_disappear_when_tick_endpoint_returns() {
     configure(&mut e, [4.0, 0.0, 0.0], 0.05, 0.0);
     tick(&mut e, 1);
     let center = e.spatial_scene.surfaces[0].bounds[0] + 3.0;
-    assert!((0.70..=0.751).contains(&center), "{center}");
-    assert!((e.capture_spatial_moving_platforms()[6] - 0.009375).abs() < 0.0005);
+    assert_eq!(center, 0.);
+    assert_eq!(e.capture_spatial_moving_platforms()[6], 0.);
     assert_eq!(e.spatial_moving_platform_stats(), vec![0, 1]);
 }
 
@@ -114,11 +116,11 @@ fn opposing_elevator_and_ceiling_stop_before_squeezing_the_rider() {
     let ceiling = e.spatial_scene.surfaces[1].base;
     let y = e.unified_body_state(a).unwrap().pose.position[1];
     assert!(
-        (bottom - 0.49).abs() < 0.02 && (ceiling - 1.51).abs() < 0.02,
+        (0.2..=0.495).contains(&bottom) && (1.505..=1.8).contains(&ceiling),
         "{bottom} {ceiling} {y}"
     );
     assert!(
-        y + 0.5 <= ceiling + 0.001 && y - 0.5 >= bottom,
+        y + 0.5 <= ceiling + 0.005 && y - 0.5 >= bottom - 0.005,
         "{bottom} {ceiling} {y}"
     );
     assert!(e.unified_character_state(a).unwrap().grounded);
@@ -200,13 +202,14 @@ fn native_engine_platform_and_receding_wall_preserve_carry_phase_and_diagnostics
         assert_eq!(e.spatial_moving_platform_stats(), vec![1, 0]);
         assert!((e.capture_spatial_moving_platforms()[6] - step as f64 * 0.1).abs() < 0.0001);
         let work = e.unified_physics_step_statistics().unwrap();
-        assert!(work.character_preview_obstacle_casts > 0);
+        assert!(state.moving_obstacle_casts > 0);
+        assert_eq!(state.failed_moving_obstacle_casts, 0);
         assert_eq!(work.kinematic_path_stops, 0);
     }
 }
 
 #[test]
-fn external_squeeze_stops_the_engine_body_and_accumulates_work_across_ticks() {
+fn external_squeeze_keeps_start_poses_and_counts_the_stop_across_ticks() {
     let mut e = Engine::new();
     e.activate_data_scene();
     e.configure_unified_physics(WorldConfig {
@@ -252,17 +255,17 @@ fn external_squeeze_stops_the_engine_body_and_accumulates_work_across_ticks() {
     e.update(f64::from(e.fixed_timestep.config().step_seconds) * 2.0);
     assert_eq!(e.unified_physics_error(), None);
     let state = e.unified_body_state(moving).unwrap();
-    assert!((state.pose.position[0] - 0.02).abs() < 0.001, "{state:?}");
+    assert_eq!(state.pose.position[0], 3.);
     assert_eq!(state.linear_velocity, [0.0; 3]);
-    assert!((e.unified_body_state(a).unwrap().pose.position[0] + 0.49).abs() < 0.001);
+    assert_eq!(e.unified_body_state(a).unwrap().pose.position[0], 0.);
     let step = e.unified_physics_step_statistics().unwrap();
     let frame = e.unified_physics_frame_statistics().unwrap();
     assert_eq!(step.kinematic_character_stops, 0);
     assert_eq!(frame.fixed_steps, 2);
     assert_eq!(frame.totals.kinematic_character_stops, 1);
-    assert!(frame.totals.character_preview_obstacle_contacts > 0);
-    assert_eq!(frame.totals.character_preview_obstacle_failures, 0);
-    assert_eq!(frame.totals.backend_steps, 3);
+    assert_eq!(frame.totals.kinematic_path_stops, 1);
+    assert_eq!(frame.totals.kinematic_path_failures, 0);
+    assert_eq!(frame.totals.backend_steps, 2);
     e.update(0.0);
     assert_eq!(
         e.unified_physics_frame_statistics().unwrap().totals,
@@ -271,7 +274,7 @@ fn external_squeeze_stops_the_engine_body_and_accumulates_work_across_ticks() {
 }
 
 #[test]
-fn coupled_capsules_stop_an_engine_pusher_and_report_preview_work() {
+fn blocked_capsule_chain_holds_the_engine_pusher_and_actors() {
     let mut e = Engine::new();
     e.activate_data_scene();
     e.configure_unified_physics(WorldConfig {
@@ -325,20 +328,15 @@ fn coupled_capsules_stop_an_engine_pusher_and_report_preview_work() {
     e.update(f64::from(e.fixed_timestep.config().step_seconds) * 2.0);
     assert_eq!(e.unified_physics_error(), None);
     let state = e.unified_body_state(p).unwrap();
-    assert!((state.pose.position[0] + 1.47).abs() < 0.02, "{state:?}");
+    assert_eq!(state.pose.position[0], 3.);
     assert_eq!(state.linear_velocity, [0.0; 3]);
-    for (&a, expected) in actors.iter().zip([-1.98, -2.49]) {
+    for (&a, expected) in actors.iter().zip([0., -1.]) {
         assert!((e.unified_body_state(a).unwrap().pose.position[0] - expected).abs() < 0.02);
     }
     let frame = e.unified_physics_frame_statistics().unwrap();
     assert_eq!(frame.fixed_steps, 2);
     assert_eq!(frame.totals.kinematic_character_stops, 1);
-    assert!(
-        frame.totals.character_preview_pair_contacts > 0
-            && frame.totals.character_preview_coupling_visits > 0
-    );
-    // The bounded solver reports the incompatible moving/fixed pressure chain.
-    assert!(frame.totals.character_preview_coupling_limits > 0);
+    assert_eq!(frame.totals.kinematic_path_stops, 1);
     assert_eq!(
         e.unified_physics_step_statistics()
             .unwrap()

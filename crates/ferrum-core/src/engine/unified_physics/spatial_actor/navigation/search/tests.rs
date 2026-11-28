@@ -293,8 +293,9 @@ fn native_navigation_slices_interleave_independent_agent_frontiers() {
     assert!(one.iter().any(|p| p.pose.position[2].abs() > 0.85));
     assert!((two.last().unwrap().pose.position[0] - 5.).abs() < 0.001);
     assert!((two.last().unwrap().pose.position[2] - 3.).abs() < 0.001);
-    assert_eq!(e.unified_body_state(a).unwrap().pose.position[0], 0.);
-    assert_eq!(e.unified_body_state(b).unwrap().pose.position[0], 0.);
+    for actor in [a, b] {
+        assert!(e.unified_body_state(actor).unwrap().pose.position[0].abs() <= 0.005);
+    }
 }
 
 #[test]

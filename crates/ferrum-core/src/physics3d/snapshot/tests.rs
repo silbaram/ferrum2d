@@ -499,6 +499,7 @@ fn preapply_capacity_rejection_preserves_last_tick_and_pending_world_bytes() {
         ..WorldConfig::default()
     })
     .unwrap();
+    w.force_character_motion_proof();
     let half_angle = -std::f64::consts::FRAC_PI_8 * 0.5;
     let mover = w
         .create_body(
@@ -572,6 +573,7 @@ fn preapply_capacity_rejection_preserves_last_tick_and_pending_world_bytes() {
         .unwrap();
     let snapshot = w.capture_snapshot().unwrap();
     let mut control = PhysicsWorld3d::from_snapshot(&snapshot).unwrap();
+    control.force_character_motion_proof();
     let stats = w.step_statistics();
     let clamps = w.ccd_clamps().to_vec();
     let outputs = |w: &PhysicsWorld3d| {

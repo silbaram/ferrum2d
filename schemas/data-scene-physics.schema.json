@@ -504,7 +504,7 @@
           "type": "number"
         },
         "pushMass": {
-          "description": "0 keeps prescribed controller motion; positive virtual mass enables dynamic coupling and external forces.",
+          "description": "0 keeps prescribed controller motion. Positive virtual mass controls outbound pushes and their reaction, and enables external force and impulse commands. Incoming dynamic bodies see a kinematic capsule; gameplay supplies knockback.",
           "oneOf": [
             { "const": 0 },
             { "type": "number", "minimum": 0.0001, "maximum": 10000 }

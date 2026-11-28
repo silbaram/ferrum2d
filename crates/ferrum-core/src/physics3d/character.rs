@@ -4,6 +4,7 @@ use super::colliders::native_collider;
 pub(super) mod experimental_tests;
 mod file_admission;
 pub(super) mod interval_credit;
+mod kcc;
 use super::events::{collider_id, collider_ref};
 use super::types::{valid_pose, valid_vector};
 use super::world::{native_id, native_pose};
@@ -35,8 +36,9 @@ pub struct CharacterConfig {
     pub snap_distance: f32,
     /// Maximum vertical speed in engine units per second.
     pub max_vertical_speed: f32,
-    /// Virtual translational mass for coupled dynamic contacts and external forces.
-    /// Zero disables finite-mass coupling and the external force/impulse APIs.
+    /// Virtual mass when pushing dynamic bodies or integrating external forces.
+    /// Incoming dynamic contacts see the character as kinematic.
+    /// Zero disables KCC push impulses and the external force/impulse APIs.
     pub push_mass: f32,
 }
 
@@ -72,7 +74,9 @@ pub struct CharacterState {
     pub grounded: bool,
     /// Supporting collider, if any, with its current generation.
     pub ground: Option<ColliderRef>,
-    /// Platform that actually transported the character during this tick, if any.
+    /// Support that supplied accepted transport during the tick. A round
+    /// trip can report the support with zero net carry if still grounded on it.
+    /// Rewound platform motion does not count as transport.
     pub carried_by: Option<BodyId>,
     /// Sum of accepted platform carry translations during this tick.
     pub carry_translation: [f32; 3],
@@ -738,11 +742,8 @@ impl PhysicsWorld3d {
                 (translation / self.backend.integration_parameters.dt).to_array();
             runtime.state.carry_translation =
                 (rp::Vector::from(runtime.state.carry_translation) + accepted).to_array();
-            if rp::Vector::from(runtime.state.carry_translation).length_squared() > 1.0e-12 {
-                runtime.state.carried_by = Some(support);
-            } else {
-                runtime.state.carried_by = None;
-            }
+            runtime.state.carried_by =
+                (runtime.state.carry_translation != [0.; 3]).then_some(support);
         }
         self.refresh_queries();
     }

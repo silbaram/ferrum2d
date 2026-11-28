@@ -760,15 +760,22 @@ fn variable_clock_opposing_force_first_peak_rejects_before_any_frame_mutation() 
     );
     let body_before = e.unified_body_state(a).unwrap();
     let before = crate::engine::persistence::encode(&e).unwrap();
+    let checkpoint = e.runtime_checkpoint().unwrap();
     e.update_frame(0.25, true, true, true);
+    assert!(
+        crate::engine::persistence::encode(&e).unwrap() == before,
+        "pre-admission errors must not enter saved state"
+    );
     assert_eq!(
-        e.take_unified_physics_error(),
+        e.unified_physics_error(),
         Some(PhysicsError::InvalidCharacter.into())
     );
     assert_eq!(e.unified_body_state(a).unwrap(), body_before);
     // Includes elapsed, camera, particles/tween age, input latch, force/impulse,
     // previous physics counters, native statistics and every frame output buffer.
     assert_eq!(crate::engine::persistence::encode(&e).unwrap(), before);
+    e.restore_runtime_checkpoint_native(&checkpoint).unwrap();
+    assert_eq!(e.unified_physics_error(), None);
 }
 
 #[test]

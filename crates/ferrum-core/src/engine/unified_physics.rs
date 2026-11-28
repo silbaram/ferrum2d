@@ -786,6 +786,11 @@ impl Engine {
 }
 
 impl UnifiedPhysicsRuntime {
+    #[cfg(test)]
+    pub(in crate::engine) fn force_exact_motion_fixture(&mut self) {
+        self.physics.force_character_motion_proof();
+    }
+
     pub(in crate::engine) fn begin_actual_motion_attempt(&mut self) {
         self.physics.clear_actual_motion_outcome();
     }

@@ -40,10 +40,13 @@ impl Engine {
         }
     }
 
-    fn reject_unified_clock(&mut self) -> UnifiedPhysicsError {
-        let error = UnifiedPhysicsError::ClockMismatch;
+    fn reject_unified_frame_admission(
+        &mut self,
+        error: UnifiedPhysicsError,
+    ) -> UnifiedPhysicsError {
         if let Some(runtime) = &mut self.unified_physics {
-            runtime.last_error.record_step(error);
+            runtime.last_error.rejected_attempt = Some(error);
+            runtime.last_error.frame_step_failure.get_or_insert(error);
         }
         error
     }
@@ -57,14 +60,14 @@ impl Engine {
         }
         let requested = seconds as f32;
         if !seconds.is_finite() || !requested.is_finite() || seconds < 0.0 {
-            return Err(self.reject_unified_clock());
+            return Err(self.reject_unified_frame_admission(UnifiedPhysicsError::ClockMismatch));
         }
         if self.fixed_timestep_enabled {
             // Sub-quantum positive fixed input remains a valid accumulator input.
             return Ok(None);
         }
         if seconds > 0.0 && requested < MIN_INTERVAL {
-            return Err(self.reject_unified_clock());
+            return Err(self.reject_unified_frame_admission(UnifiedPhysicsError::ClockMismatch));
         }
         if requested == 0.0 {
             return Ok(Some(VariableFramePlan {
@@ -84,7 +87,7 @@ impl Engine {
             || !interval.is_finite()
             || !(MIN_INTERVAL..=MAX_INTERVAL).contains(&interval)
         {
-            return Err(self.reject_unified_clock());
+            return Err(self.reject_unified_frame_admission(UnifiedPhysicsError::ClockMismatch));
         }
         let consumed_seconds = interval * steps as f32;
         if self.auto_rigid_body_step_enabled && !self.active_scene_game_state().freezes_simulation()
@@ -94,9 +97,7 @@ impl Engine {
                 // opposing force signs its first peak can exceed the final one.
                 for seconds in [interval, consumed_seconds] {
                     if let Err(error) = runtime.physics.validate_character_force_duration(seconds) {
-                        let error = UnifiedPhysicsError::from(error);
-                        runtime.last_error.record_step(error);
-                        return Err(error);
+                        return Err(self.reject_unified_frame_admission(error.into()));
                     }
                 }
             }
@@ -146,7 +147,7 @@ impl Engine {
             || (self.fixed_timestep_enabled
                 && (seconds - runtime.physics.config().step_seconds).abs() > 1.0e-7)
         {
-            return Err(self.reject_unified_clock());
+            return Err(self.reject_unified_frame_admission(UnifiedPhysicsError::ClockMismatch));
         }
         let owns_interval = if self.fixed_timestep_enabled {
             false
@@ -232,7 +233,7 @@ impl Engine {
                 && (1..=MAX_VARIABLE_INTERVALS).contains(&max_steps_per_update)
         });
         if !admitted {
-            self.reject_unified_clock();
+            self.reject_unified_frame_admission(UnifiedPhysicsError::ClockMismatch);
             return false;
         }
         self.apply_fixed_timestep_config(
