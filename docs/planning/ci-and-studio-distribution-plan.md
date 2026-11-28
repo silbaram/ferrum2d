@@ -1,6 +1,6 @@
 # PR CI 정리와 Studio 배포 분리
 
-상태: S1·S1b·S1c 완료(PR #113, 2026-11-27 main 머지). 결정 5(2026-11-28)로 S2 범위를 `browser-smoke` job 전체로 넓혔다. S2 분류표 완료, S2a 로컬 검증 완료. 다음은 S2b(보강 6·새 테스트 12)와 `extended-browser-smoke` 20개 분류.
+상태: S1·S1b·S1c 완료(PR #113, 2026-11-27 main 머지). 결정 5(2026-11-28)로 S2 범위를 `browser-smoke` job 전체로 넓혔다. S2 분류표 완료, S2a 로컬 검증 완료. S2b-1 보강 6개와 확장 20단계 분류를 기록했다. S2b-2에서 새 테스트의 남은 부분을 옮긴다.
 
 ## 배경
 
@@ -318,6 +318,115 @@ CI에서 완전히 사라지는 것은 실제 렌더링·GPU 확인이다. 픽�
 남은 일:
 - 실제 `--skip-browser` 소비자 smoke 실행과 소요 시간 측정. 태그나 수동 실행 때 잰다.
 - `extended-browser-smoke` 20개의 로직 분류. 분류표에 없던 job이라 S2b에서 같은 방식으로 나눈다.
+
+### S2b-1 결과 (2026-11-29)
+
+기준은 PR #121을 병합한 `7acc65fa`다. 아래 표의 회귀는 PR `validate`의 기존
+`pnpm test:web`·`pnpm test:placement-scenes`·`pnpm test:placement-inspector`·
+`pnpm test:placement-asset-cleanup`·`pnpm test:pixel-authoring`·`pnpm test:tile-assets`에서 실행된다.
+원래 smoke의 단언은 로컬 스크립트에 유지했다.
+
+| # | 원래 로직 단언 → 단위 테스트 | 기존 커버리지 | 브라우저에서 계속 검사할 부분 |
+| --- | --- | --- | --- |
+| 1 | `native-checked-error-probe.mjs`의 수동 2종·자동 RAF 사전 거절. 이전 CCD 통계·바디 word·시간·Native 파일 동일, 체크포인트 복원과 재진입 → `unifiedPhysicsCheckedErrorsWasm.test.ts`. `native-gameplay-navigation-probe.mjs`의 64명·405스텝 상태 해시 → `nativeGameplayNavigation.integration.test.ts` | `unifiedPhysics*Wasm.test.ts`의 바디·관절·조회·바인딩·관측, `engineFrameLifecycle.test.ts`의 실패 주입과 RAF 종료, `dataScenePhysics*.test.ts`의 씬 검증과 적용 | tarball의 실제 브라우저 로드, 타일맵 픽셀, Studio 물리 설정 UI. `native-gameplay-navigation-probe.mjs`의 64명 RAF 프레임 예산과 브라우저 핸들 연결 |
+| 2 | `placement-workspace-smoke.mjs`의 2 MiB 및 열린 문서 8개 제한 → `placement-scene-catalog.test.mjs`. 같은 ID를 가진 두 문서의 선택·draft·Undo 격리 → `placement-component-edits.test.mjs` | `placement-workspace-preferences.test.mjs`의 레이아웃 저장, `scenePlacementViewer.test.ts`의 개별 편집·트랜잭션·Undo/Redo, `placement-document-store.test.mjs`의 외부 저장 충돌 | 폭별 레이아웃·픽셀·포인터 취소. 탭 전환의 같은 캔버스·런타임 복원, 리소스 로드 실패와 저장 중 입력 처리 |
+| 3 | `spatial-navigation-browser-fixture.mjs`의 다리 경로 비용, 없는 층 거절 뒤 기존 경로·waypoint 유지, 다리 도착 높이, 일시정지 중 저장 후 기존 좌표와 idle 상태 복원 → `dataSceneSpatial.test.ts` | `spatialModelAssembly.test.ts`의 조립·경계 값, `spatialModelAssetCache.test.ts`의 대기·취소·해제, `dataSceneSpatial.test.ts`의 공간·카메라·저장 검증 | 실제 GL 오브젝트·버퍼 업로드, 픽셀 차이 0, DPR·캔버스 선택, 실제 HTTP CORS·gzip·로드 취소 |
+| 7 | `aseprite-assets-smoke.mjs`의 미참조 revision 1개 제거, 이전·현재 revision과 Undo/Redo·패치 보존 → `placement-asset-cleanup.test.mjs`의 실제 viewer와 세션 revision 저장소 조합 | `scenePlacementViewer.test.ts`의 이력 참조, `aseprite-trim.test.mjs`의 원본·hash·복원, `placement-asset-cleanup.test.mjs`의 프로젝트 단위 보호와 백업 | 드로어 상태·crop 픽셀·실제 GL 텍스처 해제·DOM의 진단 노출 |
+| 21 | `native-pixel-project-smoke.mjs`의 외부 catalog 충돌 뒤 기존 토큰으로 같은 JSON·PNG를 재시도 → `pixel-authoring.test.mjs`의 실제 Desktop 호출 어댑터와 저장 응답 검증 | `pixel-authoring.test.mjs`의 저장 형식·immutable revision·변형 JSON 복원, `pixel-indexed.test.mjs`·`pixel-history.test.mjs`의 indexed·이력, `pixel-ink.test.mjs`의 blend·opacity | 새 브라우저·Desktop 프로토콜·파일을 거치며 흘러가는 UI↔저장↔게임 부팅, 클립·렌더·다운로드 |
+| 25 | `tile-autotile-smoke.mjs`의 공간 문서 거절과 원본 불변, 64·512·2,048 셀 및 충돌 행 → `tile-assets.test.mjs` | 같은 테스트의 Tiled·LDtk 규칙/리팩·Undo·collision override와 네이티브 원본 복원 | 프리뷰 픽셀, bitmap 경쟁·취소, 게임의 raycast·draw call·시간 예산, native 파일 선택과 다시 열기 |
+
+**분리한 범위.** `placementWorkspaceDocumentLimits.ts`에 크기·문서 수 검사만 옮겼다.
+`main.ts`에서 파일을 읽기 전과 새 탭을 만들기 전의 검사 순서 및 오류 문구를 유지했다.
+열린 문서의 선택·draft·Undo는 기존 viewer에서 직접 검사한다. 문서 세션의 전환 롤백·save rebase는
+다른 탭의 DOM, 리소스와 캔버스, 저장 중 포인터 종료까지 변경하므로 별도 세션 경계가 필요하다.
+픽셀의 source commit 뒤 scene commit 실패·늦은 완료 억제도 `placementPixelTool.ts`의 UI 수명과
+두 저장 호스트의 응답에 걸쳐 있다. 토큰과 전송 데이터는 단위 테스트로 검사하고 실제 실패·재연결 흐름은
+원래 smoke에서 검사한다. 오토타일 preview bitmap의 요청 단일화는 현재 캔버스와 로더 수명에
+묶여 있다. 규칙 계산·파일 입출력과 구분해 로컬 smoke에 남겼다.
+
+#### 확장 브라우저 20단계 분류
+
+`scripts/validate/browser-smoke-steps.json`의 `extended` 순서다. 처리 열은 후속 분류이며,
+브라우저 단언은 로컬 스크립트에 유지한다. 그냥 뺌 11단계, 보강 9단계다. 표는 동작 단위로 작성했으며 단언 개수는 집계하지 않았다.
+
+| # | 검사 | 처리 | 근거가 되는 기존 단위 테스트 | CI에서 빠지는 확인 |
+| --- | --- | --- | --- | --- |
+| 1 | `smoke:preload` | 그냥 뺌 | `assetPreload.test.ts`, `assetLoadLifecycle.test.ts`의 순서·진행률·캐시 | 실제 fetch/CacheStorage와 로딩 UI에서 complete로 넘어가는 흐름 |
+| 2 | `smoke:mobile-input` | 그냥 뺌 | `virtualControls.test.ts`, `inputManager.test.ts`의 조이스틱·버튼 매핑과 취소 | 터치 포인터 캡처·릴리스와 실제 화면 속 게임 입력 |
+| 3 | `smoke:lighting` | 그냥 뺌 | `lighting.test.ts`, `sceneLighting.test.ts`, `webgl2LightingPass.test.ts` | WebGL2의 밝은/가려진 픽셀과 렌더 상태 |
+| 4 | `smoke:lighting-webgpu` | 그냥 뺌 | `webgpuLightingPass.test.ts`, `lighting.test.ts` | 실제 WebGPU 셰이더, 캔버스 픽셀과 백엔드 선택 |
+| 5 | `smoke:material` | 그냥 뺌 | `spriteMaterial.test.ts`, `spriteNormals.test.ts`의 재질·샘플 값 | WebGL2 emissive/mask 픽셀과 실제 리소스 연결 |
+| 6 | `smoke:material-webgpu` | 그냥 뺌 | `spriteMaterial.test.ts`, `webgpuSpritePass.test.ts`의 샘플러·draw 입력 | WebGPU 재질 픽셀과 실제 텍스처 바인딩 |
+| 7 | `smoke:camera-postprocess` | 그냥 뺌 | `cameraPostProcessing.test.ts`의 추적·경계·보간·uniform, `pixelPerfect.test.ts` | 화면 이동과 순서대로 합성된 후처리 픽셀 |
+| 8 | `smoke:particle-vfx` | 보강 | `particleVfx.test.ts`의 burst/loop/trail, `particlePreset.test.ts`의 값 검증 | 예제가 preset을 등록·발행하는 실제 프레임, 색·가시 픽셀 및 GPU draw |
+| 9 | `smoke:topdown` | 보강 | Core `shooter_snapshots.rs`, `gameStateSnapshot.test.ts`, gameplay replay 검사 | 예제 입력→사격→적 flash·입자까지의 결합 상태와 실제 프레임 |
+| 10 | `smoke:topdown-budget` | 그냥 뺌 | 9번의 상태 검사, `runtimeProfiler.test.ts`와 예산 프로필 검사 | 대규모 브라우저 프레임·렌더 시간·draw/texture 예산 |
+| 11 | `smoke:topdown-save-load` | 보강 | Core `shooter_snapshots.rs`, `gameStateSnapshot.test.ts`, `validate:gameplay-report-artifacts` | 같은 예제의 사격 뒤 저장→새 상태→복원 replay와 저장 UI·브라우저 저장소 |
+| 12 | `smoke:topdown-hd2d` | 보강 | `dataSceneNavigation.test.ts`, `dataSceneSpatial.test.ts`, `nativeGameplayNavigation.integration.test.ts` | 예제 Game Spec의 포털 경로 5-float stride·아래층 경로·arc의 결합 결과, 화면 투영 |
+| 13 | `smoke:destructible-terrain-browser` | 보강 | Core pixel mask 지형 회귀. Node+Wasm `destructible-terrain-smoke.mjs`의 마스크 지우기·충돌 검사는 별도 명령으로 존재 | 기존 Node 검사를 CI에 연결하기 전까지 예제의 충돌·파괴 결합. 포인터 조준과 렌더 픽셀 |
+| 14 | `smoke:breakout-effects` | 보강 | Core `breakout_tests.rs`와 `breakout_scene/runtime/phase_tests.rs`, `particleVfx.test.ts` | 예제 입력→벽돌 충돌→효과·입자·표시의 결합과 렌더 |
+| 15 | `smoke:breakout-budget` | 그냥 뺌 | 14번의 Core 상태 회귀, `runtimeProfiler.test.ts` | 실제 프레임 시간·draw·텍스처 전환·collision 예산 |
+| 16 | `smoke:platformer-effects` | 보강 | Core `platformer_tests.rs`·`platformer_scene/native_phase_tests.rs`, `particleVfx.test.ts` | 예제 점프/수집·충돌에서 효과까지의 결합과 화면 표시 |
+| 17 | `smoke:platformer-budget` | 그냥 뺌 | 16번의 Core 상태 회귀, `runtimeProfiler.test.ts` | 실제 프레임·draw·텍스처·physics 비용 |
+| 18 | `smoke:physics-sandbox` | 보강 | Core `sandbox_scene_tests.rs`와 `unifiedPhysics*Wasm.test.ts` | 기본 실험 장면의 긴 재생·정지/초기화 명령이 실제 SDK와 연결되는지와 DPR·라인·픽셀 |
+| 19 | `smoke:physics-sandbox-budget` | 그냥 뺌 | 18번의 Core 상태 회귀, `runtimeProfiler.test.ts` | 실제 시뮬레이션/렌더 시간과 디버그 렌더 비용 |
+| 20 | `smoke:physics-demo-suite` | 보강 | Core `sandbox_scene_tests.rs`의 개별 장면, `physicsSpec*.test.ts`의 스펙 검증 | 카탈로그 7개 전환 후 스텝·상태 이어짐과 충돌/센서·조회 표시, 실제 렌더 |
+
+#### S2b-2의 새 테스트 12개 남은 범위
+
+| # | S2a 또는 기존 `validate`에서 확인 | 남은 범위 |
+| --- | --- | --- |
+| 11 | `test:browser-smoke-node-checks`가 sRGB 수학 기준 벡터 6개를 검사 | 계획에 적힌 Node 이동은 완료. GL·GPU 합성과 픽셀 비교는 로컬 |
+| 13 | `unifiedPhysics*Wasm.test.ts`의 강체 상태 및 `gameStateSnapshot.test.ts`의 pause/restore 계약 | Playground 시나리오를 실제 스펙으로 부팅해 엔티티 수·재질 속도·pause·reset을 한 번에 확인 |
+| 14 | `validate:example-catalog`와 `test:browser-smoke-node-checks`가 카탈로그·9-slice/그림자 fixture 재생성 검사 | 기능 예제별 결정적 상태 표본. 보기·탭·오디오·복구 렌더는 로컬 |
+| 15 | `validate:example-catalog`의 데이터 정합, SDK 화면 맞춤 단위 테스트 | 사이트 실제 그룹·검색·ko/en과 예제별 fit 선택. `main.ts`의 화면 이벤트와 필터 계산을 분리할 지점 확인 |
+| 19 | `test:browser-smoke-node-checks`의 `validatePixelArtProfile` | 쇼케이스 고정 입력에서 엔티티·수집 수 확인 |
+| 23 | `test:placement-asset-cleanup`의 참조 보호·진단·백업 | Studio 대화상자에서 쓰는 차단 사유와 우선순위를 순수 로직으로 분리해 검사 |
+| 26 | `test:tile-assets`가 원본 프레임·duration·autotile 출력과 저장 metadata를 검사 | 실제 프레임 변환의 경계 전·경계·loop/no-loop 시각을 렌더 픽셀 없이 확인 |
+| 27 | Core 경사·투사체·AI 회귀와 실제 Wasm 개별 기능 검사 | 마을 32명 입력으로 AI·발사·경사 트레이스와 저장/복원 연속성을 한 장면에서 확인 |
+| 28 | `dataSceneNativeCombatNavigation.test.ts`, `spatialModelAssembly.test.ts`, Core 전투/투사체/경로 회귀 | 216개 모델/32명으로 장면 등록·시간 진행·히트 결과를 한 시나리오에서 확인 |
+| 31 | `renderTexture.test.ts`의 자원 소유·입력·실패·통계 | `WebGL2Renderer.renderToTexture` 자체의 실패 원자성·stat·복구 설정의 빈 부분. 실제 FBO 방향·합성은 로컬 |
+| 32 | `colorManagement.test.ts`의 변환·모드 충돌·입력·WebGPU context 전에 거절 | 작업 색 버퍼와 출력 옵션 전달이 테스트에서 이미 동일한 경로인지 대조한 뒤 비어 있는 값만 추가 |
+| 33 | `pixelPerfect.test.ts`의 설정·DPR 좌표 계산·거절, `placement-spatial-camera.test.mjs`의 좌표 수학 | 복구 뒤 픽셀 설정 유지, Game Preview 종료 후 편집 카메라 복원. 실제 픽셀·DPR은 로컬 |
+
+
+#### 검증과 CI 시간
+
+- `pnpm test:web`은 기존 소스와 일치하는 Wasm으로 293개 SDK 테스트 파일을 통과했다(로컬 44.31초).
+  별도 패턴 실행으로 추가 SDK 회귀 5건과 Node 회귀 6건을 확인했다.
+- `node --test tests/smoke/placement-*.test.mjs`, `pnpm test:placement-scenes`,
+  `pnpm test:placement-inspector`, `pnpm test:placement-asset-cleanup`, `pnpm test:tile-assets`,
+  `pnpm test:pixel-authoring`(279건), Studio 빌드, 문서 링크 검사를 통과했다.
+- `pnpm test:browser-smoke-node-checks`와 `pnpm validate:example-catalog`도 통과했다.
+  로컬 샌드박스에서 임시 프로젝트의 자식 프로세스에 EPERM이 나므로 Node 검사와 픽셀 묶음은
+  권한을 허용해 다시 실행했다.
+- 추가 테스트 본문의 로컬 소요 시간은 합계 약 3.7초였다. 기존 단계와 파일을 재사용하므로
+  PR `validate`의 증가량은 약 **3~8초**로 추정한다. GitHub 러너에서는 이번 커밋을 실행하지 않았다.
+
+#### 원래 smoke의 로컬 결과
+
+동일 소스의 기존 Wasm으로 Studio 표준·저장 활성 빌드를 준비했다. 브라우저는 로컬 Chromium 148이며,
+시간은 준비 빌드를 제외한 벽시계 시간이다. 각 원래 명령에 30분 상한을 적용했고 명령과 단언은 유지했다.
+
+| # | 실행 | 결과 | 시간 | 확인 내용 |
+| --- | --- | --- | ---: | --- |
+| 1 | `pnpm smoke:unified-physics-web` 첫 실행 | 실패 | 32초 | 군중 p95 스텝 11.38 ms(한도 11 ms). 다른 smoke와 함께 실행했다. |
+| 1 | `pnpm smoke:unified-physics-web` 단독 재실행 | 통과 | 42초 | — |
+| 1 | `pnpm smoke:scene-physics` | 통과 | 2분 54초 | 씬 물리와 Studio 편집/적용 둘 다 통과. |
+| 2 | `browser-render-smoke.mjs --mode=studio apps/studio/dist` | 통과 | 15분 3초 | — |
+| 3 | `spatial-scene-browser-smoke.mjs` | 통과 | 21분 59초 | 1280×720·390×844에서 DPR 1·2 조합 4개. |
+| 7 | `aseprite-assets-smoke.mjs` | 실패 | 12분 32초 | HD-2D 새 페이지의 `/resume.html` 보고서 대기 30초 초과(`aseprite-assets-smoke.mjs:1090`). |
+| 21 | `aseprite-project-smoke.mjs --pixels` | 실패 | 1분 13초 | 2D 저장·재열기 뒤 노멀 생성에서 `Asset unavailable`(`pixel-normals-smoke.mjs:45`). |
+| 21 | `aseprite-project-smoke.mjs --pixels --pixel-opacity-only` | 통과 | 11분 28초 | — |
+| 21 | `aseprite-project-smoke.mjs --pixels --pixel-blend-only` | 통과 | 7분 33초 | — |
+| 21 | `aseprite-project-smoke.mjs --pixels --pixel-indexed-only` | 실패 | 16초 | 2D 노멀 생성에서 `Asset unavailable`(`pixel-indexed-smoke.mjs:40`). |
+| 25 | `aseprite-assets-smoke.mjs --tiles --autotile` | 통과 | 2분 12초 | 64·512·2,048셀. |
+| 25 | `aseprite-project-smoke.mjs --tiles --autotile` | 통과 | 20분 36초 | 저장 활성 Studio에서 Tiled·LDtk의 2D 저장·재열기와 HD-2D 조합 2개. |
+
+처음 Studio 표준·저장 활성 빌드는 동작을 분리하기 전에 만들었으며, 분리 후 Studio 표준 빌드도
+확인했다. Aseprite 재개 대기와 픽셀 노멀 생성 실패는 이 기준 빌드에서 재현됐다. indexed는 6초 걸린
+재실행에서도 같은 `Asset unavailable`이 나왔다. 원인은 확정하지 않았다. 로컬 스크립트와 원래
+단언을 그대로 두었으며 실패 이후의 브라우저 단언은 확인되지 않았다.
 
 ## S3: Studio 배포 분리 (설치판에서 예제 제외)
 

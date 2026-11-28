@@ -63,3 +63,25 @@ test('legacy kinematic controller omission and explicit settings survive unrelat
   viewer.undo();assert(!viewer.exportPatch());viewer.redo();assert.deepEqual(read(mergeScenePlacementPatch(doc,viewer.exportPatch()).document,'main','a').body,raw.body);
  }
 });
+
+test('two workspace viewers keep separate selections, drafts and Undo using the same instance IDs', () => {
+  const documentWithTwoInstances = structuredClone(document);
+  documentWithTwoInstances.sceneComposition.fragments.main.instances.push({ id: 'b', prefab: 'object' });
+  const viewport = { cssWidth: 640, cssHeight: 480 };
+  const first = createScenePlacementViewer({ document: documentWithTwoInstances, viewport });
+  const second = createScenePlacementViewer({ document: documentWithTwoInstances, viewport });
+  first.selectInstance('a');
+  first.updateInstanceTransform('a', { x: 752 });
+  const firstDraft = first.exportPatch();
+  second.selectInstance('b');
+  second.updateInstanceTransform('b', { x: 424 });
+  assert.equal(first.state().selectedInstanceId, 'a');
+  assert.equal(second.state().selectedInstanceId, 'b');
+  assert.deepEqual(first.exportPatch(), firstDraft);
+  assert.equal(first.historyState().undoCount, 1);
+  assert.equal(second.historyState().undoCount, 1);
+  second.undo();
+  assert.equal(second.exportPatch(), undefined);
+  assert.deepEqual(first.exportPatch(), firstDraft);
+  assert.equal(first.historyState().undoCount, 1);
+});

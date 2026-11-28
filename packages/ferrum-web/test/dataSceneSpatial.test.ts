@@ -1,8 +1,10 @@
 import { createLegacyEngine as createEngine } from "./legacyRuntimeTestHelper.js";
 import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
+import { readFile } from "node:fs/promises";
 import {
   loadSpatialGlb,
+  initializeFerrumWasm,
   createDataSceneSpatialView,
   captureGameStateSnapshot,
   restoreGameStateSnapshot,
@@ -14,6 +16,7 @@ import {
 import {
   applyDataSceneAuthoringDocument,
   applyBuiltInSceneAuthoringDocument,
+  createSceneInstanceHandleRegistry,
   resolveSceneAuthoringDocument,
   resolveDataSceneSpatialSpec,
 } from "../src/authoring.js";
@@ -1274,4 +1277,102 @@ test("LOD and visual chunk authoring rejects invalid bounds, thresholds and old 
   let configured=false;
   const api=createSpatialApi({configure_spatial_scene_models:()=>{configured=true;return true;}} as unknown as Engine,()=>{},()=>({width:400,height:300}));
   equal(api.configureDataSceneSpatial(spec,{}),false);equal(configured,false);
+});
+
+test("spatial bridge navigation preserves a queued route after rejecting an unknown floor", async () => {
+  await initializeFerrumWasm(await readFile(new URL("../pkg/ferrum_core_bg.wasm", import.meta.url)));
+  const engine = await createEngine();
+  const request = globalThis.requestAnimationFrame;
+  const cancel = globalThis.cancelAnimationFrame;
+  let tick: FrameRequestCallback | undefined;
+  globalThis.requestAnimationFrame = callback => { tick = callback; return 1; };
+  globalThis.cancelAnimationFrame = () => { tick = undefined; };
+  try {
+    const source = document();
+    source.sceneComposition.fragments.lab.instances[0] = { id: "actor", prefab: "actor", x: 0, y: 16 };
+    const doc = {
+      ...source,
+      gameplay: { primaryActor: "actor" },
+      spatial: {
+        ...source.spatial,
+        actor: { ...source.spatial.actor, speed: 192, maxStepHeight: 8, maxDropHeight: 40 },
+        terrain: [
+          { id: "ground", x: -32, y: 0, width: 64, depth: 32, elevation: 0 },
+          { id: "ramp", x: -32, y: 32, width: 64, depth: 32, elevation: 0, endElevation: 32, kind: "ramp" },
+          { id: "bridge", x: -32, y: 64, width: 64, depth: 48, elevation: 32, baseElevation: 24, floorId: 1, kind: "bridge" },
+          { id: "below", x: -32, y: 64, width: 64, depth: 48, elevation: 0 },
+          { id: "side", x: 32, y: 32, width: 32, depth: 80, elevation: 0 },
+        ],
+        connections: [{ from: "ramp", to: "bridge" }],
+      },
+    };
+    const { actor } = applyDataSceneAuthoringDocument(engine, doc).entityHandles;
+    engine.pauseDataScene();
+    const pose = (owner = engine, handle = actor) => {
+      const state = owner.getPhysicsEntity(handle);
+      if (!state?.heightSpan) throw new Error("Missing spatial navigation actor pose");
+      return [state.x, state.y, state.heightSpan.floorId, state.heightSpan.elevation];
+    };
+    const before = pose();
+    const move = (floorId: number) =>
+      engine.moveDataSceneSpatialActorTo({ x: 0, y: 80, floorId, speed: 192, arrivalRadius: 0 });
+    equal(move(1), true);
+    const stats = () => {
+      const value = engine.dataSceneSpatialMoveStats();
+      if (!value) throw new Error("Missing spatial navigation metrics");
+      return value;
+    };
+    const accepted = stats();
+    if (!accepted.lastRequest) throw new Error("Missing bridge request diagnostics");
+    equal(accepted.lastRequest.status, "accepted");
+    ok(accepted.searchNodeCount > 1 && accepted.searchNodeCount <= 4098);
+    ok(accepted.edgeProbeCount > 0 && accepted.edgeProbeCount <= 32_768);
+    ok(accepted.probeWorkUnits > 0 && accepted.probeWorkUnits <= 8_000_000);
+    deepEqual(pose(), before);
+
+    equal(move(99), false);
+    equal(engine.dataSceneSpatialMoveStatus(), "moving");
+    const rejected = stats();
+    equal(rejected.lastRequest?.status, "noPath");
+    equal(rejected.lastRequest?.count, accepted.lastRequest.count + 1);
+    equal(rejected.waypointCount, accepted.waypointCount);
+
+    const saved = captureGameStateSnapshot(engine, {
+      includeDataSceneState: true,
+      includeDataSceneProgress: true,
+      dataSceneAuthoringDocument: JSON.parse(JSON.stringify(doc)),
+    });
+    const fresh = await createEngine();
+    try {
+      const registry = createSceneInstanceHandleRegistry();
+      const restored = restoreGameStateSnapshot(fresh, JSON.parse(JSON.stringify(saved)), {
+        dataSceneAuthoringApplyOptions: { instanceHandleRegistry: registry },
+      });
+      equal(restored.dataSceneStateApplied, true);
+      equal(fresh.dataSceneState(), "paused");
+      equal(fresh.dataSceneSpatialMoveStatus(), "idle");
+      const restoredActor = registry.get("actor");
+      if (!restoredActor) throw new Error("Missing restored navigation actor");
+      deepEqual(pose(fresh, restoredActor), before);
+      equal(fresh.moveDataSceneSpatialActorTo({ x: 0, y: 80, floorId: 1, speed: 192, arrivalRadius: 0 }), true);
+    } finally {
+      fresh.destroy();
+    }
+
+    engine.resumeDataScene();
+    engine.start();
+    for (let frame = 0; frame < 600 && engine.dataSceneSpatialMoveStatus() === "moving"; frame++) {
+      if (!tick) throw new Error("Missing scheduled navigation frame");
+      tick(frame * 17);
+    }
+    equal(engine.dataSceneSpatialMoveStatus(), "arrived");
+    deepEqual(pose(), [0, 80, 1, 32]);
+    const arrived = stats();
+    equal(arrived.searchCount, rejected.searchCount);
+    equal(arrived.remainingWaypointCount, 0);
+  } finally {
+    engine.destroy();
+    globalThis.requestAnimationFrame = request;
+    globalThis.cancelAnimationFrame = cancel;
+  }
 });

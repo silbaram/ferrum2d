@@ -1533,3 +1533,39 @@ test('v9 tagged and untagged expanded sheets preserve timing and all modes throu
     assert.equal(pixelAnimation(pixelAnimationInput(editor.document())).set.clips.length,tagged?source.tags.length:1);
   }
 });
+
+test('a conflicting on-disk pixel catalog preserves the expected revision and retries the same source', async () => {
+  const fixture = await projectFixture();
+  const signal = new AbortController().signal;
+  const originalCatalog = structuredClone(fixture.catalog);
+  const nextCatalog = { ...fixture.catalog, catalogRevision: '2'.repeat(64) };
+  let disk = structuredClone(originalCatalog);
+  const attempted = [];
+  const host = createDesktopPixelProjectHost(async (command, args) => {
+    if (command === 'load_placement_pixel_assets') return structuredClone(disk);
+    assert.equal(command, 'save_placement_pixel_assets');
+    assert.equal(args.projectPath, '/project');
+    attempted.push(args.bundle);
+    if (args.bundle.expectedCatalogRevision !== disk.catalogRevision) {
+      throw new Error('Pixel catalog changed on disk');
+    }
+    disk = structuredClone(nextCatalog);
+    return structuredClone(disk);
+  }, '/project');
+  try {
+    await host.load(signal);
+    const external = { ...originalCatalog, catalogRevision: '3'.repeat(64) };
+    disk = structuredClone(external);
+    await assert.rejects(host.save([fixture.asset], signal), /changed on disk/);
+    assert.deepEqual(disk, external);
+    assert.deepEqual(await pixelProjectBundle([fixture.asset]), fixture.bundle);
+
+    disk = structuredClone(originalCatalog);
+    assert.deepEqual(await host.save([fixture.asset], signal), nextCatalog);
+    assert.deepEqual(attempted[1], attempted[0]);
+    assert.deepEqual(attempted[1].files, fixture.bundle.files);
+    assert.equal(attempted[1].expectedCatalogRevision, originalCatalog.catalogRevision);
+  } finally {
+    fixture.store.destroy();
+  }
+});
