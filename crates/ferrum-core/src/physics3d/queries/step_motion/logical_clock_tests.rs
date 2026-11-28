@@ -56,7 +56,7 @@ fn exact_split_tick_and_saved_queries_preserve_each_original_native_physical_fra
         postcard::from_bytes(&postcard::to_allocvec(&world.backend).unwrap()).unwrap();
     world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
-    world.begin_fixed_step();
+    world.begin_fixed_step().unwrap();
     let tick = Time::from(world.config.step_seconds);
     let physical = [
         f32::from_bits(0x3ba0_902e),
@@ -69,7 +69,7 @@ fn exact_split_tick_and_saved_queries_preserve_each_original_native_physical_fra
         let domain = Domain::new(boundaries[i], boundaries[i + 1]).unwrap();
         world.backend.integration_parameters.dt = h;
         original.integration_parameters.dt = h;
-        assert!(world.step_backend(h, domain));
+        assert!(world.step_backend(h, Some(domain)));
         original.step_with_events(&world.contact_policies, &());
         assert_eq!(
             physical_state(&world.backend.bodies[native]),
@@ -176,17 +176,17 @@ fn actual_ccd_subpasses_share_nonzero_tick_origin_with_prepared_clamps_and_saved
     world.refresh_queries();
     world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
-    world.begin_fixed_step();
+    world.begin_fixed_step().unwrap();
     let tick = Time::from(world.config.step_seconds);
     let split = 0.019_000_000_123_456_79;
     let first = Domain::new(0., split).unwrap();
     world.backend.integration_parameters.dt = split as f32;
-    assert!(world.step_backend(split as f32, first));
+    assert!(world.step_backend(split as f32, Some(first)));
     world.record_step_motion_segment(split / tick);
     let domain = Domain::new(split, tick).unwrap();
     let h = domain.duration() as f32;
     world.backend.integration_parameters.dt = h;
-    assert!(world.step_backend(h, domain));
+    assert!(world.step_backend(h, Some(domain)));
     assert_eq!(
         world.actual_motion_completed_time().to_bits(),
         tick.to_bits()

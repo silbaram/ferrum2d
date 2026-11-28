@@ -117,10 +117,26 @@ impl Engine {
         frame_telemetry: bool,
         physics_debug_lines: bool,
     ) {
+        if let Some(runtime) = &mut self.unified_physics {
+            runtime.begin_checked_frame();
+        }
         let variable = match self.variable_native_frame_plan(delta) {
             Ok(plan) => plan,
             Err(_) => return,
         };
+        if self.unified_physics.is_some()
+            && self.auto_rigid_body_step_active()
+            && variable.map_or_else(
+                || {
+                    let mut next = self.fixed_timestep;
+                    next.advance(delta as f32).steps > 0
+                },
+                |plan| plan.steps > 0,
+            )
+            && self.preflight_native_path_capacity().is_err()
+        {
+            return;
+        }
         let camera_delta = match self.advance_simulation(delta, variable) {
             Ok(consumed) => consumed,
             Err(_) => return,
@@ -305,7 +321,7 @@ impl Engine {
                     let (resumed, presses) =
                         engine.begin_native_gameplay_tick(plan.interval, step_index, input);
                     engine.step_auto_rigid_bodies(plan.interval);
-                    if let Some(error) = engine.actual_native_motion_failure() {
+                    if let Some(error) = engine.native_step_failure() {
                         partial = engine
                             .actual_native_committed_seconds()
                             .clamp(0., plan.interval);

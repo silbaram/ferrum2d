@@ -23,7 +23,7 @@ fn fixture() -> (PhysicsWorld3d, rp::RigidBodyHandle) {
         )
         .unwrap();
     world.set_step_motion_enabled(true);
-    world.begin_fixed_step();
+    world.begin_fixed_step().unwrap();
     (world, native_id(body))
 }
 fn constant() -> ShapeMotion {
@@ -72,6 +72,7 @@ fn work(used: u64, limit: u64) -> Work {
 #[test]
 fn saved_finish_borrows_the_actual_tick_ledger_without_resetting_or_changing_credit() {
     let (mut world, body) = fixture();
+    world.force_character_motion_proof();
     add_exact(&mut world, body, constant(), 0., H);
     let mut shared = world.saved_motion_proof_work();
     shared.charge(37).unwrap();
@@ -299,4 +300,15 @@ fn disabled_legacy_and_singleton_endpoint_paths_keep_their_existing_scope() {
             .unwrap()
     );
     world.step_motion.validate_saved_payload().unwrap();
+}
+
+#[test]
+fn interpolated_capture_has_its_own_work_allowance() {
+    let (mut world, _) = fixture();
+    let mut proof = world.saved_motion_proof_work();
+    proof.used = proof.limit;
+    world.commit_saved_motion_proof_work(proof).unwrap();
+    world.finish_fixed_step();
+    assert!(world.step_motion.ready);
+    assert_eq!(world.saved_motion_proof_work().used, proof.limit);
 }

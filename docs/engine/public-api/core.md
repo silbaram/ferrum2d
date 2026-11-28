@@ -1498,11 +1498,10 @@ step은 마지막 완료 물리 구간이다. frame은 현재 Engine frame의 �
 clock 입력(음수·NaN·0.1ms 미만 양수 등), native 준비·commit 실패(Transform 없는 collider, 범위를 넘는
 legacy force, capacity 초과 등)로 그 frame의 native step을 건너뛴 경우에도 frame update와 `stepRigidBodies`는
 `native physics step skipped` 오류를 던진다. 시계 입력과 가변 프레임의 외력 시간 검사에서 사전 거절한 오류는 해당 호출에만 보고하며 체크포인트와
-Native 저장 파일에 기록하지 않는다. 지정 경로 틱에는 기존 작업 공간 사전 검사가 남아 있어
-한도를 넘으면 `CapacityExceeded`를 반환할 수 있다. 조회·gameplay 보조 진단은 계속 진행 가능한 기록으로 남는다.
-진행 0초로 거부된 tick은 legacy force/impulse/sleep 입력을 native rollback 안에서 되돌린다. Data Scene에서
-같은 tick의 tween과 scene update는 이미 실행됐으므로 다음 시도는 물리 단계부터 재개하며, 1회성 입력은
-재개된 tick의 물리 이후 gameplay에 한 번만 전달된다.
+Native 저장 파일에 기록하지 않는다. 지정 경로와 비캐릭터 대시는 한 틱에 합계 16개까지
+진행한다. 이 한도는 입력 소비와 출력 변경 전에 검사한다. 경로 틱은 일반 Rapier 틱과
+같이 시작 전 검사를 마친 뒤 완료한다. 조회·gameplay 보조 진단은 계속 진행 가능한
+기록으로 남는다.
 `UNIFIED_PHYSICS_COUNTER_LAYOUT`은 native 32-word 순서를 제공한다. 기존 solver의 row operation·warm start·
 block solve 횟수는 이 값으로 추정하지 않으며 지원된 native 측정으로 표시하지 않는다.
 
@@ -2534,6 +2533,10 @@ options의 `bodyA`/`bodyB`는 서로 다른 살아 있는 entity handle이고, �
 | `elasticRope` | 늘어났을 때만 당기는 `maxLength`, `spring` |
 | `gear` | planar 전용 `ratio`, `referenceAngle`, 선택 `spring` |
 | `pulley` | world-space `groundA`/`groundB`, `length`, `ratio`, 선택 `slack`/`spring` |
+
+기어·도르래·케이블 관절의 위치 보정으로 다른 콜라이더와 선형 허용 오차를 넘는 새 겹침이
+생기거나 기존 겹침이 깊어지면, 그 pass의 보정을 건너뛴다. 틱은 계속 진행하며 이후 pass와
+틱에서 위치 보정과 속도 제약을 다시 적용한다.
 
 `UnifiedPhysicsJointMotor`의 targetPosition/targetVelocity/stiffness/damping/maxForce는
 force 기반 actuator다. 회전 좌표는 radians이고 일반 revolute의 위치/limits는 ±π,

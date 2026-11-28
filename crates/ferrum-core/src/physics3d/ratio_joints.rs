@@ -4,10 +4,14 @@
 //! IndependentAxisConstraintPart. No second world or legacy integration is run.
 //! Contact/joint coupling converges across the common substeps; correction uses
 //! a bounded split position correction, without adding correction energy to velocity.
+use super::contact_policy::ContactPolicies;
+use super::joints::JointRuntime;
 use super::planar_angle::wrap;
 use super::world::native_id;
-use super::{JointKind, JointState, PhysicsWorld3d, SpringResponse};
+use super::{BodyId, JointId, JointKind, JointState, PhysicsError, PhysicsWorld3d, SpringResponse};
+use rapier3d::parry::{bounding_volume::BoundingVolume, query::contact};
 use rapier3d::prelude as rp;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum ConstraintPass {
@@ -24,7 +28,135 @@ struct Row {
     spring: Option<SpringResponse>,
 }
 
+#[derive(Default)]
+pub(super) struct RatioTick {
+    disabled_pairs: Vec<(BodyId, BodyId)>,
+    pub(super) skipped_corrections: u32,
+}
+
+fn body_pair(a: BodyId, b: BodyId) -> (BodyId, BodyId) {
+    (a.min(b), a.max(b))
+}
+
+impl RatioTick {
+    fn refresh_disabled_pairs(&mut self, joints: &BTreeMap<JointId, JointRuntime>) {
+        self.disabled_pairs.clear();
+        // The capacity was reserved for all live joints before the tick.
+        // Refresh on each pass because a joint may have broken in the meantime.
+        self.disabled_pairs
+            .extend(joints.values().filter_map(|runtime| {
+                let desc = &runtime.desc;
+                (!desc.contacts_enabled).then(|| body_pair(desc.body_a, desc.body_b))
+            }));
+        self.disabled_pairs.sort_unstable();
+        self.disabled_pairs.dedup();
+    }
+}
+
+fn body_id(handle: rp::RigidBodyHandle) -> BodyId {
+    let (slot, generation) = handle.into_raw_parts();
+    BodyId { slot, generation }
+}
+
+fn correction_fits(
+    bodies: &rp::RigidBodySet,
+    colliders: &rp::ColliderSet,
+    policies: &ContactPolicies,
+    disabled_pairs: &[(BodyId, BodyId)],
+    changes: &[(rp::RigidBodyHandle, rp::Pose)],
+    allowed_error: f32,
+) -> bool {
+    for &(id, pose) in changes {
+        if !pose.is_finite() || (pose.rotation.length_squared() - 1.).abs() > 1e-5 {
+            return false;
+        }
+        let body = &bodies[id];
+        for &handle in body.colliders() {
+            let a = &colliders[handle];
+            if !a.is_enabled() || a.is_sensor() {
+                continue;
+            }
+            let local = *a.position_wrt_parent().expect("body owns this collider");
+            let old_a = *body.position() * local;
+            let new_a = pose * local;
+            let bounds = a.shape().compute_aabb(&new_a);
+            for (other, b) in colliders.iter() {
+                if other == handle
+                    || b.parent() == Some(id)
+                    || !b.is_enabled()
+                    || b.is_sensor()
+                    || !a.collision_groups().test(b.collision_groups())
+                    || !policies.pair_allows(Some(id), b.parent())
+                    || b.parent().is_some_and(|parent| {
+                        disabled_pairs
+                            .binary_search(&body_pair(body_id(id), body_id(parent)))
+                            .is_ok()
+                    })
+                {
+                    continue;
+                }
+                let (old_b, new_b) = if let Some(parent) = b.parent() {
+                    let local = *b.position_wrt_parent().expect("body owns this collider");
+                    let old = *bodies[parent].position();
+                    let new = changes
+                        .iter()
+                        .find(|(id, _)| *id == parent)
+                        .map_or(old, |(_, pose)| *pose);
+                    (old * local, new * local)
+                } else {
+                    (*b.position(), *b.position())
+                };
+                if !bounds.intersects(&b.shape().compute_aabb(&new_b))
+                    || !policies.one_way_allows_at(handle, &new_a, b.shape(), &new_b)
+                    || !policies.one_way_allows_at(other, &new_b, a.shape(), &new_a)
+                {
+                    continue;
+                }
+                // Only worsening overlap beyond the linear tolerance can
+                // block a correction. A query error holds the correction.
+                match contact(&new_a, a.shape(), &new_b, b.shape(), 0.) {
+                    Ok(None) => {}
+                    Ok(Some(next)) if next.dist.is_finite() && next.dist >= -allowed_error => {}
+                    Ok(Some(next)) if next.dist.is_finite() => {
+                        let before = contact(&old_a, a.shape(), &old_b, b.shape(), 0.);
+                        if !matches!(before, Ok(Some(old)) if old.dist.is_finite() && next.dist >= old.dist)
+                        {
+                            return false;
+                        }
+                    }
+                    _ => return false,
+                }
+            }
+        }
+    }
+    true
+}
+
 impl PhysicsWorld3d {
+    pub(super) fn has_ratio_joints(&self) -> bool {
+        self.joints.values().any(|runtime| {
+            matches!(
+                runtime.desc.kind,
+                JointKind::Gear { .. } | JointKind::Pulley { .. } | JointKind::ElasticRope { .. }
+            )
+        })
+    }
+
+    pub(super) fn prepare_rapier_ratio_tick(&mut self) -> Result<(), PhysicsError> {
+        if self.has_ratio_joints() {
+            self.ratio_tick
+                .disabled_pairs
+                .try_reserve(
+                    self.joints
+                        .len()
+                        .saturating_sub(self.ratio_tick.disabled_pairs.len()),
+                )
+                .map_err(|_| PhysicsError::CapacityExceeded)?;
+        }
+        self.ratio_tick.skipped_corrections = 0;
+        Ok(())
+    }
+
     pub(super) fn reset_ratio_impulses(&mut self) {
         for runtime in self.joints.values_mut() {
             runtime.ratio_impulse = 0.0;
@@ -35,14 +167,19 @@ impl PhysicsWorld3d {
     pub(super) fn solve_ratio_joints(&mut self, pass: ConstraintPass) -> bool {
         let dt = self.backend.integration_parameters.dt;
         let positions = pass == ConstraintPass::Positions;
+        let proof = self.backend_motion_enabled();
         if positions {
-            if let Err(error) = self
-                .character_motion
-                .backend_motion
-                .prepare_disabled_pairs(&self.joints)
-            {
-                self.character_motion.backend_motion.fail(error);
-                return false;
+            if proof {
+                if let Err(error) = self
+                    .character_motion
+                    .backend_motion
+                    .prepare_disabled_pairs(&self.joints)
+                {
+                    self.character_motion.backend_motion.fail(error);
+                    return false;
+                }
+            } else {
+                self.ratio_tick.refresh_disabled_pairs(&self.joints);
             }
         }
         // Bounded Gauss-Seidel sweeps cover chains of ratio joints without allocating.
@@ -246,31 +383,38 @@ impl PhysicsWorld3d {
                             changes[i] = Some((ids[i], pose));
                         }
                     }
-                    let candidate = changes.map(|value| value.unwrap_or((ids[0], *a.position())));
-                    // Keep only the actual writes, without allocating a pair
-                    // buffer or changing an endpoint before the full proof.
                     let mut compact = [(ids[0], *a.position()); 2];
                     let mut count = 0;
-                    for (i, change) in changes.iter().enumerate() {
-                        if change.is_some() {
-                            compact[count] = candidate[i];
-                            count += 1;
-                        }
+                    for change in changes.into_iter().flatten() {
+                        compact[count] = change;
+                        count += 1;
                     }
-                    if let Err(error) = super::character_motion::backend::admit_ratio_positions(
+                    let changes = &compact[..count];
+                    if proof {
+                        if let Err(error) = super::character_motion::backend::admit_ratio_positions(
+                            &self.backend.bodies,
+                            &self.backend.colliders,
+                            &self.contact_policies,
+                            changes,
+                            self.backend.integration_parameters.allowed_linear_error(),
+                            &mut self.character_motion.backend_motion,
+                        ) {
+                            self.character_motion.backend_motion.fail(error);
+                            return false;
+                        }
+                    } else if !correction_fits(
                         &self.backend.bodies,
                         &self.backend.colliders,
                         &self.contact_policies,
-                        &compact[..count],
+                        &self.ratio_tick.disabled_pairs,
+                        changes,
                         self.backend.integration_parameters.allowed_linear_error(),
-                        &mut self.character_motion.backend_motion,
                     ) {
-                        self.character_motion.backend_motion.fail(error);
-                        return false;
+                        self.ratio_tick.skipped_corrections =
+                            self.ratio_tick.skipped_corrections.saturating_add(1);
+                        continue;
                     }
-                    // No query/callback/fallible operation between the two
-                    // endpoint writes. Step-motion records them as dt=0 only.
-                    for &(id, pose) in &compact[..count] {
+                    for &(id, pose) in changes {
                         if let Some(body) = self.backend.bodies.get_mut(id) {
                             body.set_position(pose, false);
                             self.query_updates.extend_from_slice(body.colliders());

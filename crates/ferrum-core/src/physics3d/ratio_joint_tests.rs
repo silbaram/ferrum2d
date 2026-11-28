@@ -316,3 +316,115 @@ fn frequency_spring_normalizes_dynamic_mass_and_damps_toward_rest_length() {
         near(f64::from(*a), f64::from(*b), 0.001);
     }
 }
+
+#[test]
+fn pulley_wall_keeps_a_full_rapier_tick_in_rigid_kcc_and_path_worlds() {
+    for mode in ["rigid", "kcc", "path"] {
+        for wall in [false, true] {
+            let mut w = PhysicsWorld3d::new(WorldConfig {
+                gravity: [0.; 3],
+                step_seconds: 0.1,
+                ..Default::default()
+            })
+            .unwrap();
+            let ball = w
+                .create_body(
+                    BodyDesc {
+                        can_sleep: false,
+                        ..Default::default()
+                    },
+                    ColliderDesc::new(Shape::Sphere { radius: 0.5 }),
+                )
+                .unwrap();
+            let anchor = body(&mut w, BodyKind::Fixed, [4., 2., 0.]);
+            let witness = body(&mut w, BodyKind::Dynamic, [0., 10., 0.]);
+            w.set_velocity(witness, [4., 0., 0.], [0.; 3]).unwrap();
+            w.create_joint(JointDesc::new(
+                ball,
+                anchor,
+                JointKind::Pulley {
+                    ground_a: [2., 0., 0.],
+                    ground_b: [4., 4., 0.],
+                    length: 3.,
+                    ratio: 1.,
+                    slack: false,
+                    spring: None,
+                },
+            ))
+            .unwrap();
+            let wall_face = 0.501;
+            if wall {
+                w.create_body(
+                    BodyDesc {
+                        kind: BodyKind::Fixed,
+                        pose: Pose {
+                            position: [wall_face + 0.05, 0., 0.],
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    ColliderDesc::new(Shape::Box {
+                        half_extents: [0.05, 1., 1.],
+                    }),
+                )
+                .unwrap();
+            }
+            if mode == "kcc" {
+                let rider = w
+                    .create_body(
+                        BodyDesc {
+                            kind: BodyKind::KinematicPosition,
+                            pose: Pose {
+                                position: [0., 30., 0.],
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        },
+                        ColliderDesc::new(Shape::Capsule {
+                            half_height: 0.25,
+                            radius: 0.25,
+                        }),
+                    )
+                    .unwrap();
+                w.enable_character(rider, CharacterConfig::default())
+                    .unwrap();
+            }
+            if mode == "path" {
+                let platform = body(&mut w, BodyKind::KinematicPosition, [20., 0., 20.]);
+                let target = Pose {
+                    position: [20.2, 0., 20.],
+                    ..Default::default()
+                };
+                w.step_with_kinematic_paths(&[KinematicPath {
+                    body: platform,
+                    sweep_sensors: false,
+                    knots: vec![(1., target)],
+                }])
+                .unwrap();
+                assert_eq!(w.body_state(platform).unwrap().pose, target);
+                assert_eq!(w.kinematic_path_progress_precise(platform), (1., false));
+            } else {
+                w.step_checked().unwrap();
+            }
+            assert_eq!(w.step_statistics().backend_steps, 4, "{mode} wall={wall}");
+            near(f64::from(w.actual_motion_completed_seconds()), 0.1, 1e-6);
+            near(
+                f64::from(w.body_state(witness).unwrap().pose.position[0]),
+                0.4,
+                1e-6,
+            );
+            let x = w.body_state(ball).unwrap().pose.position[0];
+            if wall {
+                let tolerance = w.backend.integration_parameters.allowed_linear_error();
+                assert!(
+                    x + 0.5 <= wall_face + tolerance + 1e-6,
+                    "{mode}: ball x={x}"
+                );
+                assert!(w.ratio_tick.skipped_corrections > 0, "{mode}");
+            } else {
+                near(f64::from(x), 0.3000001, 1e-6);
+                assert_eq!(w.ratio_tick.skipped_corrections, 0);
+            }
+        }
+    }
+}

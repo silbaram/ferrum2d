@@ -31,12 +31,10 @@ enum KccQuery {
 
 impl PhysicsWorld3d {
     pub(in crate::physics3d) fn step_character_kcc(&mut self) -> Result<(), PhysicsError> {
-        if !self.begin_fixed_step() {
-            return self.actual_motion_result();
-        }
+        self.begin_fixed_step()?;
         self.step_kcc_interval(&[], 0., 1., &mut Vec::new());
         self.finish_fixed_step();
-        self.actual_motion_result()
+        Ok(())
     }
 
     pub(in crate::physics3d) fn step_kcc_interval(

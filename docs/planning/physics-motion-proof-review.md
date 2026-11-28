@@ -1331,3 +1331,80 @@ Wasm release를 빌드하고 `native-wasm-source-identity`와 `pnpm test:web` 29
 공개 API·공개 타입·Rust 시험 구조·문서 링크 검사, 네 패키지 tarball과 create-game 템플릿
 보고서도 통과했다. Chromium 로컬 통합 물리 Web과 `physics-demo-suite` 7개 장면은 최종
 Wasm으로 통과했다. `smoke:hd2d-combat`은 사용자 지시대로 실행 범위에서 제외했다.
+
+### P3-2 결과
+
+PR #118을 병합한 `fe8e6817`을 기준으로 제품 지정 경로의 틱 저널을 뗐다. 2026-11-28 결정에
+따라 제품 틱은 시작 전 검사에서만 거절한다. 기어·도르래·케이블의 위치 보정은 Parry 접촉으로
+확인해 다른 콜라이더와 선형 허용 오차를 넘는 새 겹침 또는 더 깊은 겹침을 만들면 해당 pass의
+보정만 건너뛴다. 기존 센서·그룹·무시 쌍·단방향 정책을 적용하고, 이후 pass의 적분과 관절 속도
+제약을 계속 처리한다. 건너뛴 보정 수는 직렬화하지 않는 내부 틱 자료에 기록한다.
+
+| 호출 추적 위치 | 기존 실패·영향 | 처리 |
+| --- | --- | --- |
+| `step_checked`, `step_character_kcc`, `step_rapier_kinematic_tick` → `begin_fixed_step` | 지정 경로만 강체 행·그래프·출력 예약에 proof budget를 쓰고, 승인 전에 `CapacityExceeded`가 가능했다. | 세 제품 경로의 시작 절차를 합쳤다. 경로·대시 슬롯, 매듭·자세·바디 소유권 및 Rapier substep의 기간과 역수가 유한한지는 입력 소비 전에 검증한다. |
+| `step_with_joints` → `solve_ratio_joints(Positions)` | Rapier 적분 뒤 `prepare_disabled_pairs`가 예약·증명 한도로 실패할 수 있고, `admit_ratio_positions`가 보정 시 겹침으로 `UnresolvedMotion`을 기록했다. 0.1초 도르래/벽 재현에서 관측 물체가 0.1만 이동했다. 발판 경로는 실제 한 pass를 수행했어도 0.1초 완료를 보고했다. | 관절 쌍 벡터는 관절 수로 시작 전에 reserve한다. 각 pass는 이미 확보된 배열에서 파손된 관절을 반영한다. 접촉으로 막힌 위치 보정은 건너뛰며 관계없는 물체는 0.4 이동하고 네 pass를 마친다. 증명 분기는 기존 `Work`와 실패 검사를 유지한다. |
+| `step_with_joints` 및 `step_backend` | 논리 domain 생성·분할 오류, 승인 구간과 prefix 실패가 같은 호출에 섞여 있었다. | 논리 domain은 증명 모드에서만 만들고 넘긴다. 일반 Rapier 호출은 검증한 실제 기간의 적분만 사용한다. |
+| KCC 지형 질의, 이동 장애물 cast, 이벤트·CCD 관측, `finish_fixed_step` | KCC는 후보 실패를 정지·보조 통계로 처리한다. 출력 포화는 drop을 세며, step-motion capture 또는 투사체 질의는 실패할 수 있다. | 보조 결과의 실패는 틱 거절로 올리지 않는다. 제품 capture는 독립 32 Mi 작업 단위로 계산하며, 기존 Native decode 예산·checked 산술·fallible reserve를 유지한다. |
+| Engine 고정/가변 프레임, `terrain_motion` 및 플랫 컴포넌트 동기화 | 경로·대시 슬롯과 clock은 물리 시작 전 검사다. 이전 고정 프레임 루프는 solver latch에만 따라 실패한 준비 뒤에도 후속 프레임 처리를 계속할 수 있었다. 통합 물리 후의 `body_state`/planar 동기화가 반환할 수 있는 stale 오류는 사전 등록된 바디가 적분 중 제거되지 않는다는 불변식에 의존한다. 일반 발판 코드에도 증명 부분 완료 처리 분기가 있었다. | 슬롯 검사에서 프레임 시간·입력·tween·출력에 손대기 전에 거절한다. 통합 고정/가변 루프는 첫 준비 오류를 읽고 이후 성공 출력을 진행하지 않는다. 발판의 부분 완료 분기는 강제 증명에서만 쓴다. 자동 평면·내장 예제의 명령 복원은 시작 전에 검증된 운동학 바디와 속도를 동기화하며, 엔진 관측·쿼리 진단은 그대로 유지했다. |
+
+| 이전 검사 | 대체 검사 |
+| --- | --- |
+| `preapply_capacity_rejection_*` | 실제 경로 17개를 거절하고 직전 CCD·이벤트·snapshot을 보존한 뒤, 정상 16개를 대조군과 비교한다. |
+| `zero_progress_rejection_*` | 끝 매듭 누락과 Rapier 기간이 0으로 반올림되는 매듭에서 대기 impulse를 보존하고 성공한 틱에서 한 번만 소비한다. |
+| `injected_native_tick_failure_*` | 16개 발판과 비캐릭터 대시 합계 17개로 수동 거절을 재현한다. 진단·관절 이벤트·Engine 체크포인트·Native 저장 바이트가 같다. 제품 코드만 대상으로 하던 실패 주입은 제거했다. |
+| `planar_legacy_inputs_*` | 실제 clock mismatch에서 Native 파일을 비교하고, 다음 정상 틱의 legacy 힘·충격이 대조군과 같다. |
+| `rejected_frame_retry_*` | 같은 경로·대시 한도로 고정 프레임을 반복 거절한다. 성공한 첫 프레임의 tween·게임 입력 이벤트·동적 힘이 정상 대조군 한 틱과 같다. |
+| 신규 | 강체·KCC·발판 틱에서 도르래 보정이 막혀도 4 pass를 완료한다. 밀집 센서 그래프는 예전 저널 예약을 거절하지만 제품 경로에서는 실행한다. 독립 capture 예산도 검증한다. |
+
+남은 저널 진입은 강제 증명 모드의 `begin_fixed_step`이다. `begin_backend_step_rollback`,
+`prepare_tick_output_storage`, `stage_tick_outputs`와 `finish_fixed_step`의 zero-progress
+복원, 증명 interval credit과 vendor `RigidStepCredit`는 P3-3·P3-4에서 정리한다.
+증명 검사를 제거한 일반 틱도 기존 저장 필드를 유지한다. 새 관절 scratch는 `serde(skip)`이다.
+
+기어·도르래·케이블의 기존 시험과 300틱 관절 실험실 Core 시험은 기존 단언으로 통과했다. 벽을 뺀
+도르래 대조군의 구체는 이전과 같이 약 0.3000001 이동한다. 기준과 최종 Wasm에서 같은
+`joints-lab.physics.json`을 로드한 후 `stepRigidBodies(world.stepSeconds, world.stepOptions)`를
+300번 실행했다. 매 틱의 `capturePhysicsBodyStateBuffer`에서 얻은 11개 바디 상태가 두 빌드에서
+모두 같았다. 관절 7개와 바디 상태 기록의 SHA-256
+`2ab514ecf617433a49311717704a7df8a7cf836fc64176ebfd544f26b462d72a`도 일치했다.
+
+최종 Wasm의 Core 지문은
+`e619cfe342ccb710`에서 `e3ddb36aa7e8d3a3`으로 바뀌었다. `minimal`, `breakout`, `topdown`,
+`platformer`에서 `node scripts/ferrum-runtime-replay.mjs update-fixture`로 네 리플레이를 다시 만들었다.
+포획한 Native 파일 18개는 Core 지문과 중첩 CRC를 맞춘 뒤 payload를 포함한 전체 바이트가 같았다.
+네 fixture JSON에서도 해시 필드만 바뀌었다. 템플릿의 물리 상태와 저장 버전은 유지했다.
+통합 물리 Web의 64명·405틱 상태 해시는
+`486c58c1e2a2fec256d42c63fc567da28d89576a5305d3c6be24ec8d96f9a301`이다.
+
+검증에는 최종 소스의 Core 시험 3,833개 통과(3개 ignore), Clippy `-D warnings`, Rust 포맷,
+Wasm release 빌드와 `native-wasm-source-identity`, SDK 시험 292개, 공개 API·공개 타입·문서 링크·
+Rust 시험 구조 검사, `ferrum-web`·`studio-kit`·`create-game`·`agents` tarball 검사와
+네 create-game 템플릿 보고서를 포함했다. 로컬 Chromium에서 `smoke:unified-physics-web`
+(기본·설정 지정 수동과 자동 RAF의 checked-error probe 포함), Platformer, 물리 실험실 7개 장면을
+통과했다. `village-game-quality-browser-smoke.mjs`는 기준과 최종 Wasm 모두 효과·LOD 켜기/끄기와
+두 번 반복의 8개 조합을 통과했다. Platformer와 실험실은 각각 Vite 빌드 뒤
+`browser-render-smoke.mjs` 기본/`physics-demo-suite` 모드를 실행했다. `smoke:hd2d-combat`은
+사용자의 검증 범위에서 제외했다.
+
+발판 비용은 AMD Ryzen AI Max+ 395에서 병합 기준 `fe8e6817`과 최종 상태를 비교했다.
+공간 씬은 이동·승강 발판 하나와 접지한 캡슐 하나로 구성했다. Rust 1.97.1 debug의
+동일 CPU에서 월드별 120틱 예열 후 1,000회의 `step_rigid_bodies_checked(1.0 / 60.0)`를
+5회 재서 중앙값을 얻었다. 기준은 **299.85 µs/틱**, 최종은 **125.81 µs/틱**이었다.
+두 결과의 마지막 탑승자 위치 `[0.8666642, 1.080367, -0.19259113]`와 발판 진행값
+`0.6666676402091976`은 같았다.
+
+마을 전투 시간 측정에는 원본 마을 배치의 `spatial.terrain`에 `(-850, -550)`의 96×96
+비표시 지형을 추가하고, `spatial.movingPlatforms`에서 X 방향으로 32단위를 1.333초 동안
+이동시켰다. Chromium 148·SwiftShader에서 효과와 LOD를 끄고 1초 예열과 2.5초 표본을
+사용했다. 틱당 시간은 `Σ frame.rustMs / Σ frame.physics.fixedSteps`로 계산했으며 Wasm의
+물리·게임플레이·렌더 명령 준비를 모두 포함한다.
+
+| 마을 전투 발판 측정 | 기준 `fe8e6817` | P3-2 |
+| --- | ---: | ---: |
+| 첫 2회 | 1.867 ms/틱 (163틱) | 2.009 ms/틱 (162틱) |
+| 같은 조건 2회 추가 | 1.934 ms/틱 (161틱) | 1.957 ms/틱 (163틱) |
+| 전체 | **1.900 ms/틱 (324틱)** | **1.983 ms/틱 (325틱)** |
+
+마을 전투에서 집계한 Wasm 구간은 약 4.4% 길었다. 프레임 계측이 물리 이외 작업도
+포함하므로 이 표로 물리 적분 시간만의 차이를 산출할 수 없다.

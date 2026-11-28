@@ -406,6 +406,10 @@ runtime.carveCircle(48, 24, 8);
 
 `pulley`는 기본적으로 두 body anchor와 두 world-space ground anchor 사이의 총 길이 `lengthA + ratio * lengthB = restLength`를 유지한다. `groundAnchorA`/`groundAnchorB`는 world 좌표이고, `localAnchorA`/`localAnchorB`는 각 body local 좌표다. `ratio`는 양수만 허용한다. `slack: true`이면 `lengthA + ratio * lengthB <= restLength` 상태에서는 correction과 break 판정을 적용하지 않고, rest length를 초과해 줄이 팽팽해졌을 때만 당긴다. `breakDistance`는 기본 equality pulley에서는 가중 길이 오차의 절댓값, slack pulley에서는 초과 길이 오차가 지정값을 넘으면 joint를 제거한다.
 
+통합 물리에서 기어·도르래·케이블 관절의 위치 보정이 다른 콜라이더와의 겹침을 허용 오차보다
+깊게 만들면 그 pass의 위치 보정을 건너뛴다. 그 틱의 나머지 Rapier 적분과 관절 속도 제약은
+계속 진행한다.
+
 `revolute.limit`은 기본적으로 상대 각도를 `[-pi, pi]` 범위로 정규화한 뒤 `lower`/`upper`와 비교한다. 이 기본값은 기존 hinge authoring과 wrap-around 회전 동작을 보존한다. `limit.continuous: true`이면 정규화하지 않은 누적 상대 각도를 사용하므로 `lower`/`upper`에 `2pi`를 넘는 multi-turn 제한을 줄 수 있다. `limit.continuous`는 revolute joint 전용이며 root `physics.continuous` CCD 설정과 별개다.
 
 `weld`는 두 body의 local anchor와 상대 각도를 고정하는 목적형 joint다. Physics Spec의 `stiffness`/`damping`은 runtime apply 시 anchor constraint와 angular constraint에 함께 적용된다. Rust solver는 off-center anchor position correction을 relative angle correction과 coupled solve로 처리해, anchor gap 보정이 회전 응답 없이 body center만 밀리는 동작을 피한다. 더 세밀하게 나누어야 하는 low-level Web API에서는 `spawnPhysicsJoint({ type: "weld", angularStiffness, angularDamping })`을 사용할 수 있다. `breakDistance`는 두 anchor 간 거리 오차, `breakAngle`은 상대 각도 오차가 지정값을 넘으면 joint를 제거한다. 공통 `breakForce`/`breakTorque` 하중 제한과 파손 이벤트도 지원한다. Hz/감쇠비 옵션은 spring 전용이며 weld에는 적용하지 않는다.

@@ -128,6 +128,18 @@ impl PhysicsWorld3d {
         if paths.is_empty() {
             return self.step_checked();
         }
+        self.validate_kinematic_paths(paths)?;
+        if self.backend_motion_enabled() {
+            self.step_kinematic_tick(paths);
+            return self.actual_motion_result();
+        }
+        self.step_rapier_kinematic_tick(paths)
+    }
+
+    pub(super) fn validate_kinematic_paths(
+        &self,
+        paths: &[KinematicPath],
+    ) -> Result<(), PhysicsError> {
         // Complete validation before consuming controller input, force or events.
         if paths.len() > 16 {
             return Err(PhysicsError::CapacityExceeded);
@@ -169,38 +181,50 @@ impl PhysicsWorld3d {
                 return Err(PhysicsError::InvalidBody);
             }
         }
-        if self.backend_motion_enabled() {
-            self.step_kinematic_tick(paths);
-            return self.actual_motion_result();
+        if !self.backend_motion_enabled() {
+            // Merge cuts in a small fixed buffer. The same validation is used
+            // before Engine dash staging and at the direct physics entry.
+            let mut cuts = [1.; 49];
+            let mut count = 1;
+            for path in paths {
+                for &(time, _) in &path.knots[..path.knots.len() - 1] {
+                    cuts[count] = time;
+                    count += 1;
+                }
+            }
+            let cuts = &mut cuts[..count];
+            cuts.sort_unstable_by(f32::total_cmp);
+            let dt = Time::from(self.backend.integration_parameters.dt);
+            let mut start = 0.;
+            for &cut in cuts.iter() {
+                let end = Time::from(cut);
+                if end > start {
+                    let seconds = super::motion_time::native_duration(dt * (end - start))
+                        .map_err(|_| PhysicsError::InvalidBody)?;
+                    self.validate_rapier_step_seconds(seconds)?;
+                    start = end;
+                }
+            }
         }
-        self.step_rapier_kinematic_tick(paths)
+        Ok(())
     }
 
     fn step_rapier_kinematic_tick(&mut self, paths: &[KinematicPath]) -> Result<(), PhysicsError> {
         let mut scratch = std::mem::take(&mut self.tick_outputs.paths);
         self.prepare_path_scratch(paths, &mut scratch);
         let native_dt = self.backend.integration_parameters.dt;
-        let mut slices = Vec::with_capacity(scratch.cuts.len());
-        let mut start = 0.;
-        for &end in &scratch.cuts {
-            let seconds =
-                super::motion_time::native_duration(Time::from(native_dt) * (end - start));
-            let Ok(seconds) = seconds else {
-                self.tick_outputs.paths = scratch;
-                return Err(PhysicsError::InvalidBody);
-            };
-            slices.push((start, end, seconds));
-            start = end;
-        }
-        if !self.begin_fixed_step_with_paths(true) {
+        if let Err(error) = self.begin_fixed_step() {
             self.tick_outputs.paths = scratch;
-            return self.actual_motion_result();
+            return Err(error);
         }
         self.save_character_preview(&mut scratch.preview);
 
         let mut stopped = Vec::new();
-        for (start, end, seconds) in slices {
-            self.backend.integration_parameters.dt = seconds;
+        let mut start = 0.;
+        for index in 0..scratch.cuts.len() {
+            let end = scratch.cuts[index];
+            // Checked before tick begin by validate_kinematic_paths.
+            self.backend.integration_parameters.dt = (Time::from(native_dt) * (end - start)) as f32;
             self.set_path_targets(paths, &scratch, end);
             self.step_kcc_interval(paths, start, end, &mut stopped);
             self.accumulate_character_slice(&mut scratch);
@@ -212,6 +236,7 @@ impl PhysicsWorld3d {
                 }
                 scratch.stopped_bodies.push(body);
             }
+            start = end;
         }
         self.backend.integration_parameters.dt = native_dt;
         self.character_motion.backend_motion.committed_seconds = Time::from(native_dt);
@@ -219,11 +244,11 @@ impl PhysicsWorld3d {
         self.finish_fixed_step();
         std::mem::swap(&mut self.path_scratch, &mut scratch);
         self.tick_outputs.paths = scratch;
-        self.actual_motion_result()
+        Ok(())
     }
 
     pub(super) fn step_kinematic_tick(&mut self, paths: &[KinematicPath]) {
-        if !self.begin_fixed_step_with_paths(!paths.is_empty()) {
+        if self.begin_fixed_step().is_err() {
             return;
         }
         let mut scratch = std::mem::take(&mut self.tick_outputs.paths);
@@ -1020,3 +1045,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod preflight_tests;

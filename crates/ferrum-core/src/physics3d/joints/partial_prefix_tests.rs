@@ -144,7 +144,7 @@ fn fixture(speed: f32, wall: bool, spin: f32) -> (PhysicsWorld3d, BodyId) {
     w.force_character_motion_proof();
     w.set_step_motion_enabled(true);
     w.refresh_queries();
-    w.begin_fixed_step();
+    w.begin_fixed_step().unwrap();
     (w, body)
 }
 
@@ -219,7 +219,7 @@ fn actual_later_ccd_rejection_preserves_approved_prefix_before_trace_reset_and_r
     let tick = Time::from(w.config.step_seconds);
     assert_ne!(((ORIGIN / tick) * tick).to_bits(), ORIGIN.to_bits());
     w.backend.integration_parameters.dt = ORIGIN as f32;
-    assert!(w.step_backend(ORIGIN as f32, Domain::new(0., ORIGIN).unwrap()));
+    assert!(w.step_backend(ORIGIN as f32, Some(Domain::new(0., ORIGIN).unwrap())));
     w.record_step_motion_segment(ORIGIN / tick);
     w.advance_planar_angles(ORIGIN as f32);
     assert_eq!(w.actual_motion_completed_time().to_bits(), ORIGIN.to_bits());
@@ -356,7 +356,7 @@ fn producer_uses_committed_origin_bits_and_preserves_legacy_fraction_start_polic
     let (mut w, body) = fixture(2., false, 3.);
     let tick = Time::from(w.config.step_seconds);
     w.backend.integration_parameters.dt = ORIGIN as f32;
-    assert!(w.step_backend(ORIGIN as f32, Domain::new(0., ORIGIN).unwrap()));
+    assert!(w.step_backend(ORIGIN as f32, Some(Domain::new(0., ORIGIN).unwrap())));
     w.record_step_motion_segment(ORIGIN / tick);
     w.advance_planar_angles(ORIGIN as f32);
     assert_eq!(w.actual_motion_completed_time().to_bits(), ORIGIN.to_bits());

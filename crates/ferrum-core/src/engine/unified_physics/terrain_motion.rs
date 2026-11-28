@@ -160,7 +160,6 @@ impl UnifiedPhysicsRuntime {
         let mut paths = std::mem::take(&mut motion.paths);
         let admission = self.begin_native_dashes(&mut paths);
         if let Err(error) = admission {
-            self.finish_native_dashes(false);
             self.platform_motion.paths = paths;
             return Err(error);
         }
@@ -168,18 +167,19 @@ impl UnifiedPhysicsRuntime {
         self.finish_native_dashes(result.is_ok());
         self.platform_motion.paths = paths;
         let failure = result.err();
-        let completed = if failure.is_some() {
-            (self.physics.actual_motion_completed_time()
-                / f64::from(self.physics.config().step_seconds))
-            .clamp(0., 1.)
-        } else {
-            1.
-        };
-        if completed == 0. {
-            if let Some(error) = failure {
-                return Err(error.into());
+        let completed = match failure {
+            Some(error) if !self.physics.backend_motion_enabled() => return Err(error.into()),
+            Some(error) => {
+                let completed = (self.physics.actual_motion_completed_time()
+                    / f64::from(self.physics.config().step_seconds))
+                .clamp(0., 1.);
+                if completed == 0. {
+                    return Err(error.into());
+                }
+                completed
             }
-        }
+            None => 1.,
+        };
         let motion = &mut self.platform_motion;
         let mut blocked = 0;
         for ((p, path), phase) in motion

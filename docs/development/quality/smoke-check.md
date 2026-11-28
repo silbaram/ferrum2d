@@ -68,11 +68,12 @@ frame pipeline/manual step 회귀는 checked entry를 한 번만 호출하고 �
 수동 스텝에 넘겨 Wasm 사전 거절을 검사한다. 자동 모드는 nominal 간격에서 승인된 외력이
 30ms RAF에서 속도 한도를 넘게 해 사전 거절을 검증한다. 자세·시간·직전 CCD 진단·Native 저장 바이트 보존,
 새 Rust 질의, 체크포인트 복원, RAF 재시작과 중복 destroy를 확인한다. 실행은
-`smoke:unified-physics-web`에 연결한다. 틱 안의 롤백은 Core의
-`injected_native_tick_failure_preserves_diagnostics_checkpoint_and_native_file`과
-`planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection`에서 검사한다.
-테스트 빌드의 실패 주입으로 이미 준비한 입력과 관측값을 되돌리고, 체크포인트·저장 바이트와
-재시도 뒤 힘·충격 적용 횟수를 비교한다.
+`smoke:unified-physics-web`에 연결한다. Core의
+`path_and_dash_preflight_preserves_diagnostics_checkpoint_and_native_file`은 경로·대시 합계 한도
+초과 시 이전 관측값과 체크포인트·Native 저장 바이트가 보존되는지 검사한다.
+`clock_preflight_preserves_legacy_planar_inputs_for_the_next_tick`과
+`rejected_path_frame_retry_advances_tween_and_physics_once`는 사전 거절 후 성공한 첫 틱에서
+힘·충격·tween·게임 입력이 한 번만 적용되는지 확인한다.
 같은 통합 물리 스모크의 캐릭터 충격 검사는 초속 200 단위의 CCD 상자가 부딪힐 때 일반 Rapier
 캡슐과 캐릭터의 겹침을 32틱 동안 매 틱 비교한다. 일반 캡슐의 겹침이 그 구간 안에 0.005 이하로
 회복하는지, 캐릭터의 겹침이 일반 캡슐보다 0.000001 넘게 크지 않은지, 통과 방지와 고체 충돌

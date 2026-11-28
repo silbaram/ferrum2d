@@ -21,8 +21,6 @@ pub(super) use feedback::BackendCharacterFeedback;
 pub(super) struct MotionScene {
     #[cfg(test)]
     pub(super) experiment: super::character::experimental_tests::Experiment,
-    #[cfg(test)]
-    pub(super) reject_staged_tick: bool,
     movers: Vec<(rp::ColliderHandle, NonlinearRigidMotion)>,
     exact: Vec<Kernel>,
     paths: Vec<trajectory::ColliderPath>,

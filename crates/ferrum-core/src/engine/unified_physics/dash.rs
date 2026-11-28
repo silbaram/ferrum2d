@@ -125,29 +125,74 @@ impl UnifiedPhysicsRuntime {
         });
         Ok(())
     }
+    pub(super) fn validate_native_dash_slots(
+        &self,
+        world: &World,
+        platforms: usize,
+    ) -> Result<(), UnifiedPhysicsError> {
+        if platforms + self.dash.queued.len() <= 16 {
+            return Ok(());
+        }
+        let mut paths = platforms;
+        for dash in &self.dash.queued {
+            if !world.is_current_entity(dash.entity) {
+                continue;
+            }
+            let binding = self.bindings.get(&(dash.entity.id, dash.entity.generation));
+            let occupies_slot = if let Some(binding) = binding {
+                !self.physics.tick_motion_is_character(binding.body)
+                    && self
+                        .physics
+                        .validate_tick_motion(&TickMotion {
+                            body: binding.body,
+                            translation: dash.translation,
+                        })
+                        .is_ok()
+            } else {
+                self.physics.config().space == Space::PlanarXy
+                    && world.rigid_body(dash.entity).is_some_and(|body| {
+                        body.enabled
+                            && body.body_type == crate::components::RigidBodyType::Kinematic
+                    })
+            };
+            paths += usize::from(occupies_slot);
+        }
+        if paths > 16 {
+            return Err(PhysicsError::CapacityExceeded.into());
+        }
+        Ok(())
+    }
+
     pub(super) fn begin_native_dashes(
         &mut self,
         paths: &mut Vec<KinematicPath>,
     ) -> Result<(), UnifiedPhysicsError> {
-        self.dash.requests.clear();
-        for dash in &mut self.dash.queued {
+        let mut requests = Vec::new();
+        requests
+            .try_reserve_exact(self.dash.queued.len())
+            .map_err(|_| PhysicsError::CapacityExceeded)?;
+        let mut results = [Ok(false); 128];
+        for (dash, result) in self.dash.queued.iter().zip(&mut results) {
             let binding = self
                 .bindings
                 .get(&(dash.entity.id, dash.entity.generation))
                 .ok_or(UnifiedPhysicsError::StaleEntity);
-            let result = binding.and_then(|b| {
+            *result = binding.and_then(|binding| {
                 let request = TickMotion {
-                    body: b.body,
+                    body: binding.body,
                     translation: dash.translation,
                 };
                 self.physics.validate_tick_motion(&request)?;
-                self.dash.requests.push(request);
+                requests.push(request);
                 Ok(false)
             });
-            dash.result = result;
         }
         self.physics
-            .begin_tick_motions(&self.dash.requests, paths, &mut self.dash.backups)?;
+            .begin_tick_motions(&requests, paths, &mut self.dash.backups)?;
+        self.dash.requests = requests;
+        for (dash, result) in self.dash.queued.iter_mut().zip(results) {
+            dash.result = result;
+        }
         Ok(())
     }
     pub(super) fn finish_native_dashes(&mut self, succeeded: bool) {

@@ -54,6 +54,8 @@ struct WorldState {
     #[serde(skip)]
     joint_kinematics: Vec<(rp::RigidBodyHandle, rp::Pose, rp::Pose)>,
     #[serde(skip)]
+    ratio_tick: super::ratio_joints::RatioTick,
+    #[serde(skip)]
     staged_tick_inputs: Vec<(BodyId, super::tick_inputs::TickInput)>,
 }
 

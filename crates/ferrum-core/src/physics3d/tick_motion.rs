@@ -76,6 +76,12 @@ impl PhysicsWorld3d {
             }) {
                 return Err(PhysicsError::InvalidBody);
             }
+            if body.locked_axes().contains(rp::LockedAxes::ROTATION_LOCKED)
+                && target.rotation.to_array() != body.rotation().to_array()
+                && target.rotation.to_array() != body.rotation().to_array().map(|v| -v)
+            {
+                return Err(PhysicsError::LockedRotation);
+            }
         }
         Ok(())
     }
@@ -90,6 +96,11 @@ impl PhysicsWorld3d {
         paths: &mut Vec<KinematicPath>,
         saved: &mut Vec<TickMotionBackup>,
     ) -> Result<(), PhysicsError> {
+        if requests.is_empty() {
+            saved.clear();
+            return Ok(());
+        }
+        self.validate_kinematic_paths(paths)?;
         let mut additional = 0;
         for (i, request) in requests.iter().enumerate() {
             self.validate_tick_motion(request)?;
@@ -102,6 +113,9 @@ impl PhysicsWorld3d {
         }
         if paths.len() + additional > 16 {
             return Err(PhysicsError::CapacityExceeded);
+        }
+        if !self.backend_motion_enabled() {
+            self.prepare_rapier_ratio_tick()?;
         }
         saved.clear();
         for request in requests {

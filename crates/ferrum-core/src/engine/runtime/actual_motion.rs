@@ -17,6 +17,11 @@ impl Engine {
             .map(Into::into)
     }
 
+    pub(super) fn native_step_failure(&self) -> Option<UnifiedPhysicsError> {
+        self.actual_native_motion_failure()
+            .or_else(|| self.unified_physics.as_ref()?.frame_step_failure())
+    }
+
     pub(super) fn actual_native_committed_seconds(&self) -> f32 {
         self.unified_physics
             .as_ref()
@@ -119,7 +124,7 @@ impl Engine {
             let input = self.fixed_step_input(step_index == 0);
             let (resumed, presses) = self.begin_native_gameplay_tick(seconds, step_index, input);
             self.step_auto_rigid_bodies(seconds);
-            if let Some(error) = self.actual_native_motion_failure() {
+            if let Some(error) = self.native_step_failure() {
                 let partial = self.actual_native_committed_seconds().clamp(0., seconds);
                 if step_index == 0 && partial > 0. && resumed != Some(false) {
                     self.fixed_timestep_input_latch.clear();
