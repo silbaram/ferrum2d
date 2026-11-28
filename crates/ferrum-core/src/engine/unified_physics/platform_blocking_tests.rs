@@ -349,3 +349,75 @@ fn blocked_capsule_chain_holds_the_engine_pusher_and_actors() {
         crate::physics3d::StepStatistics::default()
     );
 }
+
+#[test]
+fn late_knot_stop_resumes_authored_platform_from_the_committed_phase() {
+    let mut e = engine(0.1);
+    assert!(e.spatial_scene.configure_surfaces(
+        &[
+            -3., -3., 6., 6., -0.2, 0., 0., 1., 1., 1., 1., 20., -3., 1., 1., -0.2, 0., 0., 1., 1.,
+            1., 1.,
+        ],
+        &[1, 0, 0, 1, 2, 1, 0, 1],
+    ));
+    let blocker = wall(&mut e, [4.05, 0., 0.], [0.25, 2., 2.]);
+    // The distant platform's turnaround splits both paths at half a tick.
+    assert!(e.configure_spatial_moving_platforms(&[
+        2., 1., 10., 0., 0., 1., 0., 0., 2., 2., 1., 0., 0., 0.05, 0., 0.,
+    ]));
+    let platform_x = |engine: &Engine| {
+        let runtime = engine.unified_physics.as_ref().unwrap();
+        let key = super::terrain::UnifiedTerrainSource::SpatialSurface { id: 1 };
+        let body = runtime.terrain.registered[&key].body;
+        let native = runtime.physics.body_state(body).unwrap().pose.position[0];
+        let authored = engine.spatial_scene.surfaces[0].bounds[0] + 3.;
+        assert!(
+            (native - authored).abs() < 1e-6,
+            "native={native}; authored={authored}"
+        );
+        native
+    };
+    tick(&mut e, 1);
+    let phase = e.capture_spatial_moving_platforms()[6];
+    assert!((phase - 0.05).abs() < 1e-7, "phase={phase}");
+    assert!((platform_x(&e) - 0.5).abs() < 1e-6);
+    assert_eq!(e.spatial_moving_platform_stats(), vec![0, 1]);
+
+    tick(&mut e, 1);
+    assert_eq!(e.capture_spatial_moving_platforms()[6], phase);
+    assert!((platform_x(&e) - 0.5).abs() < 1e-6);
+    let checkpoint = e.runtime_checkpoint().unwrap();
+    let revision = e.runtime_checkpoint_revision();
+    let resume = |engine: &mut Engine| {
+        engine.remove_unified_body(blocker).unwrap();
+        (0..6)
+            .map(|i| {
+                tick(engine, 1);
+                if i == 0 {
+                    assert!((engine.capture_spatial_moving_platforms()[6] - 0.15).abs() < 1e-7);
+                    assert!((platform_x(engine) - 1.5).abs() < 1e-6);
+                    assert_eq!(engine.spatial_moving_platform_stats(), vec![0, 0]);
+                }
+                // The public rollback revision increases on restore. Compare
+                // everything else, including the authored phase and physics.
+                let actual_revision = std::mem::replace(&mut engine.checkpoint_revision, revision);
+                let state = crate::engine::persistence::encode(engine);
+                engine.checkpoint_revision = actual_revision;
+                state.unwrap()
+            })
+            .collect::<Vec<_>>()
+    };
+    let expected = resume(&mut e);
+    e.restore_runtime_checkpoint_native(&checkpoint).unwrap();
+    assert_eq!(e.runtime_checkpoint_revision(), revision + 1);
+    assert_eq!(e.capture_spatial_moving_platforms()[6], phase);
+    assert!((platform_x(&e) - 0.5).abs() < 1e-6);
+    let replayed = resume(&mut e);
+    for (tick, (original, restored)) in expected.iter().zip(&replayed).enumerate() {
+        assert!(
+            original == restored,
+            "checkpoint diverged at resumed tick {}",
+            tick + 1
+        );
+    }
+}

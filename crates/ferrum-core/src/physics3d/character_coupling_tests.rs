@@ -516,13 +516,24 @@ fn p2b_review_departing_rider_keeps_the_source_of_accepted_carry() {
 }
 
 #[test]
-fn p2b_review_late_knot_rewinds_mover_but_keeps_prior_rapier_contacts() {
+fn late_knot_stop_preserves_earlier_push_carry_and_contacts() {
     use super::kinematic_paths::KinematicPath;
 
     let mut w = world();
     let door = wall(&mut w, -1., BodyKind::KinematicPosition);
-    let rider = actor(&mut w, 0.);
+    let pushed = actor(&mut w, 0.);
     let peer = actor(&mut w, 0.7);
+    let rider = actor(&mut w, -1.);
+    w.set_pose(
+        rider,
+        Pose {
+            position: [-1., 2.51, 0.],
+            ..Pose::default()
+        },
+    )
+    .unwrap();
+    w.step_checked().unwrap();
+    assert_eq!(w.character_state(rider).unwrap().ground.unwrap().body, door);
     let box_id = w
         .create_body(
             BodyDesc {
@@ -546,35 +557,55 @@ fn p2b_review_late_knot_rewinds_mover_but_keeps_prior_rapier_contacts() {
         sweep_sensors: false,
         knots: vec![(0.5, pose(-0.40)), (1., pose(0.25))],
     };
+    w.step_with_kinematic_paths(std::slice::from_ref(&path))
+        .unwrap();
+    assert!((x(&w, door) + 0.40).abs() < 1e-6, "door={}", x(&w, door));
+    assert_eq!(w.kinematic_path_progress_precise(door), (0.5, true));
+    assert_eq!(w.step_statistics().kinematic_path_stops, 1);
+    assert!(
+        (x(&w, pushed) - 0.11).abs() <= 0.005,
+        "pushed={}",
+        x(&w, pushed)
+    );
+    assert_eq!(x(&w, peer), 0.7);
+    assert!((x(&w, rider) - x(&w, door)).abs() < 1e-6);
+    let riding = w.character_state(rider).unwrap();
+    assert_eq!(riding.carried_by, Some(door));
+    assert!(
+        riding.grounded && (riding.carry_translation[0] - 0.6).abs() < 1e-6,
+        "{riding:?}"
+    );
+    assert!(x(&w, box_id) > -0.26);
+    assert!(w.body_state(box_id).unwrap().linear_velocity[0] > 0.);
+    let mut events = Vec::new();
+    w.drain_collision_events(&mut events);
+    assert!(
+        events.iter().any(
+            |event| (event.first.body, event.second.body) == (door, box_id)
+                && event.phase == CollisionPhase::Enter
+        ),
+        "{events:?}"
+    );
+
     let checkpoint = w.capture_snapshot().unwrap();
     let mut restored = PhysicsWorld3d::from_snapshot(&checkpoint).unwrap();
-    for world in [&mut w, &mut restored] {
-        world
-            .step_with_kinematic_paths(std::slice::from_ref(&path))
-            .unwrap();
-        assert_eq!(x(world, door), -1.);
-        assert!(x(world, rider).abs() < 1e-6);
-        assert_eq!(x(world, peer), 0.7);
-        assert_eq!(world.step_statistics().kinematic_path_stops, 1);
-        assert!(world.body_state(box_id).unwrap().linear_velocity[0] > 0.);
-        let mut events = Vec::new();
-        world.drain_collision_events(&mut events);
-        assert!(
-            events.iter().any(
-                |event| (event.first.body, event.second.body) == (door, box_id)
-                    && event.phase == CollisionPhase::Enter
-            ),
-            "{events:?}"
-        );
-    }
+    assert_eq!(restored.kinematic_path_progress_precise(door), (0.5, true));
+    let continuation = KinematicPath {
+        knots: vec![(1., pose(-0.35))],
+        ..path
+    };
     for tick in 1..=6 {
+        for world in [&mut w, &mut restored] {
+            world
+                .step_with_kinematic_paths(std::slice::from_ref(&continuation))
+                .unwrap();
+            assert!((x(world, door) + 0.35).abs() < 1e-6);
+        }
         assert_eq!(
             w.capture_snapshot().unwrap().encoded_bytes(),
             restored.capture_snapshot().unwrap().encoded_bytes(),
             "tick {tick}"
         );
-        w.step_checked().unwrap();
-        restored.step_checked().unwrap();
     }
 }
 
@@ -670,7 +701,7 @@ fn dynamic_support_reports_only_the_partial_carry_that_fits() {
 }
 
 #[test]
-fn late_knot_rewinds_rider_transport_but_allows_walking_off() {
+fn late_knot_stop_preserves_rider_transport_and_allows_walking_off() {
     use super::kinematic_paths::KinematicPath;
 
     let mut w = world();
@@ -706,7 +737,7 @@ fn late_knot_rewinds_rider_transport_but_allows_walking_off() {
         ..Pose::default()
     };
     // The first cut carries the idle rider. At the second cut the carrier
-    // reaches the wall, undoing that earlier carry despite continued grounding.
+    // reaches the wall and holds the accepted transport from the first cut.
     w.step_with_kinematic_paths(&[KinematicPath {
         body: platform,
         sweep_sensors: false,
@@ -715,9 +746,9 @@ fn late_knot_rewinds_rider_transport_but_allows_walking_off() {
     .unwrap();
     let s = w.character_state(rider).unwrap();
     assert_eq!(w.step_statistics().kinematic_path_stops, 1);
-    assert!(s.grounded && x(&w, rider).abs() < 1e-6);
-    assert_eq!(s.carry_translation, [0.; 3]);
-    assert_eq!(s.carried_by, None);
+    assert!(s.grounded && (x(&w, rider) - 0.2).abs() < 1e-6);
+    assert!((s.carry_translation[0] - 0.2).abs() < 1e-6);
+    assert_eq!(s.carried_by, Some(platform));
 
     w.set_character_input(
         rider,
@@ -729,10 +760,34 @@ fn late_knot_rewinds_rider_transport_but_allows_walking_off() {
     .unwrap();
     w.set_kinematic_target(platform, at(1.2)).unwrap();
     w.step_checked().unwrap();
-    assert_eq!(x(&w, platform), 0.);
+    assert!((x(&w, platform) - 0.2).abs() < 1e-6);
     assert_eq!(w.step_statistics().kinematic_path_stops, 1);
     let s = w.character_state(rider).unwrap();
-    assert!(x(&w, rider) < -0.65 && !s.grounded, "{s:?}");
+    assert!(x(&w, rider) < -0.45 && !s.grounded, "{s:?}");
     assert_eq!(s.carried_by, None);
     assert_eq!(s.carry_translation, [0.; 3]);
+}
+
+#[test]
+fn late_knot_stop_holds_both_squeezing_movers_at_their_slice_start() {
+    use super::kinematic_paths::KinematicPath;
+
+    let mut w = world();
+    let left = wall(&mut w, -1.6, BodyKind::KinematicPosition);
+    let right = wall(&mut w, 1.6, BodyKind::KinematicVelocity);
+    let rider = actor(&mut w, 0.);
+    w.set_velocity(right, [-12., 0., 0.], [0.; 3]).unwrap();
+    w.step_with_kinematic_paths(&[KinematicPath {
+        body: left,
+        sweep_sensors: false,
+        knots: vec![(0.5, pose(-1.)), (1., pose(-0.4))],
+    }])
+    .unwrap();
+    assert!((x(&w, left) + 1.).abs() < 1e-6, "left={}", x(&w, left));
+    assert!((x(&w, right) - 1.).abs() < 1e-6, "right={}", x(&w, right));
+    assert_eq!(w.body_state(right).unwrap().linear_velocity, [0.; 3]);
+    assert_eq!(x(&w, rider), 0.);
+    assert!(w.p1a_max_overlap() <= 0.005);
+    assert_eq!(w.kinematic_path_progress_precise(left), (0.5, true));
+    assert_eq!(w.step_statistics().kinematic_path_stops, 2);
 }
