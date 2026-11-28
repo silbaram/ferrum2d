@@ -474,22 +474,18 @@ planar floor 필터, 넉백의 native 속도·다음 tick 운동·거부 시 원
 고속 구간 sweep·XYZ 높이·mask·planar floor/무범위 대상·source 제외·최근접 선택, native triangle mesh 벽,
 수용량 실패 시 cooldown/spawn 보존, 수명·재설정·세대, 수동 hit 보존·첫 충돌 지점 정지, 기존 authored tile과의
 최근접 판정, 기존 2D target, 물리 위치로 향하는 timer 발사 및 같은 tick의 pending authored pose를 검사한다.
-두 공간의 교차 이동·같은 속도로 이동하는 뒤쪽 대상·XYZ 높이 교차·회전 막대·틱 내부 반전에 더해
-native authored 지형의 다리 아래 통과/데크 충돌과 projectile flag를 검사한다. 틱 내부에서 출발 위치로 돌아오는 이동 발판과의 실제 충돌까지 Engine 회귀는 23개다.
-`physics3d::step_motion_tests`의 11개 회귀는 움직이는 대상과 정지 query의 충돌 시점·world witness,
+두 공간의 교차 이동·같은 속도로 이동하는 뒤쪽 대상·XYZ 높이 교차와 native authored 지형의
+다리 아래 통과·데크 충돌·projectile flag도 검사한다. 틱 안에서 돌아오는 발판은 시작·끝 자세를
+기준으로 판정한다.
+`physics3d::step_motion_tests`는 움직이는 대상과 정지 query의 충돌 시점·world witness,
 회전하는 offset fixture의 질량 중심, 초기 겹침, 삭제·세대·빈 world 후 재등록, mask/sensor/exclusion,
 조인트 pass별 hit의 중복 제거와 limit, 위치 보정 후 경로 불변을 검사한다. 경로 기록 유무에 따라 120틱의
 solver 상태·지속 힘·pending kinematic target·통계가 일치해야 한다.
-추가로 solver가 한 바퀴 돌아 끝 자세가 같아진 경우와 가속도로 틱 내부에서 반전한 경우의 hit를 검사한다.
-다회전 테스트는 backend의 fast-rotation opt-in을 사용하며 기본 각속도 상한을 변경했다는 의미는 아니다.
-CCD 시간 구간을 1개/4개로 실행해 버려진 overshoot에서는 hit가 없고 승인된 경로에서는 hit가 있어야 한다.
-진단 한도 1개가 넘쳐도 필수 motion 기록은 누락되지 않아야 한다.
+투사체 질의는 틱 시작·끝 자세를 보간해 명중을 검사한다. 일반 CCD의 활성화·필터·위치 클램프는
+별도 회귀와 물리 실험실에서 검사한다.
 `physics3d::body_control_tests::prescribed_kinematic_linear_motion_keeps_speed_while_dynamic_bodies_are_capped`는
-두 공간과 두 kinematic 종류에서 6,000 units/s의 위치·속도가 두 tick 유지되고 dynamic의 400 × length_unit
-상한은 유지되는지 확인한다. vendor 포함 검증은 `artifacts/physics-3d/projectile-qa/report.json`,
-발사 직전 pose 수정 검증은 `artifacts/physics-3d/projectile-pose-qa/report.json`, 상대 운동 추가 후 검증은
-`artifacts/physics-3d/projectile-motion-qa/report.json`을 따른다.
-solver 내부 기록과 vendor callback 추가 후 검증은 `artifacts/physics-3d/solver-motion-qa/report.json`을 따른다.
+두 공간과 두 kinematic 종류에서 6,000 units/s의 위치·속도가 두 틱 유지되고 dynamic의 400 × length_unit
+상한도 유지되는지 확인한다.
 `engine::unified_physics::terrain_tests`의 8개 회귀는 실제 tick에서 tile 강체 차단, cell 편집/삭제/generation,
 Spatial ramp 높이·법선과 bridge의 underside, walkable deck 착지, admission 실패 시 기존 world/output 불변,
 2D slope 선분·일방통행 상승/낙하, 빠른 상승/낙하 CCD, movement/projectile mask·논리 floor를 검사한다.
@@ -501,22 +497,17 @@ pause/자동 OFF/수동 틱/거절 시 phase 보존, 한 틱의 전체 왕복·�
 `physics3d::kinematic_paths::tests`의 3개 회귀는 경로 분할 시 다른 target·지속 힘·관절 하중·CCD motion 시간,
 잘못된 경로 거절과 pending target 보존, 120틱 단일 구간의 기존 step 대비 body 상태·통계 일치를 검사한다.
 경로/운반 연결 검증은 `artifacts/physics-3d/platform-motion-qa/report.json`을 따른다.
-`engine::unified_physics::platform_blocking_tests`의 6개 회귀는 벽에서 phase 정지/장애물 제거 후 재개,
-천장 squeeze 방지·접지 유지, 두 발판의 상대 접촉, 틱 내 왕복 전 차단, 접근하는 승강기/천장,
-대각선 운반의 첫 측면 접촉을 검사한다. `physics3d::kinematic_limit_tests`의 8개 회귀는
-충돌 시점의 motion trace와 다른 body의 지속 힘/target, sensor·disabled·mask·floor 필터,
-접촉면에서 이탈/접선 운동, 회전 막대, 두께 없는 mesh끼리의 sweep, one-way 상승/하강을 검사한다.
-controller preview 유무에 따라 120틱의 점프·dynamic push·body/controller 상태도 정확히 일치해야 한다.
-preview 쌍 검사는 실제 호출당 한 번 집계하고 backend CCD와 분리하며, 한 frame의 여러 틱에서 path 작업량을 합산한다.
-검증 기록은 `artifacts/physics-3d/platform-blocking-qa/report.json`에 남긴다. path/preview 비용은 backend CCD에 합치지 않는다.
+`engine::unified_physics::platform_blocking_tests`는 벽에서 phase 정지와 장애물 제거 뒤 재개,
+끼임 방지·접지 유지, 두 발판의 상대 접촉, 대각선 운반의 측면 접촉을 검사한다. 경로가 막히면
+해당 구간의 시작 자세에서 정지하며 탑승자는 KCC로 걸을 수 있는지 확인한다.
 `physics3d::character_tests::rotating_rider_with_locomotion_meets_wall_in_one_tick`은 직접 각속도를 준 발판을
 양방향으로 돌린다. 벽이 없을 때 캡슐이 지나가는 경로에 벽을 놓고 같은 틱을 실행한다. 캐릭터는 벽 앞의
-접촉 여유를 유지하면서 남은 시간 동안 벽을 따라 걸어야 한다. 발판의 최종 회전은 벽이 없을 때와 같고,
-캐릭터의 지지가 유지되며 실패한 충돌 검사와 누락된 접촉은 모두 0이어야 한다.
+접촉 여유와 접지를 유지하면서 벽을 따라 걷는다. 막힌 구간의 발판은 시작 자세에 머물고
+실패한 충돌 검사와 누락된 접촉은 모두 0이어야 한다.
 `physics3d::character_motion_tests`의 9개 회귀는 같이 움직이는 지지체/벽과 멀어지는 벽의 이전 위치 무시,
 고속 접근 벽의 idle capsule 밀기·접선 보행 유지, 새 승강기 포착, sensor/mask/disabled/floor와 Planar 충돌 뒤 Z=0,
 velocity-kinematic query 비용, COM/fixture offset 및 angular winding 경로, 움직이는 one-way를 검사한다.
-Engine의 추가 co-moving 회귀는 8틱의 carry·phase·grounded·blocked·preview 비용을 함께 확인한다.
+Engine의 추가 co-moving 회귀는 8틱의 carry·phase·grounded·blocked를 함께 확인한다.
 기존 opposing elevator/ceiling 회귀도 유지해 상대 response 도입 후 관련 경로가 함께 정지하는지 확인한다.
 새 검증은 `artifacts/physics-3d/character-motion-qa/report.json`에 기록한다. 각 query의 native 기하학적 회전 경로가
 맞다는 검사이며 backend 고속 회전/CCD 전체 수용을 증명하지 않는다.
@@ -1519,6 +1510,8 @@ Vendor `stored_` 회귀는 graph inverse·actual solver bucket 중복·inactive 
 정상 TYPE·overflow/generic·pending MAX-generation·수면/epoch 이력의 수용을 별도로 검사한다.
 Core는 기본 `cargo test`와 Rust-only WASI 전체 gate에 포함된다. Vendor 집중 회귀는
 `pnpm test:physics3d-storage`로 별도 manifest에서 실행하며 `CI`의 `validate-rust` job에도 연결한다.
+Rapier 저장 바이트의 target 간 기준값은 `pnpm test:physics3d-portability`가 같은 job에서 native로 검사한다.
+저장 layout을 바꾸면 같은 시험을 `wasm32-wasip1`에서도 실행해 기준값이 같은지 확인한다.
 Core 전체 통과만으로 vendor unit suite 실행을 주장하지 않는다. 이 검증은 전체 numerical/island 구조,
 실제 allocator/RSS·외부 파일·SDK 바인딩 수용의 완료가 아니다.
 Storage 명령은 libtest의 `stored_`와 `shape_edits_` OR 필터를 함께 전달한다. 후자의7종 static/5종 dynamic,

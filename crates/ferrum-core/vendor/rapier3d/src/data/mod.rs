@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Data structures modified with guaranteed deterministic behavior after deserialization.
 
 #[cfg(feature = "alloc")]
@@ -12,8 +11,6 @@ pub use self::modified_objects::{HasModifiedFlag, ModifiedObjects};
 pub mod arena;
 #[cfg(feature = "alloc")]
 mod coarena;
-#[cfg(feature = "alloc")]
-pub(crate) use coarena::AdjacencyCredit;
 #[cfg(feature = "alloc")]
 pub(crate) mod graph;
 #[cfg(feature = "alloc")]

@@ -642,7 +642,7 @@ E1 다음에는 사이트 전용 공통 도우미(수치 보내기·'표시' 메
 
 | 후보 | 문제 | 제안 |
 | --- | --- | --- |
-| 연속 충돌(CCD) 작업 한도 오류 | planar native에서 CCD를 켠 채 dynamic 공이 static 상자 사이 한 칸 틈에 들어가면 기존 운동 증명 경로는 `physics capacity exceeded`로 멈췄다. 재현과 원인은 [통합 3D 물리의 해결 기록](unified-3d-physics-plan.md#해결-회전-상자-접촉의-운동-증명-2026-11-22)에 있다. | P2a에서 일반 Rapier CCD로 전환하고 벽돌 깨기에서 연속 충돌을 다시 켰다. |
+| 연속 충돌(CCD) 작업 한도 오류 | planar native에서 CCD를 켠 채 dynamic 공이 static 상자 사이 한 칸 틈에 들어가면 기존 운동 증명 경로는 `physics capacity exceeded`로 멈췄다. 재현과 원인은 [통합 3D 물리의 해결 기록](unified-3d-physics-plan.md#해결-회전-상자-접촉의-물리-정지)에 있다. | P2a에서 일반 Rapier CCD로 전환하고 벽돌 깨기에서 연속 충돌을 다시 켰다. |
 | 충돌 쌍 수치의 의미 | `frame.physics.collisionSolidPairs`·`collisionTriggerPairs`는 한 출력 프레임 안 물리 단계마다 더한 값이라 "지금 겹친 쌍"으로 읽으면 틀린다. | 문서 명확화, 필요하면 "지금 쌍 수" 추가. |
 | 고정 속도 body | 벽돌 깨기 공처럼 속도를 일정하게 유지하려면 매 프레임 코드로 맞춰야 한다. | dynamic body의 최대·고정 속도 옵션 검토. |
 | 전투 모드 없는 충돌 시 제거 | `collisionDespawn` 레시피는 씬 문서에서 HD-2D 전투 모드(`gameplay.combat`)가 필요하다. | 탐험 모드에서도 쓸 수 있게 할지 검토. |

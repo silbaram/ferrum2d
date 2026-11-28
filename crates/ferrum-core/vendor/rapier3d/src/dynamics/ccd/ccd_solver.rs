@@ -87,16 +87,6 @@ impl CCDSolver {
         self.reset_diagnostics();
     }
 
-    /// Reserve the configured bounded observation buffer before solver writes.
-    /// Opted-in callers charge this layout request to their explicit scratch
-    /// budget. Failure changes no body, velocity, force or diagnostic count.
-    pub fn try_reserve_diagnostics(&mut self) -> Result<(), alloc::collections::TryReserveError> {
-        self.diagnostics.clamps.try_reserve(
-            self.diagnostic_limit
-                .saturating_sub(self.diagnostics.clamps.len()),
-        )
-    }
-
     /// Clears observations and counts while retaining allocated storage and cache state.
     pub fn reset_diagnostics(&mut self) {
         self.diagnostics.prediction_checks = 0;
@@ -309,7 +299,7 @@ impl CCDSolver {
             });
             all_results.extend(results);
         }
-        Self::apply_clamps(bodies, &all_results, events);
+        Self::apply_clamps(bodies, &all_results);
 
         // Pass 2: bullets vs everything except other bullets. Targets read the (already
         // clamped) `next_position` from pass 1 (deferred bullet stage).
@@ -338,7 +328,7 @@ impl CCDSolver {
                     )
                 })
             };
-            Self::apply_clamps(bodies, &bullet_results, events);
+            Self::apply_clamps(bodies, &bullet_results);
             all_results.extend(bullet_results);
         }
 
@@ -427,65 +417,9 @@ impl CCDSolver {
         }
     }
 
-    /// Apply a complete prevalidated Core CCD plan at the original post-solve
-    /// phase. This performs no query, reserve, solve, force or velocity update.
-    pub(crate) fn apply_prepared(
-        &mut self,
-        plan: &crate::pipeline::SolverCcdPlan,
-        dt: Real,
-        logical_start: f64,
-        logical_end: f64,
-        bodies: &mut RigidBodySet,
-        colliders: &ColliderSet,
-        events: &dyn EventHandler,
-    ) {
-        let logical_duration = logical_end - logical_start;
-        self.diagnostics.clamp_checks = self.diagnostics.clamp_checks.saturating_add(plan.checks);
-        for row in &plan.clamps {
-            // The pre-writeback barrier verified identity/geometry and reserved
-            // diagnostics; no producer changes bodies between those phases.
-            let rb = bodies.index_mut_internal(row.body);
-            let center = rb.mprops.local_mprops.local_com;
-            let start = rb.pos.position.prepend_translation(center);
-            rb.pos.next_position = row.end.prepend_translation(-center);
-            self.diagnostics.clamped_bodies = self.diagnostics.clamped_bodies.saturating_add(1);
-            if self.diagnostics.clamps.len() < self.diagnostic_limit
-                && self.diagnostics.clamps.len() < self.diagnostics.clamps.capacity()
-            {
-                self.diagnostics.clamps.push(CcdClamp {
-                    moving: row.moving,
-                    target: row.target,
-                    fraction: ((row.cutoff_time - logical_start) / logical_duration) as Real,
-                    sweep_seconds: dt,
-                    point: row.point,
-                    normal: row.normal,
-                });
-            } else {
-                self.diagnostics.dropped = self.diagnostics.dropped.saturating_add(1);
-            }
-            if events.wants_body_motion() {
-                events.handle_prepared_ccd_clamp(
-                    row.body,
-                    start,
-                    row.end,
-                    row.cutoff_time - logical_start,
-                    logical_duration,
-                );
-            }
-        }
-        // Crossings were preflighted with the complete clipped path. Core's
-        // committed-slice trace is their single publisher; never emit twice.
-        let _ = colliders;
-    }
-
     /// Clamps each impacted body's `next_position` to the interpolated pose at its impact
     /// fraction. Pose only — velocities are preserved.
-    fn apply_clamps(
-        bodies: &mut RigidBodySet,
-        results: &[BodyContinuousResult],
-        events: &dyn EventHandler,
-    ) {
-        let observe_motion = events.wants_body_motion();
+    fn apply_clamps(bodies: &mut RigidBodySet, results: &[BodyContinuousResult]) {
         for result in results {
             if result.fraction < 1.0 {
                 let rb = bodies.index_mut_internal(result.handle);
@@ -495,16 +429,6 @@ impl CCDSolver {
                     rb.mprops.local_mprops.local_com,
                 );
                 rb.pos.next_position = sweep.transform_at(result.fraction);
-                if observe_motion {
-                    let center = rb.mprops.local_mprops.local_com;
-                    events.handle_body_motion_clamped(
-                        result.handle,
-                        rb.pos.position.prepend_translation(center),
-                        rb.pos.next_position.prepend_translation(center),
-                        &sweep,
-                        result.fraction,
-                    );
-                }
             }
         }
     }

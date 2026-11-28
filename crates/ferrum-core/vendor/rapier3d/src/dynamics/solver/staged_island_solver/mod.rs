@@ -13,7 +13,7 @@ mod worker;
 
 use crate::alloc_prelude::*;
 use core::ops::Range;
-use core::sync::atomic::{AtomicBool, AtomicU8};
+use core::sync::atomic::AtomicBool;
 
 use crate::dynamics::solver::contact_constraint::ContactConstraintsSet;
 use crate::dynamics::solver::interaction_groups::ParallelInteractionGroups;
@@ -185,14 +185,7 @@ struct SharedCtx<'a> {
     /// Never written back.
     has_multibodies: bool,
     base_params: &'a IntegrationParameters,
-    motion_time: (f64, f64),
-    /// Optional immutable observer; callbacks receive owned poses and may run concurrently.
-    motion_events: Option<&'a dyn crate::pipeline::EventHandler>,
-    motion_body_mask: &'a [bool],
-    /// Exclusive optional approval callback, separate from read-only observers.
-    motion_resolver: Option<&'a dyn crate::pipeline::EventHandler>,
-    motion_decision: &'a AtomicU8,
-    motion_colliders: &'a crate::geometry::ColliderSet,
+    colliders: &'a crate::geometry::ColliderSet,
     /// Raw manifold resolution: constraint generation reads manifolds through
     /// it, the impulse-writeback stage writes them back through it.
     store: &'a ManifoldStore<'a>,
@@ -238,8 +231,6 @@ struct SharedCtx<'a> {
 unsafe impl Sync for SharedCtx<'_> {}
 
 pub(crate) struct StagedIslandSolver {
-    /// Reused observer eligibility mask, empty when observation is disabled.
-    motion_body_mask: Vec<bool>,
     pub contact_constraints: ContactConstraintsSet,
     pub joint_constraints: JointConstraintsSet,
     pub soft_constraints: SoftConstraintsSet,
@@ -322,7 +313,6 @@ pub(crate) struct StagedIslandSolver {
 impl StagedIslandSolver {
     pub fn new() -> Self {
         Self {
-            motion_body_mask: Vec::new(),
             contact_constraints: ContactConstraintsSet::new(),
             joint_constraints: JointConstraintsSet::new(),
             soft_constraints: SoftConstraintsSet::new(),

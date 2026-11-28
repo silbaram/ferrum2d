@@ -7,8 +7,6 @@ use crate::math::Real;
 use parry::partitioning::{Bvh, BvhLeafUpdateStatus, BvhWorkspace};
 use parry::utils::hashmap::HashMap;
 
-mod step_credit;
-pub(crate) use step_credit::BroadStepCredit;
 mod update;
 #[cfg(feature = "serde-serialize")]
 mod validation;

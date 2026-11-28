@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::data::{Arena, HasModifiedFlag, ModifiedObjects};
 use crate::dynamics::{
     ImpulseJointSet, IslandManager, MultibodyJointSet, RigidBody, RigidBodyBuilder,
@@ -80,21 +79,6 @@ pub struct RigidBodySet {
 }
 
 impl RigidBodySet {
-    /// Number of stored arena slots visited by a complete iterator, including
-    /// vacant/retired slots. This is not the number of live objects.
-    pub fn motion_storage_slots(&self) -> usize {
-        self.bodies.capacity()
-    }
-
-    /// Reserve modification queue capacity before a local preplan can fail.
-    /// Returning at most `additional` motion credits then needs no queue growth.
-    pub fn try_reserve_motion_credit_returns(
-        &mut self,
-        additional: usize,
-    ) -> Result<(), alloc::collections::TryReserveError> {
-        self.modified_bodies.try_reserve_returns(additional)
-    }
-
     /// Creates a new empty collection of rigid bodies.
     ///
     /// Call this once when setting up your physics world. The collection will

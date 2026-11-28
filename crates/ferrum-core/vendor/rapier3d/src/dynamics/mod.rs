@@ -4,10 +4,7 @@
 #[cfg(feature = "alloc")]
 pub(crate) use self::ccd::post_solve_ccd_active;
 #[cfg(feature = "alloc")]
-pub use self::ccd::{
-    CCDSolver, CcdClamp, CcdDiagnostics, solver_ccd_active, solver_ccd_body_tier_allows,
-    solver_ccd_pair_kind, solver_ccd_shape_supported,
-};
+pub use self::ccd::{CCDSolver, CcdClamp, CcdDiagnostics};
 pub use self::coefficient_combine_rule::CoefficientCombineRule;
 #[cfg(feature = "dim3")]
 pub use self::integration_parameters::FrictionModel;
@@ -32,7 +29,7 @@ pub(crate) use self::solver::StagedIslandSolver;
 pub use parry::mass_properties::MassProperties;
 
 #[cfg(feature = "alloc")]
-pub use self::rigid_body::{RigidBody, RigidBodyBuilder, RigidBodyMotionCredit};
+pub use self::rigid_body::{RigidBody, RigidBodyBuilder};
 #[cfg(feature = "alloc")]
 pub use self::rigid_body_set::{BodyPair, RigidBodySet};
 #[cfg(feature = "alloc")]

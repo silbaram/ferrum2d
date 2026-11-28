@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::alloc_prelude::*;
 use crate::dynamics::solver::solver_body::SolverBodies;
 use crate::dynamics::{MultibodyLinkId, solver::SolverVel};
@@ -40,8 +39,6 @@ impl Default for GyroParams {
 /// this type only owns the reusable buffers they operate on.
 pub(crate) struct VelocitySolver {
     pub solver_bodies: SolverBodies,
-    /// Transient prevalidated position-only CCD plan, reused across slices.
-    pub ccd_plan: crate::pipeline::SolverCcdPlan,
     pub solver_vels_increment: Vec<SolverVel<Real>>,
     pub generic_solver_vels: DVector,
     pub generic_solver_vels_increment: DVector,
@@ -57,7 +54,6 @@ impl VelocitySolver {
     pub fn new() -> Self {
         Self {
             solver_bodies: SolverBodies::default(),
-            ccd_plan: crate::pipeline::SolverCcdPlan::default(),
             solver_vels_increment: Vec::new(),
             generic_solver_vels: DVector::zeros(0),
             generic_solver_vels_increment: DVector::zeros(0),

@@ -60,7 +60,7 @@ PR #113에서 세 번 실행한 결과는 [C1e](runtime-startup-view-plan.md#리
 | --- | --- |
 | `crates/ferrum-core -> target` | Core Clippy·테스트, 물리·대량 객체 smoke, `wasm-pack build`, `test:rust-wasi`. WASI는 `--target-dir` 없이 `--target wasm32-wasip1`을 넘겨 Core `target` 아래에 쓴다. |
 | `apps/studio-desktop/src-tauri -> target` | Studio Desktop Clippy·저장 계약과 native 프로젝트 smoke |
-| `crates/ferrum-core/vendor/rapier3d -> target` | `test:physics3d-storage`의 독립 Rapier 매니페스트 |
+| `crates/ferrum-core/vendor/rapier3d -> target` | `test:physics3d-storage`·`test:physics3d-portability`의 독립 Rapier 매니페스트 |
 | `crates/ferrum-core/vendor/parry3d -> target` | `test:physics3d-queries`의 독립 Parry 매니페스트 |
 
 - 캐시 액션은 기본값으로 Cargo 바이너리 디렉터리를 복원한다. `Install wasm-pack`은 `PATH`에서 바이너리가 발견되면 버전만 출력한다.
@@ -291,11 +291,13 @@ CI에서 완전히 사라지는 것은 실제 렌더링·GPU 확인이다. 픽�
   - 검증 smoke에 네 사례를 추가했다.
 - **문서**: `AGENTS.md`, `docs/development/quality/smoke-check.md`의 CI 설명과 "CI의 `browser-smoke`에서 실행한다" 문장을 모두 로컬 명령 기준으로 고쳤다.
 - **병렬 분할**(사용자 승인 2026-11-28): 한 줄로 돌던 `validate` 66단계를 네 job으로 나눠 동시에 돌린다. 검사 내용과 순서는 그대로다.
-  - `validate-rust`: Core Rust 형식·Clippy·전체 테스트, vendor 물리 회귀 2종, harness guard, 물리·budget·대량 객체 smoke
+  - `validate-rust`: Core Rust 형식·Clippy·전체 테스트, vendor 물리 회귀 3종(2026-11-28 Rapier 저장 기준값 추가), harness guard, 물리·budget·대량 객체 smoke
   - `validate-wasi`: WASI 실행기 계약과 Rust-only WASI 전체 테스트
   - `validate-studio-desktop`: 데스크톱 Linux 패키지 설치와 Studio desktop Rust 4단계
   - `validate`: 나머지(Wasm 빌드, SDK·TypeScript·패키지·짧은 브라우저 검사)
   - PR #114 실행의 단계별 시간 기준 예상은 가장 긴 `validate` 약 10분이다(이전 약 25분). 공개 저장소의 기본 runner라 비용은 없다.
+  - 실측(통합 담당, 2026-11-28): PR CI 전체는 캐시가 빈 첫 실행(PR #115)에서 약 13분, 이후 PR #116~#120에서 약 9분 30초~10분이다.
+    가장 긴 job은 `validate`(약 9분 30초)이고 `validate-rust`는 약 6분 40초다(PR #120).
 - **분할 중 찾은 S2a 누락**:
   - `validate:runtime-budget-product`가 지운 job의 `extended_browser_smoke`·`artifacts/browser-smoke-budgets`를 `ci.yml`에서 찾아 실패했다. 이 두 항목은 로컬 실행 목록(`browser-smoke-steps.json`)에서 확인하도록 바꿨다.
   - 확장 20단계에 이전 job의 `FERRUM_BROWSER_SMOKE_TIMEOUT_MS=30000`과 `FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR`를 다시 넣었다. 실행기는 단계별 `env`를 적용하고, 테스트가 이를 확인한다.

@@ -100,12 +100,3 @@ pub use contact_manifolds::{
     validate_stored_contact_manifolds_without_workspace, validate_stored_contact_workspace,
     StoredWorkspaceError, StoredWorkspaceLimits, StoredWorkspaceUsage,
 };
-
-// Logical work admission is independent of allocator availability.
-pub(crate) mod native_work;
-
-#[cfg(all(feature = "dim3", feature = "alloc"))]
-pub use self::contact::{
-    contact_point_cloud_metered, NativeContactError, NativeContactPhase, NativeContactStorage,
-    NativeContactWork,
-};

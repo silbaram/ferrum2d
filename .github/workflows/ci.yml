@@ -72,6 +72,9 @@ jobs:
       - name: Native physics stored-reference contracts
         run: pnpm test:physics3d-storage
 
+      - name: Native physics snapshot portability golden
+        run: pnpm test:physics3d-portability
+
       - name: Native physics near-origin query contracts
         run: pnpm test:physics3d-queries
 

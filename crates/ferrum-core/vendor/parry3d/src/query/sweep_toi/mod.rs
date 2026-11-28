@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Time-of-impact computation on endpoint-interpolated sweeps.
 //!
 //! Unlike [`cast_shapes_nonlinear`](crate::query::cast_shapes_nonlinear), which models motion
@@ -11,10 +10,6 @@
 //! TODO: see how we can combine that with `nonlinear_shape_cast` since they serve similar goals.
 
 pub use self::proxy_distance::{proxy_distance, ProxyDistanceOutput, SimplexCache};
-#[cfg(feature = "dim3")]
-pub use self::proxy_distance::{
-    proxy_distance_with_local_witness, proxy_distance_with_local_witness_metered, ProxyDistanceWork,
-};
 pub use self::sweep::Sweep;
 pub use self::sweep_toi::{sweep_time_of_impact, SweepToiOutput, SweepToiStatus};
 pub use self::toi_proxy::{ToiProxy, TOI_PROXY_INLINE_POINTS};

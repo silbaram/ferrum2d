@@ -1,4 +1,3 @@
-// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Three-dimensional penetration depth queries using the Expanding Polytope Algorithm.
 //!
 //! This module provides the 3D-specific implementation of EPA, which works with
@@ -437,74 +436,6 @@ impl EPA {
         G1: ?Sized + SupportMap,
         G2: ?Sized + SupportMap,
     {
-        let mut admit = |_| Ok::<_, core::convert::Infallible>(());
-        let mut meter = crate::query::native_work::Meter { admit: &mut admit };
-        match self.closest_points_impl::<false, G1, G2, _, _>(
-            pos12,
-            g1,
-            g2,
-            simplex,
-            [0, 0],
-            &mut meter,
-        ) {
-            Ok(result) => result,
-            Err(_) => unreachable!("unmetered EPA admission is infallible"),
-        }
-    }
-
-    pub(crate) fn closest_points_metered<G1, G2, E, F>(
-        &mut self,
-        pos12: &Pose,
-        g1: &G1,
-        g2: &G2,
-        simplex: &VoronoiSimplex,
-        support_points: [usize; 2],
-        meter: &mut crate::query::native_work::Meter<'_, F>,
-    ) -> Result<Option<(Vector, Vector, Vector)>, crate::query::native_work::NativeContactError<E>>
-    where
-        G1: ?Sized + SupportMap,
-        G2: ?Sized + SupportMap,
-        F: FnMut(crate::query::native_work::NativeContactWork) -> Result<(), E>,
-    {
-        self.closest_points_impl::<true, G1, G2, E, F>(
-            pos12,
-            g1,
-            g2,
-            simplex,
-            support_points,
-            meter,
-        )
-    }
-
-    fn closest_points_impl<const METERED: bool, G1, G2, E, F>(
-        &mut self,
-        pos12: &Pose,
-        g1: &G1,
-        g2: &G2,
-        simplex: &VoronoiSimplex,
-        support_points: [usize; 2],
-        meter: &mut crate::query::native_work::Meter<'_, F>,
-    ) -> Result<Option<(Vector, Vector, Vector)>, crate::query::native_work::NativeContactError<E>>
-    where
-        G1: ?Sized + SupportMap,
-        G2: ?Sized + SupportMap,
-        F: FnMut(crate::query::native_work::NativeContactWork) -> Result<(), E>,
-    {
-        use crate::query::native_work::{
-            NativeContactPhase as Phase, NativeContactStorage as Storage, NativeContactWork as Work,
-        };
-        macro_rules! optional {
-            ($value:expr) => {
-                match $value {
-                    Some(value) => value,
-                    None => return Ok(None),
-                }
-            };
-        }
-        if METERED {
-            meter.charge(Work::Fixed(Phase::EpaBootstrap))?;
-        }
-
         let _eps = crate::math::DEFAULT_EPSILON;
         let _eps_tol = _eps * 100.0;
 
@@ -514,9 +445,6 @@ impl EPA {
          * Initialization.
          */
         for i in 0..simplex.dimension() + 1 {
-            if METERED {
-                meter.before_push(&mut self.vertices, Storage::Vertices)?;
-            }
             self.vertices.push(*simplex.point(i));
         }
 
@@ -533,36 +461,18 @@ impl EPA {
                 -Vector::Z,
             ];
             let sep_tol = gjk::eps_tol();
-            let bootstrap = if METERED {
-                let mut found = None;
-                for dir in &candidates {
-                    meter.support(support_points)?;
-                    let pt = CsoPoint::from_shapes(pos12, g1, g2, *dir);
-                    if (pt.point - self.vertices[0].point).length_squared() > sep_tol * sep_tol {
-                        found = Some(pt);
-                        break;
-                    }
-                }
-                found
-            } else {
-                candidates.iter().find_map(|dir| {
-                    let pt = CsoPoint::from_shapes(pos12, g1, g2, *dir);
-                    ((pt.point - self.vertices[0].point).length_squared() > sep_tol * sep_tol)
-                        .then_some(pt)
-                })
-            };
+            let bootstrap = candidates.iter().find_map(|dir| {
+                let pt = CsoPoint::from_shapes(pos12, g1, g2, *dir);
+                ((pt.point - self.vertices[0].point).length_squared() > sep_tol * sep_tol)
+                    .then_some(pt)
+            });
 
             match bootstrap {
-                Some(pt) => {
-                    if METERED {
-                        meter.before_push(&mut self.vertices, Storage::Vertices)?;
-                    }
-                    self.vertices.push(pt);
-                }
+                Some(pt) => self.vertices.push(pt),
                 None => {
                     // The CSO is degenerate (a single point): no meaningful normal exists.
                     let v = self.vertices[0];
-                    return Ok(Some((v.orig1, v.orig2, Vector::Y)));
+                    return Some((v.orig1, v.orig2, Vector::Y));
                 }
             }
         }
@@ -605,57 +515,29 @@ impl EPA {
             let (face3, proj_inside3) = Face::new(&self.vertices, pts3, adj3);
             let (face4, proj_inside4) = Face::new(&self.vertices, pts4, adj4);
 
-            if METERED {
-                meter.before_push(&mut self.faces, Storage::Faces)?;
-            }
             self.faces.push(face1);
-            if METERED {
-                meter.before_push(&mut self.faces, Storage::Faces)?;
-            }
             self.faces.push(face2);
-            if METERED {
-                meter.before_push(&mut self.faces, Storage::Faces)?;
-            }
             self.faces.push(face3);
-            if METERED {
-                meter.before_push(&mut self.faces, Storage::Faces)?;
-            }
             self.faces.push(face4);
 
             if proj_inside1 {
                 let dist1 = self.faces[0].normal.dot(self.vertices[0].point);
-                let heap_value = optional!(FaceId::new(0, -dist1, dist_tol));
-                if METERED {
-                    meter.before_heap_push(&mut self.heap)?;
-                }
-                self.heap.push(heap_value);
+                self.heap.push(FaceId::new(0, -dist1, dist_tol)?);
             }
 
             if proj_inside2 {
                 let dist2 = self.faces[1].normal.dot(self.vertices[1].point);
-                let heap_value = optional!(FaceId::new(1, -dist2, dist_tol));
-                if METERED {
-                    meter.before_heap_push(&mut self.heap)?;
-                }
-                self.heap.push(heap_value);
+                self.heap.push(FaceId::new(1, -dist2, dist_tol)?);
             }
 
             if proj_inside3 {
                 let dist3 = self.faces[2].normal.dot(self.vertices[2].point);
-                let heap_value = optional!(FaceId::new(2, -dist3, dist_tol));
-                if METERED {
-                    meter.before_heap_push(&mut self.heap)?;
-                }
-                self.heap.push(heap_value);
+                self.heap.push(FaceId::new(2, -dist3, dist_tol)?);
             }
 
             if proj_inside4 {
                 let dist4 = self.faces[3].normal.dot(self.vertices[3].point);
-                let heap_value = optional!(FaceId::new(3, -dist4, dist_tol));
-                if METERED {
-                    meter.before_heap_push(&mut self.heap)?;
-                }
-                self.heap.push(heap_value);
+                self.heap.push(FaceId::new(3, -dist4, dist_tol)?);
             }
 
             if !(proj_inside1 || proj_inside2 || proj_inside3 || proj_inside4) {
@@ -663,7 +545,7 @@ impl EPA {
                 // https://github.com/dimforge/parry/issues/253
                 // https://github.com/dimforge/parry/issues/246
                 log::debug!("Hit unexpected state in EPA: failed to project the origin on the initial simplex.");
-                return Ok(None);
+                return None;
             }
         } else {
             // NOTE: len == 2 covers both a 1-dimensional GJK simplex and a 0-dimensional
@@ -671,30 +553,12 @@ impl EPA {
             if self.vertices.len() == 2 {
                 let dpt = self.vertices[1] - self.vertices[0];
 
-                if METERED {
-                    let mut error = None;
-                    crate::math::orthonormal_subspace_basis(&[dpt], |dir| {
-                        if let Err(e) = meter.support(support_points) {
-                            error = Some(e);
-                            return false;
-                        }
-                        let point = CsoPoint::from_shapes(pos12, g1, g2, dir);
-                        if let Err(e) = meter.push(&mut self.vertices, point, Storage::Vertices) {
-                            error = Some(e);
-                        }
-                        false
-                    });
-                    if let Some(error) = error {
-                        return Err(error);
-                    }
-                } else {
-                    crate::math::orthonormal_subspace_basis(&[dpt], |dir| {
-                        // dir is already normalized by orthonormal_subspace_basis
-                        self.vertices
-                            .push(CsoPoint::from_shapes(pos12, g1, g2, dir));
-                        false
-                    });
-                }
+                crate::math::orthonormal_subspace_basis(&[dpt], |dir| {
+                    // dir is already normalized by orthonormal_subspace_basis
+                    self.vertices
+                        .push(CsoPoint::from_shapes(pos12, g1, g2, dir));
+                    false
+                });
             }
 
             let pts1 = [0, 1, 2];
@@ -705,44 +569,22 @@ impl EPA {
 
             let (face1, _) = Face::new(&self.vertices, pts1, adj1);
             let (face2, _) = Face::new(&self.vertices, pts2, adj2);
-            if METERED {
-                meter.before_push(&mut self.faces, Storage::Faces)?;
-            }
             self.faces.push(face1);
-            if METERED {
-                meter.before_push(&mut self.faces, Storage::Faces)?;
-            }
             self.faces.push(face2);
 
-            let heap_value = optional!(FaceId::new(0, 0.0, dist_tol));
-
-            if METERED {
-                meter.before_heap_push(&mut self.heap)?;
-            }
-
-            self.heap.push(heap_value);
-            let heap_value = optional!(FaceId::new(1, 0.0, dist_tol));
-            if METERED {
-                meter.before_heap_push(&mut self.heap)?;
-            }
-            self.heap.push(heap_value);
+            self.heap.push(FaceId::new(0, 0.0, dist_tol)?);
+            self.heap.push(FaceId::new(1, 0.0, dist_tol)?);
         }
 
         let mut niter = 0;
         let mut max_dist = Real::max_value();
-        let mut best_face_id = *optional!(self.heap.peek());
+        let mut best_face_id = *self.heap.peek()?;
         let mut old_dist = 0.0;
 
         /*
          * Run the expansion.
          */
-        loop {
-            if METERED {
-                meter.charge(Work::HeapVisits(self.heap.len()))?;
-            }
-            let Some(face_id) = self.heap.pop() else {
-                break;
-            };
+        while let Some(face_id) = self.heap.pop() {
             // Create new faces.
             let face = self.faces[face_id.id].clone();
 
@@ -750,15 +592,8 @@ impl EPA {
                 continue;
             }
 
-            if METERED {
-                meter.charge(Work::Fixed(Phase::EpaExpansion))?;
-                meter.support(support_points)?;
-            }
             let cso_point = CsoPoint::from_shapes(pos12, g1, g2, face.normal);
             let support_point_id = self.vertices.len();
-            if METERED {
-                meter.before_push(&mut self.vertices, Storage::Vertices)?;
-            }
             self.vertices.push(cso_point);
 
             let candidate_max_dist = cso_point.point.dot(face.normal);
@@ -776,11 +611,8 @@ impl EPA {
                 ((curr_dist - old_dist).abs() < _eps && candidate_max_dist < max_dist)
             {
                 let best_face = &self.faces[best_face_id.id];
-                if METERED {
-                    meter.charge(Work::Fixed(Phase::EpaFinish))?;
-                }
                 let points = best_face.closest_points(&self.vertices);
-                return Ok(Some((points.0, points.1, best_face.normal)));
+                return Some((points.0, points.1, best_face.normal));
             }
 
             old_dist = curr_dist;
@@ -791,48 +623,18 @@ impl EPA {
             let adj_opp_pt_id2 = self.faces[face.adj[1]].next_ccw_pt_id(face.pts[1]);
             let adj_opp_pt_id3 = self.faces[face.adj[2]].next_ccw_pt_id(face.pts[2]);
 
-            if METERED {
-                self.compute_silhouette_metered(
-                    support_point_id,
-                    face.adj[0],
-                    adj_opp_pt_id1,
-                    meter,
-                )?;
-            } else {
-                self.compute_silhouette(support_point_id, face.adj[0], adj_opp_pt_id1);
-            }
-            if METERED {
-                self.compute_silhouette_metered(
-                    support_point_id,
-                    face.adj[1],
-                    adj_opp_pt_id2,
-                    meter,
-                )?;
-            } else {
-                self.compute_silhouette(support_point_id, face.adj[1], adj_opp_pt_id2);
-            }
-            if METERED {
-                self.compute_silhouette_metered(
-                    support_point_id,
-                    face.adj[2],
-                    adj_opp_pt_id3,
-                    meter,
-                )?;
-            } else {
-                self.compute_silhouette(support_point_id, face.adj[2], adj_opp_pt_id3);
-            }
+            self.compute_silhouette(support_point_id, face.adj[0], adj_opp_pt_id1);
+            self.compute_silhouette(support_point_id, face.adj[1], adj_opp_pt_id2);
+            self.compute_silhouette(support_point_id, face.adj[2], adj_opp_pt_id3);
 
             let first_new_face_id = self.faces.len();
 
             if self.silhouette.is_empty() {
                 // TODO: Something went very wrong because we failed to extract a silhouette…
-                return Ok(None);
+                return None;
             }
 
             for edge in &self.silhouette {
-                if METERED {
-                    meter.charge(Work::FaceVisit)?;
-                }
                 if !self.faces[edge.face_id].deleted {
                     let new_face_id = self.faces.len();
 
@@ -846,9 +648,6 @@ impl EPA {
 
                     face_adj.adj[(edge.opp_pt_id + 1) % 3] = new_face_id;
 
-                    if METERED {
-                        meter.before_push(&mut self.faces, Storage::Faces)?;
-                    }
                     self.faces.push(new_face.0);
 
                     if new_face.1 {
@@ -857,20 +656,11 @@ impl EPA {
                         if dist < curr_dist {
                             // TODO: if we reach this point, there were issues due to
                             // numerical errors.
-                            if METERED {
-                                meter.charge(Work::Fixed(Phase::EpaFinish))?;
-                            }
                             let points = face.closest_points(&self.vertices);
-                            return Ok(Some((points.0, points.1, face.normal)));
+                            return Some((points.0, points.1, face.normal));
                         }
 
-                        let heap_value = optional!(FaceId::new(new_face_id, -dist, dist_tol));
-
-                        if METERED {
-                            meter.before_heap_push(&mut self.heap)?;
-                        }
-
-                        self.heap.push(heap_value);
+                        self.heap.push(FaceId::new(new_face_id, -dist, dist_tol)?);
                     }
                 }
             }
@@ -878,7 +668,7 @@ impl EPA {
             if first_new_face_id == self.faces.len() {
                 // Something went very wrong because all the edges
                 // from the silhouette belonged to deleted faces.
-                return Ok(None);
+                return None;
             }
 
             self.faces[first_new_face_id].adj[2] = self.faces.len() - 1;
@@ -896,55 +686,8 @@ impl EPA {
         }
 
         let best_face = &self.faces[best_face_id.id];
-        if METERED {
-            meter.charge(Work::Fixed(Phase::EpaFinish))?;
-        }
         let points = best_face.closest_points(&self.vertices);
-        Ok(Some((points.0, points.1, best_face.normal)))
-    }
-
-    fn compute_silhouette_metered<E, F>(
-        &mut self,
-        point: usize,
-        id: usize,
-        opp_pt_id: usize,
-        meter: &mut crate::query::native_work::Meter<'_, F>,
-    ) -> Result<(), crate::query::native_work::NativeContactError<E>>
-    where
-        F: FnMut(crate::query::native_work::NativeContactWork) -> Result<(), E>,
-    {
-        use crate::query::native_work::{
-            NativeContactStorage as Storage, NativeContactWork as Work,
-        };
-        let mut pending = Vec::new();
-        meter.push(&mut pending, (id, opp_pt_id), Storage::Traversal)?;
-        while !pending.is_empty() {
-            meter.charge(Work::EdgeVisit)?;
-            let (id, opp_pt_id) = pending.pop().unwrap();
-            if !self.faces[id].deleted {
-                if !self.faces[id].can_be_seen_by(&self.vertices, point, opp_pt_id) {
-                    meter.push(
-                        &mut self.silhouette,
-                        SilhouetteEdge::new(id, opp_pt_id),
-                        Storage::Silhouette,
-                    )?;
-                } else {
-                    self.faces[id].deleted = true;
-                    let adj_pt_id1 = (opp_pt_id + 2) % 3;
-                    let adj_pt_id2 = opp_pt_id;
-                    let adj1 = self.faces[id].adj[adj_pt_id1];
-                    let adj2 = self.faces[id].adj[adj_pt_id2];
-                    let adj_opp_pt_id1 =
-                        self.faces[adj1].next_ccw_pt_id(self.faces[id].pts[adj_pt_id1]);
-                    let adj_opp_pt_id2 =
-                        self.faces[adj2].next_ccw_pt_id(self.faces[id].pts[adj_pt_id2]);
-                    // LIFO preserves the original recursive adj1-then-adj2 order.
-                    meter.push(&mut pending, (adj2, adj_opp_pt_id2), Storage::Traversal)?;
-                    meter.push(&mut pending, (adj1, adj_opp_pt_id1), Storage::Traversal)?;
-                }
-            }
-        }
-        Ok(())
+        Some((points.0, points.1, best_face.normal))
     }
 
     fn compute_silhouette(&mut self, point: usize, id: usize, opp_pt_id: usize) {
