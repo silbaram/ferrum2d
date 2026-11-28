@@ -100,3 +100,22 @@ export function compileTileMapAnimations(asset: PlacementTileAsset, value: unkno
   cache.set(asset, { signature, result });
   return result;
 }
+
+/** Integer preview time bounds shared by the tile tool and the still map preview. */
+export function tileAnimationPreviewTimeError(timeMs: number): string {
+  return !Number.isInteger(timeMs) || timeMs < 0 || timeMs > 3_600_000 ? "Preview time must be 0..3600000 ms" : "";
+}
+
+/** Still-image frame lookup at an integer preview time. */
+export function tileAnimationPreviewFrame(clip: DataSceneSpriteAnimationSetSpec["clips"][number], timeMs: number) {
+  // Map patches contain validated, forward-only clips with integer ms durations.
+  // Keep this still-image lookup in ms: 1001 / 1000 * 1000 is less than 1001.
+  const durations = clip.frameDurationsMs!;
+  const total = durations.reduce((sum, duration) => sum + duration, 0);
+  let elapsed = clip.loop === false ? Math.min(timeMs, total) : timeMs % total;
+  for (let i = 0; i < durations.length; i++) {
+    if (elapsed < durations[i]) return clip.frames[i];
+    elapsed -= durations[i];
+  }
+  return clip.frames[clip.frames.length - 1];
+}

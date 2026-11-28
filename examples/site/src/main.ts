@@ -1,6 +1,7 @@
-import { examples, groups, links, tools, type GroupId, type SiteExample, type SiteLink } from "./catalog";
+import { examples, groups, links, tools, type SiteExample, type SiteLink } from "./catalog";
 import { mountExample } from "./frame";
 import { icon } from "./icons";
+import { entryGroup as groupOf, homeGroups, searchQuery, siteEntries, treeGroups, type SiteEntry as Entry } from "./listing";
 import { applyPanelSize, foldButton, panelSplitter, railButton } from "./layout";
 import { el, setSiteLocale, siteLocale, translate, uiAttribute, uiText, type LocalizedText } from "./locale";
 import { siteText } from "./messages";
@@ -110,12 +111,7 @@ const status = el("footer", "sb");
 
 app.append(bar, body, status);
 
-type Entry = { kind: "example"; item: SiteExample } | { kind: "tool"; item: SiteLink };
-const entries: Entry[] = [...examples.map(item => ({ kind: "example" as const, item })), ...tools.map(item => ({ kind: "tool" as const, item }))];
-const groupOf = (entry: Entry): GroupId => entry.kind === "tool" ? "tools" : entry.item.group;
-const matches = ({ item }: Entry, query: string) => !query || (["ko", "en"] as const).some(
-  locale => `${item.title[locale]} ${item.summary[locale]}`.toLocaleLowerCase(locale).includes(query),
-);
+const entries = siteEntries(examples, tools);
 const exampleHref = (id: string) => `?example=${encodeURIComponent(id)}`;
 /** A link inside the site: it changes the address and the main area, not the page. */
 const routeLink = (a: HTMLAnchorElement) => { a.dataset.route = ""; return a; };
@@ -125,10 +121,7 @@ let running: ReturnType<typeof mountExample> | undefined;
 
 function renderTree(text: string): void {
   tree.replaceChildren();
-  for (const group of groups) {
-    const items = entries.filter(entry => groupOf(entry) === group.id);
-    const shown = items.filter(entry => matches(entry, text));
-    if (text && !shown.length) continue;
+  for (const { group, items, shown } of treeGroups(groups, entries, text)) {
     const section = el("section", "group");
     const head = el("button", "row group-row"); head.type = "button";
     const list = el("ul", "group-items"); list.id = `group-${group.id}`;
@@ -198,11 +191,8 @@ function renderHome(text: string): void {
     note.append(icon("construction"), sentence);
     page.append(note);
   }
-  const shown = entries.filter(entry => matches(entry, text));
-  for (const group of groups) {
-    const items = shown.filter(entry => groupOf(entry) === group.id);
-    if (group.id !== "tools" && !examples.length) continue;
-    if (!items.length) continue;
+  const sections = homeGroups(groups, entries, text);
+  for (const { group, items } of sections) {
     const section = el("section", "home-group");
     const h2 = el("h2"); h2.append(icon(group.icon), uiText(group.title));
     const grid = el("div", "cards"); grid.append(...items.map(card));
@@ -224,7 +214,7 @@ function renderHome(text: string): void {
     empty.append(icon("construction", "i empty-icon"), h2, p, actions);
     page.insertBefore(empty, page.children[1] ?? null);
   }
-  if (text && !shown.length) page.append(el("p", "home-none", siteText.noMatches));
+  if (text && !sections.length) page.append(el("p", "home-none", siteText.noMatches));
   main.replaceChildren(page);
 }
 
@@ -254,7 +244,7 @@ function renderStatus(): void {
   );
 }
 
-const searchText = () => query.value.trim().toLowerCase();
+const searchText = () => searchQuery(query.value);
 const selectedExample = () => examples.find(item => item.id === selected);
 function renderTitle(example: SiteExample | undefined): void {
   const title = translate(siteText.title);

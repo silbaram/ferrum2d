@@ -775,9 +775,11 @@ Core의 `breakout_gap_runs_300_ticks_without_errors_or_tunneling`은 넓은 패�
 연속 충돌을 켠 채 물리 스텝 300회가 오류 없이 끝나고, 틱 전후 공 중심을 잇는 선분이 고체 장벽 내부를
 가로지르지 않는지 검사한다.
 `pnpm test:pages-build`는 사이트·Studio 빌드 누락이나 잘못된 HTML이 기존 Pages를 지우기 전에 거절되는지와 발행 구성을 확인한다.
+`pnpm test:example-site`는 예제 사이트 목록의 그룹 순서·개수, 두 언어 검색과 카탈로그 데이터를 브라우저 없이 확인하며 PR CI에서 돈다.
 
 이전 예제 앱은 공개하지 않지만 엔진 검사 데이터로 남아 다음 검사가 그대로 쓴다.
 `pnpm validate:example-catalog`, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground`가 기능 실험의 native 상태·픽셀·상호작용·자원을 검증한다.
+이 중 native 상태 부분(기능 장면 28개의 시작 상태·결정성, 놀이터 시나리오)은 `pnpm test:web`의 `featureExamplesScenario`·`enginePlaygroundScenario` 테스트로 PR CI에서도 돈다.
 Start/Pause/Resume/Restart·P/Esc·터치 취소는 실제 native 시간/위치/HUD와 비교한다.
 정지 중 게임 상태 불변, resize·letterbox pointer 좌표와 예제별 draw 예산을 유지한다.
 Physics Lab의 `visibleBodyCount`는 조회한 body 수이며 화면 culling 측정값이 아니다.

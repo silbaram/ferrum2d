@@ -1,19 +1,7 @@
 import type { ScenePlacementPatch, DataSceneSpriteAnimationSetSpec } from "@ferrum2d/ferrum-web/authoring";
 import type { PlacementTileAsset } from "./placementTileAssets";
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
-
-function previewFrame(clip: DataSceneSpriteAnimationSetSpec["clips"][number], timeMs: number) {
-  // Map patches contain validated, forward-only clips with integer ms durations.
-  // Keep this still-image lookup in ms: 1001 / 1000 * 1000 is less than 1001.
-  const durations = clip.frameDurationsMs!;
-  const total = durations.reduce((sum, duration) => sum + duration, 0);
-  let elapsed = clip.loop === false ? Math.min(timeMs, total) : timeMs % total;
-  for (let i = 0; i < durations.length; i++) {
-    if (elapsed < durations[i]) return clip.frames[i];
-    elapsed -= durations[i];
-  }
-  return clip.frames[clip.frames.length - 1];
-}
+import { tileAnimationPreviewFrame, tileAnimationPreviewTimeError } from "./placementTileAnimation";
 
 /** Preview a validated, generated map patch without registering textures or editing a scene. */
 export function createTileMapPreview() {
@@ -40,7 +28,8 @@ export function createTileMapPreview() {
     setUiText(status, "Preparing map preview…");
     let bitmap: ImageBitmap | undefined;
     try {
-      if (!Number.isInteger(timeMs) || timeMs < 0 || timeMs > 3_600_000) throw Error("Preview time must be 0..3600000 ms");
+      const timeError = tileAnimationPreviewTimeError(timeMs);
+      if (timeError) throw Error(timeError);
       const items = patch.operations.flatMap(op => {
         if (op.kind !== "addInstance") return [];
         // The map patch builder owns these inline components; mapped objects have no inline visual.
@@ -49,7 +38,7 @@ export function createTileMapPreview() {
         // Generated tile clips are forward-only and use integer millisecond durations.
         // This is an explicit still preview; gameplay time remains owned by Rust.
         const clip = visual?.animationSet?.clips[0];
-        const uv = clip ? previewFrame(clip, timeMs) : visual?.frame;
+        const uv = clip ? tileAnimationPreviewFrame(clip, timeMs) : visual?.frame;
         return [{ x: op.instance.x ?? 0, y: op.instance.y ?? 0, layer: op.instance.layer ?? 0,
           width: visual?.width ?? 8, height: visual?.height ?? 8, visual, uv, animated: !!clip, solid: components?.collider?.type === "aabb" }];
       }).sort((a, b) => a.layer - b.layer);
