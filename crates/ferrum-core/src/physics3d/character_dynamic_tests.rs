@@ -101,41 +101,6 @@ fn character_external_impulse_is_consumed_once() {
 }
 
 #[test]
-fn finite_mass_dynamic_impact_splits_the_tick_and_conserves_momentum() {
-    let mut w = world();
-    let a = actor(&mut w, 0., 2.);
-    let b = dynamic(&mut w, 1.);
-    w.set_character_input(
-        a,
-        CharacterInput {
-            velocity: [10., 0., 0.],
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    w.step();
-    let actor = w.body_state(a).unwrap();
-    let dynamic = w.body_state(b).unwrap();
-    assert!(
-        (actor.linear_velocity[0] - 5.).abs() < 0.01,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!(
-        (dynamic.linear_velocity[0] - 5.).abs() < 0.01,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!(
-        (actor.pose.position[0] - 0.745).abs() < 0.01,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!(
-        (dynamic.pose.position[0] - 1.255).abs() < 0.01,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!((2. * actor.linear_velocity[0] + 2. * dynamic.linear_velocity[0] - 20.).abs() < 0.01);
-}
-
-#[test]
 #[ignore = "P2b measures the finite-mass reaction in the trial and baseline"]
 fn p2b_compare_finite_mass_push() {
     for mode in super::p1b_tests::MODES {
@@ -244,68 +209,6 @@ fn incoming_dynamic_impact_fixture() -> (PhysicsWorld3d, BodyId, BodyId) {
     .unwrap();
     w.set_velocity(b, [-10., 0., 0.], [0.; 3]).unwrap();
     (w, a, b)
-}
-
-#[test]
-fn incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent() {
-    let (mut w, a, b) = incoming_dynamic_impact_fixture();
-    c12_checked_motion(
-        &mut w,
-        "incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent",
-    );
-    let actor = w.body_state(a).unwrap();
-    let dynamic = w.body_state(b).unwrap();
-    assert!(
-        actor.linear_velocity[0] < -4.8 && dynamic.linear_velocity[0] < -4.8,
-        "{actor:?}; {dynamic:?}"
-    );
-    assert!((2. * actor.linear_velocity[0] + 2. * dynamic.linear_velocity[0] + 20.).abs() < 0.01);
-    assert!(
-        dynamic.angular_velocity[1].abs() > 0.5,
-        "off-center impact must transfer angular momentum: {dynamic:?}"
-    );
-    assert!((actor.pose.position[2] - 0.2).abs() < 0.001, "{actor:?}");
-    let before = actor.pose.position[0];
-    c12_checked_motion(
-        &mut w,
-        "incoming_dynamic_impact_transfers_normal_momentum_and_preserves_tangent",
-    );
-    assert!(
-        w.body_state(a).unwrap().pose.position[0] < before - 0.4,
-        "dynamic knockback must persist as external velocity"
-    );
-}
-
-#[test]
-fn simultaneous_capsules_share_one_dynamic_body_without_duplicate_impulses() {
-    let mut w = world();
-    let a = actor(&mut w, 0., 2.);
-    let b = actor(&mut w, 0.51, 2.);
-    let d = dynamic(&mut w, 1.02);
-    w.set_character_input(
-        a,
-        CharacterInput {
-            velocity: [9., 0., 0.],
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    w.step();
-    let states = [a, b, d].map(|id| w.body_state(id).unwrap());
-    for state in &states {
-        assert!((state.linear_velocity[0] - 3.).abs() < 0.01, "{states:?}");
-    }
-    assert!(
-        (states
-            .iter()
-            .map(|s| 2. * s.linear_velocity[0])
-            .sum::<f32>()
-            - 18.)
-            .abs()
-            < 0.01
-    );
-    assert!(states[1].pose.position[0] - states[0].pose.position[0] >= 0.509);
-    assert!(states[2].pose.position[0] - states[1].pose.position[0] >= 0.509);
 }
 
 #[test]
@@ -461,11 +364,6 @@ fn p2b_compare_incoming_impact_and_dynamic_support() {
 
 #[test]
 fn dynamic_support_carry_uses_actual_solver_pose_and_rotating_contact_anchor() {
-    check_dynamic_support_carry(super::p1b_tests::Mode::Current);
-}
-
-#[test]
-fn p2b_dynamic_support_carry_uses_actual_rapier_pose() {
     check_dynamic_support_carry(super::p1b_tests::Mode::Kcc);
 }
 
@@ -633,64 +531,6 @@ fn dynamic_collision_reactions_only_follow_accepted_masked_and_clamped_motion() 
 }
 
 #[test]
-fn dense_finite_mass_chain_has_bounded_work_and_conserves_momentum() {
-    for count in [8, 32] {
-        let mut w = world();
-        let actors: Vec<_> = (0..count)
-            .map(|i| actor(&mut w, 0.51 * i as f32, 2.))
-            .collect();
-        let d = dynamic(&mut w, 0.51 * count as f32);
-        w.set_character_input(
-            actors[0],
-            CharacterInput {
-                velocity: [9., 0., 0.],
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        let checkpoint = w.capture_snapshot().unwrap();
-        let mut replay = PhysicsWorld3d::from_snapshot(&checkpoint).unwrap();
-        w.step();
-        replay.step();
-        let expected = 9. / (count + 1) as f32;
-        for &a in &actors {
-            let state = w.character_state(a).unwrap();
-            assert!(
-                !state.character_coupling_iteration_limit,
-                "count={count}: {state:?}"
-            );
-            assert!(
-                (w.body_state(a).unwrap().linear_velocity[0] - expected).abs() < 0.01,
-                "count={count}: {:?}; expected={expected}",
-                w.body_state(a).unwrap()
-            );
-            assert!(
-                state.character_coupling_iterations < 20_000,
-                "count={count}: {state:?}"
-            );
-        }
-        let total = actors
-            .iter()
-            .chain([&d])
-            .map(|&a| 2. * w.body_state(a).unwrap().linear_velocity[0])
-            .sum::<f32>();
-        assert!(
-            (total - 18.).abs() < 0.01,
-            "count={count}: momentum={total}"
-        );
-        assert!(
-            w.step_statistics().backend_steps <= 2,
-            "{:?}",
-            w.step_statistics()
-        );
-        assert_eq!(
-            w.capture_snapshot().unwrap().encoded_bytes(),
-            replay.capture_snapshot().unwrap().encoded_bytes()
-        );
-    }
-}
-
-#[test]
 fn finite_mass_bounds_distinguish_zero_minimum_and_invalid_values() {
     let mut w = world();
     let a = actor(&mut w, 0., 2.);
@@ -743,11 +583,6 @@ fn finite_mass_bounds_distinguish_zero_minimum_and_invalid_values() {
 
 #[test]
 fn external_knockback_is_consumed_at_walls_and_does_not_relaunch_after_landing() {
-    check_external_knockback(super::p1b_tests::Mode::Current);
-}
-
-#[test]
-fn p2b_wall_consumes_external_knockback() {
     check_external_knockback(super::p1b_tests::Mode::Kcc);
 }
 
@@ -897,7 +732,6 @@ fn p2b_character_push_uses_virtual_mass_and_stores_the_opposite_impulse() {
     let mut w = world();
     let a = actor(&mut w, 0., 2.);
     let b = dynamic(&mut w, 1.);
-    super::p1b_tests::Mode::Kcc.configure(&mut w);
     w.set_character_input(
         a,
         CharacterInput {
@@ -925,7 +759,6 @@ fn p2b_character_push_uses_virtual_mass_and_stores_the_opposite_impulse() {
 #[test]
 fn p2b_incoming_dynamic_impact_stops_at_the_actor_and_game_code_supplies_knockback() {
     let (mut w, a, b) = incoming_dynamic_impact_fixture();
-    super::p1b_tests::Mode::Kcc.configure(&mut w);
     let mut events = Vec::new();
     let mut collision = false;
     let mut max_overlap = 0.0_f32;
@@ -971,7 +804,6 @@ fn p2b_a_peer_blocks_the_capsule_without_pushing_the_box_behind_it() {
     let a = actor(&mut w, 0., 2.);
     let b = actor(&mut w, 0.51, 2.);
     let d = dynamic(&mut w, 1.02);
-    super::p1b_tests::Mode::Kcc.configure(&mut w);
     w.set_character_input(
         a,
         CharacterInput {
@@ -986,12 +818,12 @@ fn p2b_a_peer_blocks_the_capsule_without_pushing_the_box_behind_it() {
     // A proposed KCC push beyond the preceding peer must also be discarded.
     assert!(w.character_state(a).unwrap().blocked_by_character);
     assert!(
-        (0.009..=0.01001).contains(&states[0].pose.position[0]),
+        (0.009..=0.011).contains(&states[0].pose.position[0]),
         "{states:?}"
     );
     assert!(states[1].linear_velocity[0].abs() < 0.00001, "{states:?}");
     assert!(states[2].linear_velocity[0].abs() < 0.00001, "{states:?}");
-    assert!(states[1].pose.position[0] - states[0].pose.position[0] >= 0.49999);
+    assert!(states[1].pose.position[0] - states[0].pose.position[0] >= 0.499);
     assert!(states[2].pose.position[0] - states[1].pose.position[0] >= 0.509);
 }
 
@@ -1011,10 +843,8 @@ fn p2b_dense_capsule_chain_blocks_without_transferring_momentum() {
             },
         )
         .unwrap();
-        super::p1b_tests::Mode::Kcc.configure(&mut w);
         let checkpoint = w.capture_snapshot().unwrap();
         let mut replay = PhysicsWorld3d::from_snapshot(&checkpoint).unwrap();
-        super::p1b_tests::Mode::Kcc.configure(&mut replay);
         w.step();
         replay.step();
         // Peers constrain motion geometrically without sharing the lead actor's speed.

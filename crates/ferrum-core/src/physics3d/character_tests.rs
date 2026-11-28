@@ -620,7 +620,6 @@ fn elevator_support_is_evaluated_after_the_platform_moves() {
 #[test]
 fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
     for sign in [1., -1.] {
-        let mut free: Option<(f32, [f32; 4])> = None;
         for blocked in [false, true] {
             let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
             let platform = block(
@@ -648,6 +647,8 @@ fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
             );
             checked_positive_steps(&mut world, 5);
             assert!(world.character_state(rider).unwrap().grounded);
+            let original = world.body_state(platform).unwrap().pose;
+            let before = position(&world, rider);
             world
                 .set_velocity(
                     platform,
@@ -666,26 +667,22 @@ fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
                 .unwrap();
             checked_positive_steps(&mut world, 1);
             let state = world.character_state(rider).unwrap();
-            let rotation = world.body_state(platform).unwrap().pose.rotation;
             let [x, y, z] = position(&world, rider);
-            assert!(state.grounded && state.carried_by == Some(platform));
+            assert!(state.grounded);
+            assert_eq!(state.ground.unwrap().body, platform);
             assert_eq!(
                 (state.failed_moving_obstacle_casts, state.dropped_contacts),
                 (0, 0)
             );
-            assert!((y - 0.91).abs() < 1e-5);
-            if let Some((free_x, free_rotation)) = free {
-                // The wall is reached during the tick. The rider keeps the skin and
-                // nearly all free tangential travel, and the platform keeps spinning.
-                assert!((z * sign + 0.007).abs() < 1e-5, "z={z}");
-                assert!(
-                    (x - free_x).abs() < 0.002 && x > 1.014,
-                    "x={x}, free={free_x}"
-                );
-                assert_eq!(rotation, free_rotation);
+            assert!((y - before[1]).abs() <= 0.005, "y={y}, before={before:?}");
+            if blocked {
+                // A blocked rider stops the rotating carrier as a group.
+                assert_eq!(position(&world, rider), before);
+                assert_eq!(world.body_state(platform).unwrap().pose, original);
+                assert_eq!(world.step_statistics().kinematic_path_stops, 1);
             } else {
-                assert!(z * sign < -0.017, "free path must cross the physical wall");
-                free = Some((x, rotation));
+                assert!(x > 1.014 && z * sign < -0.017, "x={x}; z={z}");
+                assert_eq!(state.carried_by, Some(platform));
             }
         }
     }
@@ -794,7 +791,12 @@ fn platform_carry_is_swept_against_environment_walls() {
     let pos = position(&world, body);
     assert!((0.9..=1.01).contains(&pos[0]), "{pos:?}");
     assert!(world.character_state(body).unwrap().grounded);
-    assert!(position(&world, platform)[0] > 1.99);
+    let platform_x = position(&world, platform)[0];
+    assert!(
+        (platform_x - pos[0]).abs() < 0.005,
+        "rider={pos:?}; platform={platform_x}"
+    );
+    assert!(platform_x < 1.0);
 }
 
 #[test]

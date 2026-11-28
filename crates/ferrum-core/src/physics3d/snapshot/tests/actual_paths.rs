@@ -7,6 +7,7 @@ fn fixture() -> PhysicsWorld3d {
         ..WorldConfig::default()
     })
     .unwrap();
+    world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
     world
         .create_body(
@@ -95,6 +96,7 @@ fn native_ccd_fixture(ccd: bool) -> (PhysicsWorld3d, BodyId) {
         ..WorldConfig::default()
     })
     .unwrap();
+    world.force_character_motion_proof();
     world.set_step_motion_enabled(true);
     let angle = -std::f32::consts::FRAC_PI_8;
     let bar = world
@@ -374,6 +376,7 @@ fn native_ccd_actual_kernel_prefix_and_constant_suffix_survive_checkpoint_querie
             before.encoded_bytes()
         );
         let mut restored = PhysicsWorld3d::from_snapshot(&before).unwrap();
+        restored.force_character_motion_proof();
         assert_eq!(
             PhysicsSnapshot::test_assert_native_ccd_saved_query(before.encoded_bytes(), body).2,
             expected

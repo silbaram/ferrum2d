@@ -94,6 +94,11 @@ fn checked_manual_mesh_rejection_preserves_previous_tick_and_engine_checkpoint()
     let last_step = e.unified_physics_step_statistics().unwrap();
     assert_eq!(last_step.ccd_clamps, 1);
     register_distant_character(&mut e);
+    e.unified_physics
+        .as_mut()
+        .unwrap()
+        .physics
+        .force_character_motion_proof();
     let mesh = body(
         &mut e,
         BodyKind::Fixed,
@@ -175,6 +180,11 @@ fn planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection() {
         e.world.set_rigid_body(a, RigidBody::dynamic_circle(1., 1.));
         e.step_rigid_bodies_checked(dt).unwrap();
         register_distant_character(&mut e);
+        e.unified_physics
+            .as_mut()
+            .unwrap()
+            .physics
+            .force_character_motion_proof();
         let mesh = body(
             &mut e,
             BodyKind::Fixed,
@@ -241,6 +251,11 @@ fn rejected_frame_retry_does_not_repeat_pre_physics_gameplay() {
             TweenEasing::Linear,
         ));
         register_distant_character(&mut e);
+        e.unified_physics
+            .as_mut()
+            .unwrap()
+            .physics
+            .force_character_motion_proof();
         let mesh = body(
             &mut e,
             BodyKind::Fixed,

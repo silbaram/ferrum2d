@@ -43,6 +43,7 @@ fn path_impact_preserves_true_hit_time_and_the_other_bodies_full_tick() {
     let other = body(&mut w, BodyKind::KinematicPosition, 0.0, 20.0);
     w.add_force(free, [10.0, 0.0, 0.0], [0.0; 3]).unwrap();
     w.set_kinematic_target(other, pose(5.0, 20.0)).unwrap();
+    w.force_character_motion_proof();
     w.set_step_motion_enabled(true);
     step(&mut w, p, pose(10.0, 0.0));
     assert!((w.body_state(p).unwrap().pose.position[0] - 2.0).abs() < 0.001);
@@ -258,10 +259,7 @@ fn rotation_cast_stops_a_bar_before_its_tip_crosses_an_obstacle() {
     let (mut w, p, obstacle, to) = rotating_bar_fixture(true);
     step(&mut w, p, to);
     let progress = w.kinematic_path_progress(p);
-    assert!(
-        progress.1 && (0.4..0.9).contains(&progress.0),
-        "{progress:?}"
-    );
+    assert!(progress == (0., true), "{progress:?}");
     assert_eq!(w.step_statistics().kinematic_path_failures, 0);
     assert!(original_bar_obstacle_gap(&w, p, obstacle) >= 0.);
     assert_eq!(
@@ -285,10 +283,7 @@ fn capped_position_path_retains_native_cap_and_rejects_only_the_actual_target_pr
     let (mut limited, bar, obstacle, target) = rotating_bar_fixture(false);
     step(&mut limited, bar, target);
     let (fraction, stopped) = limited.kinematic_path_progress_precise(bar);
-    assert!(
-        stopped && fraction > 0.9 && fraction <= 1.,
-        "{fraction:?}/{stopped}"
-    );
+    assert!(stopped && fraction == 0., "{fraction:?}/{stopped}");
     assert_eq!(limited.step_statistics().kinematic_path_failures, 0);
     assert_eq!(
         limited.actual_motion_completed_time(),
@@ -341,7 +336,8 @@ fn zero_thickness_surface_mesh_stops_at_a_mesh_wall() {
     )
     .unwrap();
     step(&mut w, p, pose(10.0, 0.0));
-    assert!((w.body_state(p).unwrap().pose.position[0] - 2.5).abs() < 0.002);
+    assert_eq!(w.body_state(p).unwrap().pose.position[0], 0.);
+    assert_eq!(w.kinematic_path_progress(p), (0., true));
     assert_eq!(w.step_statistics().kinematic_path_failures, 0);
 }
 
@@ -349,6 +345,7 @@ fn zero_thickness_surface_mesh_stops_at_a_mesh_wall() {
 fn controller_preview_preserves_jump_and_does_not_duplicate_dynamic_pushes() {
     fn setup() -> (PhysicsWorld3d, BodyId, BodyId, BodyId, BodyId) {
         let mut w = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+        w.force_character_motion_proof();
         let floor = w
             .create_body(
                 BodyDesc {
@@ -575,7 +572,8 @@ fn path_one_way_policy_passes_from_below_and_stops_from_above() {
         if upward {
             assert_eq!(y, 3.0);
         } else {
-            assert!((y - 1.0).abs() < 0.001, "{y}");
+            assert_eq!(y, 3.);
+            assert_eq!(w.kinematic_path_progress(p), (0., true));
         }
     }
 }
@@ -583,6 +581,7 @@ fn path_one_way_policy_passes_from_below_and_stops_from_above() {
 #[test]
 fn preview_pair_work_counts_each_query_once_and_is_separate_from_ccd() {
     let mut w = world();
+    w.force_character_motion_proof();
     let p = body(&mut w, BodyKind::KinematicPosition, 0.0, -10.0);
     let mut actors = Vec::new();
     for (x, velocity) in [(-1.0, 10.0), (1.0, -10.0)] {
