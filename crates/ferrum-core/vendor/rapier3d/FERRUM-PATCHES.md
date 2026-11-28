@@ -106,13 +106,6 @@ x86_64와 실제 wasm32-wasip1 실행에서 동일한 513,230 bytes/FNV-1a diges
 기준값을 갱신했다. 상류 기준을 삭제하거나 임의 불일치를 허용하지 않는다. 이 검사는 native backend
 bincode layout의 target parity이며 Ferrum opaque Postcard checkpoint의 공개 파일 호환성 보장은 아니다.
 
-2026-11-28: 아래의 513,247 bytes / `0xe7e849ba178f3a1a` 기준값은 저장소에 들어온 vendor 소스와
-맞은 적이 없다. 최초 vendoring 커밋 `5b3cf0ca`와 이후 vendor 커밋 4개, P3-5 정리 뒤 소스가 모두
-523,167 bytes / `0x130ca32309695f65`를 생성한다. x86_64와 실제 wasm32-wasip1 실행에서 같은 값을
-확인하고 기준값을 바꿨다. 이 시험은 CI에서 돌지 않아 불일치가 드러나지 않았다. 이제 `validate-rust` job이
-`pnpm test:physics3d-portability`로 native 실행을 검사한다. 저장 layout을 바꾸는 변경은 WASI 실행으로도
-같은 값을 확인한다.
-
 ## Native arena 복원 불변식
 
 `src/data/arena.rs`의 `Arena<T>` 역직렬화는 원소 수와 free-list 전체 연결을 검사한다.
